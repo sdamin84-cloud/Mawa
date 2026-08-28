@@ -1,0 +1,6 @@
+{
+  "name": "MAWA",
+  "description": "A professional Bengali-first digital cash book and shop management system (ডিজিটাল খাতা ও দোকান হিসাব)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
