@@ -524,52 +524,12 @@ class MawaRepository(private val database: MawaDatabase) {
                     id = 1,
                     shopName = "মাওয়া ডিজিটাল খাতা",
                     ownerName = "দোকানদার",
-                    openingBalance = 5000.0,
+                    openingBalance = 0.0,
                     currencySymbol = "৳",
                     appMode = "BOTH",
                     isModeConfigured = false
                 )
             )
-        }
-
-        val productCount = productDao.getProductCount()
-        if (productCount == 0) {
-            val initialProducts = listOf(
-                ProductEntity(name = "চিনি", banglaName = "চিনি", unit = "কেজি", defaultPurchasePrice = 135.0, defaultSellingPrice = 145.0, category = "মুদি"),
-                ProductEntity(name = "সয়াবিন তেল", banglaName = "সয়াবিন তেল", unit = "লিটার", defaultPurchasePrice = 185.0, defaultSellingPrice = 195.0, category = "তেল"),
-                ProductEntity(name = "মিনিকেট চাল", banglaName = "মিনিকেট চাল", unit = "কেজি", defaultPurchasePrice = 72.0, defaultSellingPrice = 78.0, category = "চাল"),
-                ProductEntity(name = "নাজিরশাইল চাল", banglaName = "নাজিরশাইল চাল", unit = "কেজি", defaultPurchasePrice = 80.0, defaultSellingPrice = 88.0, category = "চাল"),
-                ProductEntity(name = "মসুর ডাল", banglaName = "মসুর ডাল", unit = "কেজি", defaultPurchasePrice = 130.0, defaultSellingPrice = 142.0, category = "ডাল"),
-                ProductEntity(name = "দেশি পেঁয়াজ", banglaName = "দেশি পেঁয়াজ", unit = "কেজি", defaultPurchasePrice = 85.0, defaultSellingPrice = 95.0, category = "সবজি"),
-                ProductEntity(name = "আলু (হলন্দ)", banglaName = "আলু (হলন্দ)", unit = "কেজি", defaultPurchasePrice = 50.0, defaultSellingPrice = 58.0, category = "সবজি"),
-                ProductEntity(name = "রসুন (চায়না)", banglaName = "রসুন (চায়না)", unit = "কেজি", defaultPurchasePrice = 210.0, defaultSellingPrice = 230.0, category = "মশলা"),
-                ProductEntity(name = "আটা", banglaName = "আটা", unit = "কেজি", defaultPurchasePrice = 48.0, defaultSellingPrice = 55.0, category = "মুদি"),
-                ProductEntity(name = "লবণ (আয়োডিনযুক্ত)", banglaName = "লবণ", unit = "কেজি", defaultPurchasePrice = 38.0, defaultSellingPrice = 42.0, category = "মুদি")
-            )
-            productDao.insertProducts(initialProducts)
-        }
-
-        val customerCount = customerDao.getCustomerCount()
-        if (customerCount == 0) {
-            val initialCustomers = listOf(
-                CustomerEntity(name = "রহিম মিয়া", phone = "01711223344", address = "বাজারের উত্তর পাড়া", openingBalance = 2500.0),
-                CustomerEntity(name = "করিম শেখ", phone = "01819887766", address = "স্কুল রোড", openingBalance = 850.0),
-                CustomerEntity(name = "সুমন তালুকদার", phone = "01912334455", address = "হাসপাতাল সংলগ্ন", openingBalance = 320.0),
-                CustomerEntity(name = "আবুল হোসেন", phone = "01611002233", address = "পূর্ব বাজার", openingBalance = 1450.0),
-                CustomerEntity(name = "জাহাঙ্গীর আলম", phone = "01511445566", address = "নতুন ব্রিজ", openingBalance = 0.0)
-            )
-            customerDao.insertCustomers(initialCustomers)
-        }
-
-        val fordiCount = fordiDao.getFordiItemCount()
-        if (fordiCount == 0) {
-            val initialFordi = listOf(
-                FordiItemEntity(productName = "চিনি", plannedQuantity = 50.0, unit = "কেজি", purchaseRate = 135.0, sellingRate = 145.0),
-                FordiItemEntity(productName = "সয়াবিন তেল", plannedQuantity = 24.0, unit = "লিটার", purchaseRate = 185.0, sellingRate = 195.0),
-                FordiItemEntity(productName = "মসুর ডাল", plannedQuantity = 25.0, unit = "কেজি", purchaseRate = 130.0, sellingRate = 142.0),
-                FordiItemEntity(productName = "দেশি পেঁয়াজ", plannedQuantity = 40.0, unit = "কেজি", purchaseRate = 85.0, sellingRate = 95.0)
-            )
-            fordiDao.insertFordiItems(initialFordi)
         }
     }
 
