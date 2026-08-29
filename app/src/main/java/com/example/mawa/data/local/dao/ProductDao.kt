@@ -42,7 +42,13 @@ interface ProductDao {
     @Query("SELECT * FROM products WHERE id = :id")
     suspend fun getProductByIdDirect(id: Long): ProductEntity?
 
-    @Query("SELECT * FROM products WHERE name LIKE '%' || :query || '%' OR banglaName LIKE '%' || :query || '%' ORDER BY name ASC")
+    @Query("SELECT * FROM products WHERE barcode = :barcode LIMIT 1")
+    fun getProductByBarcode(barcode: String): Flow<ProductEntity?>
+
+    @Query("SELECT * FROM products WHERE barcode = :barcode LIMIT 1")
+    suspend fun getProductByBarcodeDirect(barcode: String): ProductEntity?
+
+    @Query("SELECT * FROM products WHERE name LIKE '%' || :query || '%' OR banglaName LIKE '%' || :query || '%' OR barcode LIKE '%' || :query || '%' ORDER BY name ASC")
     fun searchProducts(query: String): Flow<List<ProductEntity>>
 
     @Query("SELECT COUNT(*) FROM products")

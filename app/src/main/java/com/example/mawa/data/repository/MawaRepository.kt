@@ -495,6 +495,27 @@ class MawaRepository(private val database: MawaDatabase) {
         transactionDao.deleteTransactionById(id)
     }
 
+    suspend fun clearAllData(clearSettings: Boolean = false) = withContext(Dispatchers.IO) {
+        transactionDao.deleteAllTransactions()
+        customerDao.deleteAllCustomers()
+        fordiDao.deleteAllFordiItems()
+        productDao.deleteAllProducts()
+        personalTransactionDao.deleteAll()
+        if (clearSettings) {
+            settingsDao.insertOrUpdateSettings(
+                ShopSettingsEntity(
+                    id = 1,
+                    shopName = "মাওয়া ডিজিটাল খাতা",
+                    ownerName = "দোকানদার",
+                    openingBalance = 0.0,
+                    currencySymbol = "৳",
+                    appMode = "BOTH",
+                    isModeConfigured = false
+                )
+            )
+        }
+    }
+
     suspend fun seedInitialDataIfEmpty() = withContext(Dispatchers.IO) {
         val settings = settingsDao.getSettingsDirect()
         if (settings == null) {
@@ -718,12 +739,68 @@ class MawaRepository(private val database: MawaDatabase) {
             settingsDao.insertOrUpdateSettings(it)
         }
 
-        if (data.customers.isNotEmpty()) {
-            customerDao.insertCustomers(data.customers)
+        // Prepare customers to insert
+        val existingCustomers: List<CustomerEntity> = if (overwriteExisting) emptyList() else customerDao.getAllCustomersDirect()
+        val customerNameMap = existingCustomers.associateBy { it.name.trim().lowercase() }.toMutableMap()
+
+        val customersToInsert = mutableListOf<CustomerEntity>()
+        data.customers.forEach { c ->
+            val key = c.name.trim().lowercase()
+            if (overwriteExisting || !customerNameMap.containsKey(key)) {
+                customersToInsert.add(c)
+            }
         }
 
-        if (data.transactions.isNotEmpty()) {
-            transactionDao.insertTransactions(data.transactions)
+        if (customersToInsert.isNotEmpty()) {
+            customerDao.insertCustomers(customersToInsert)
+        }
+
+        // Reload customer map after insertion
+        val currentAllCustomers = customerDao.getAllCustomersDirect()
+        val updatedCustomerMap = currentAllCustomers.associateBy { it.name.trim().lowercase() }.toMutableMap()
+        val updatedCustomerIdMap = currentAllCustomers.associateBy { it.id }.toMutableMap()
+
+        // Check if any transactions have customer names not in customer table
+        val missingCustomers = mutableListOf<CustomerEntity>()
+        data.transactions.forEach { t ->
+            val cName = t.customerName?.trim()
+            if (!cName.isNullOrBlank() && !updatedCustomerMap.containsKey(cName.lowercase())) {
+                val newCust = CustomerEntity(
+                    name = cName,
+                    phone = "",
+                    address = "",
+                    openingBalance = 0.0
+                )
+                missingCustomers.add(newCust)
+                updatedCustomerMap[cName.lowercase()] = newCust
+            }
+        }
+        if (missingCustomers.isNotEmpty()) {
+            customerDao.insertCustomers(missingCustomers)
+            val refreshedCustomers = customerDao.getAllCustomersDirect()
+            refreshedCustomers.forEach {
+                updatedCustomerMap[it.name.trim().lowercase()] = it
+                updatedCustomerIdMap[it.id] = it
+            }
+        }
+
+        // Fix transactions to ensure valid customer references
+        val finalTransactions = data.transactions.map { t ->
+            var finalCustId = t.customerId
+            val cName = t.customerName?.trim()
+            if (!cName.isNullOrBlank() && (finalCustId == null || finalCustId <= 0 || !updatedCustomerIdMap.containsKey(finalCustId))) {
+                finalCustId = updatedCustomerMap[cName.lowercase()]?.id
+            }
+            if (finalCustId != null && finalCustId > 0 && cName.isNullOrBlank()) {
+                val foundName = updatedCustomerIdMap[finalCustId]?.name
+                t.copy(customerId = finalCustId, customerName = foundName)
+            } else {
+                t.copy(customerId = finalCustId)
+            }
+        }
+
+        if (finalTransactions.isNotEmpty()) {
+            transactionDao.insertTransactions(finalTransactions)
         }
 
         if (data.fordiItems.isNotEmpty()) {

@@ -46,7 +46,7 @@ object DataBackupRestoreManager {
 
     fun exportToJsonString(data: FullBackupData): String {
         val root = JSONObject()
-        root.put("version", "1.0")
+        root.put("version", "2.0")
         root.put("appName", "MAWA Digital Khata")
         root.put("exportedAt", data.exportDate)
         root.put("exportDateReadable", SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).format(Date(data.exportDate)))
@@ -75,6 +75,10 @@ object DataBackupRestoreManager {
             obj.put("phone", c.phone)
             obj.put("address", c.address)
             obj.put("openingBalance", c.openingBalance)
+            obj.put("creditLimit", c.creditLimit)
+            obj.put("promisedPaymentDate", c.promisedPaymentDate)
+            obj.put("categoryTag", c.categoryTag)
+            obj.put("nidOrGuarantor", c.nidOrGuarantor)
             obj.put("note", c.note)
             obj.put("createdAt", c.createdAt)
             custArr.put(obj)
@@ -87,6 +91,7 @@ object DataBackupRestoreManager {
             val obj = JSONObject()
             obj.put("id", t.id)
             obj.put("type", t.type.name)
+            obj.put("banglaType", t.type.banglaLabel)
             obj.put("amount", t.amount)
             obj.put("timestamp", t.timestamp)
             obj.put("customerId", t.customerId ?: -1L)
@@ -158,152 +163,203 @@ object DataBackupRestoreManager {
         return root.toString(2)
     }
 
+    fun parseTransactionType(typeStr: String): TransactionType {
+        val clean = typeStr.trim().uppercase(Locale.US).replace(" ", "_").replace("-", "_")
+        return when {
+            clean == "SALE_CASH" || clean == "CASH_SALE" || clean == "CASH" || clean == "নগদ_বিক্রি" || (clean.contains("নগদ") && clean.contains("বিক্রি")) -> TransactionType.SALE_CASH
+            clean == "SALE_BAKI" || clean == "BAKI_SALE" || clean == "CREDIT_SALE" || clean == "BAKI" || clean == "বাকি_বিক্রি" || (clean.contains("বাকি") && clean.contains("বিক্রি")) -> TransactionType.SALE_BAKI
+            clean == "BAKI_COLLECTION" || clean == "COLLECTION" || clean == "JOMA" || clean == "BAKI_JOMA" || clean == "বাকি_আদায়" || clean == "বাকি_জমা" || clean.contains("আদায়") || clean.contains("জমা") -> TransactionType.BAKI_COLLECTION
+            clean == "PURCHASE_FORDI" || clean == "FORDI_PURCHASE" || clean == "ফর্দ_থেকে_কেনা" || clean.contains("ফর্দ") -> TransactionType.PURCHASE_FORDI
+            clean == "PURCHASE_DIRECT" || clean == "PURCHASE" || clean == "BUY" || clean == "সরাসরি_মাল_কেনা" || (clean.contains("মাল") && clean.contains("কেনা")) || clean.contains("ক্রয়") -> TransactionType.PURCHASE_DIRECT
+            clean == "EXPENSE_SHOP" || clean == "EXPENSE" || clean == "SHOP_EXPENSE" || clean == "দোকানের_খরচ" || (clean.contains("দোকান") && clean.contains("খরচ")) -> TransactionType.EXPENSE_SHOP
+            clean == "EXPENSE_HOME" || clean == "HOME_EXPENSE" || clean == "WITHDRAWAL" || clean == "বাড়ির_খরচ" || clean == "বাড়ির_খরচ/উত্তোলন" || clean.contains("বাড়ি") || clean.contains("উত্তোলন") -> TransactionType.EXPENSE_HOME
+            clean == "CASH_ADJUSTMENT" || clean == "ADJUSTMENT" || clean == "নগদ_সমন্বয়" || clean.contains("সমন্বয়") -> TransactionType.CASH_ADJUSTMENT
+            else -> {
+                try {
+                    TransactionType.valueOf(clean)
+                } catch (_: Exception) {
+                    TransactionType.EXPENSE_SHOP
+                }
+            }
+        }
+    }
+
+    fun parsePersonalTransactionType(typeStr: String): PersonalTransactionType {
+        val clean = typeStr.trim().uppercase(Locale.US)
+        return when {
+            clean == "INCOME" || clean == "আয়" || clean.contains("INCOME") || clean.contains("আয়") -> PersonalTransactionType.INCOME
+            clean == "EXPENSE" || clean == "খরচ" || clean.contains("EXPENSE") || clean.contains("খরচ") -> PersonalTransactionType.EXPENSE
+            clean == "SAVINGS" || clean == "সঞ্চয়" || clean.contains("SAVINGS") || clean.contains("সঞ্চয়") -> PersonalTransactionType.SAVINGS
+            else -> {
+                try {
+                    PersonalTransactionType.valueOf(clean)
+                } catch (_: Exception) {
+                    PersonalTransactionType.EXPENSE
+                }
+            }
+        }
+    }
+
+    fun readTextFromUri(context: Context, uri: Uri): String {
+        return context.contentResolver.openInputStream(uri)?.use { inputStream ->
+            inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                reader.readText()
+            }
+        } ?: throw IllegalArgumentException("ফাইলটি পড়া সম্ভব হয়নি")
+    }
+
     fun parseFromJsonString(jsonString: String): FullBackupData {
-        val root = JSONObject(jsonString)
-        val exportDate = root.optLong("exportedAt", System.currentTimeMillis())
+        var cleanJson = jsonString.trim()
+        if (cleanJson.startsWith("\uFEFF")) {
+            cleanJson = cleanJson.substring(1).trim()
+        }
+        if (cleanJson.startsWith("```json")) {
+            cleanJson = cleanJson.removePrefix("```json").trim()
+        }
+        if (cleanJson.startsWith("```")) {
+            cleanJson = cleanJson.removePrefix("```").trim()
+        }
+        if (cleanJson.endsWith("```")) {
+            cleanJson = cleanJson.removeSuffix("```").trim()
+        }
+
+        if (cleanJson.startsWith("[")) {
+            // Root is an Array of items
+            val rootArr = JSONArray(cleanJson)
+            val customers = mutableListOf<CustomerEntity>()
+            val transactions = mutableListOf<TransactionEntity>()
+            val products = mutableListOf<ProductEntity>()
+            val fordiItems = mutableListOf<FordiItemEntity>()
+
+            for (i in 0 until rootArr.length()) {
+                val item = rootArr.optJSONObject(i) ?: continue
+                if (item.has("amount") || item.has("type") || item.has("tx_type") || item.has("taka")) {
+                    transactions.add(parseTransactionItem(item))
+                } else if (item.has("phone") || item.has("address") || item.has("openingBalance") || item.has("opening_balance") || item.has("baki")) {
+                    customers.add(parseCustomerItem(item))
+                } else if (item.has("plannedQuantity") || item.has("isPurchased") || item.has("fordi")) {
+                    fordiItems.add(parseFordiItem(item))
+                } else if (item.has("defaultPurchasePrice") || item.has("defaultSellingPrice") || item.has("banglaName")) {
+                    products.add(parseProductItem(item))
+                } else if (item.has("name")) {
+                    customers.add(parseCustomerItem(item))
+                }
+            }
+
+            return FullBackupData(
+                exportDate = System.currentTimeMillis(),
+                customers = customers,
+                transactions = transactions,
+                fordiItems = fordiItems,
+                products = products
+            )
+        }
+
+        val originalRoot = JSONObject(cleanJson)
+        // Unwrap nested payloads if present (e.g. data: { ... } or backup: { ... })
+        val root = when {
+            originalRoot.has("data") && originalRoot.optJSONObject("data") != null -> originalRoot.getJSONObject("data")
+            originalRoot.has("backup") && originalRoot.optJSONObject("backup") != null -> originalRoot.getJSONObject("backup")
+            originalRoot.has("payload") && originalRoot.optJSONObject("payload") != null -> originalRoot.getJSONObject("payload")
+            else -> originalRoot
+        }
+
+        val exportDate = root.optLong("exportedAt", root.optLong("exportDate", System.currentTimeMillis()))
 
         // Shop Settings
         var settings: ShopSettingsEntity? = null
-        if (root.has("shopSettings")) {
-            val s = root.getJSONObject("shopSettings")
+        val settingsObj = root.optJSONObject("shopSettings") 
+            ?: root.optJSONObject("shop_settings") 
+            ?: root.optJSONObject("settings") 
+            ?: root.optJSONObject("shop")
+        if (settingsObj != null) {
             settings = ShopSettingsEntity(
-                id = s.optInt("id", 1),
-                shopName = s.optString("shopName", "মাওয়া ডিজিটাল খাতা"),
-                ownerName = s.optString("ownerName", "দোকানদার"),
-                openingBalance = s.optDouble("openingBalance", 0.0),
-                currencySymbol = s.optString("currencySymbol", "৳"),
-                phone = s.optString("phone", ""),
-                createdAt = s.optLong("createdAt", System.currentTimeMillis()),
-                appMode = s.optString("appMode", "BOTH"),
-                isModeConfigured = s.optBoolean("isModeConfigured", true)
+                id = settingsObj.optInt("id", 1),
+                shopName = settingsObj.optString("shopName", settingsObj.optString("shop_name", "মাওয়া ডিজিটাল খাতা")),
+                ownerName = settingsObj.optString("ownerName", settingsObj.optString("owner_name", "দোকানদার")),
+                openingBalance = settingsObj.optDouble("openingBalance", settingsObj.optDouble("opening_balance", 0.0)),
+                currencySymbol = settingsObj.optString("currencySymbol", settingsObj.optString("currency_symbol", "৳")),
+                phone = settingsObj.optString("phone", settingsObj.optString("mobile", "")),
+                createdAt = settingsObj.optLong("createdAt", settingsObj.optLong("created_at", System.currentTimeMillis())),
+                appMode = settingsObj.optString("appMode", settingsObj.optString("app_mode", "BOTH")),
+                isModeConfigured = settingsObj.optBoolean("isModeConfigured", settingsObj.optBoolean("is_mode_configured", true))
             )
         }
 
         // Customers
         val customers = mutableListOf<CustomerEntity>()
-        if (root.has("customers")) {
-            val arr = root.getJSONArray("customers")
-            for (i in 0 until arr.length()) {
-                val c = arr.getJSONObject(i)
-                customers.add(
-                    CustomerEntity(
-                        id = c.optLong("id", 0L),
-                        name = c.optString("name", "নামহীন"),
-                        phone = c.optString("phone", ""),
-                        address = c.optString("address", ""),
-                        openingBalance = c.optDouble("openingBalance", 0.0),
-                        note = c.optString("note", ""),
-                        createdAt = c.optLong("createdAt", System.currentTimeMillis())
-                    )
-                )
+        val custArr = root.optJSONArray("customers") 
+            ?: root.optJSONArray("customer_list") 
+            ?: root.optJSONArray("customerList") 
+            ?: root.optJSONArray("baki_list") 
+            ?: root.optJSONArray("clients")
+        if (custArr != null) {
+            for (i in 0 until custArr.length()) {
+                val c = custArr.optJSONObject(i) ?: continue
+                customers.add(parseCustomerItem(c))
             }
         }
 
         // Transactions
         val transactions = mutableListOf<TransactionEntity>()
-        if (root.has("transactions")) {
-            val arr = root.getJSONArray("transactions")
-            for (i in 0 until arr.length()) {
-                val t = arr.getJSONObject(i)
-                val typeStr = t.optString("type", "EXPENSE_SHOP")
-                val txType = try {
-                    TransactionType.valueOf(typeStr)
-                } catch (e: Exception) {
-                    TransactionType.EXPENSE_SHOP
-                }
-                val custId = t.optLong("customerId", -1L)
-                val prodId = t.optLong("productId", -1L)
-
-                transactions.add(
-                    TransactionEntity(
-                        id = t.optLong("id", 0L),
-                        type = txType,
-                        amount = t.optDouble("amount", 0.0),
-                        timestamp = t.optLong("timestamp", System.currentTimeMillis()),
-                        customerId = if (custId > 0) custId else null,
-                        customerName = t.optString("customerName", "").takeIf { it.isNotBlank() },
-                        productId = if (prodId > 0) prodId else null,
-                        productName = t.optString("productName", "").takeIf { it.isNotBlank() },
-                        quantity = t.optDouble("quantity", 0.0),
-                        unit = t.optString("unit", "টি"),
-                        rate = t.optDouble("rate", 0.0),
-                        category = t.optString("category", "সাধারণ"),
-                        note = t.optString("note", "")
-                    )
-                )
+        val txArr = root.optJSONArray("transactions") 
+            ?: root.optJSONArray("transaction_list") 
+            ?: root.optJSONArray("transactionList") 
+            ?: root.optJSONArray("tx_list") 
+            ?: root.optJSONArray("orders") 
+            ?: root.optJSONArray("entries")
+        if (txArr != null) {
+            for (i in 0 until txArr.length()) {
+                val t = txArr.optJSONObject(i) ?: continue
+                transactions.add(parseTransactionItem(t))
             }
         }
 
         // Fordi Items
         val fordiItems = mutableListOf<FordiItemEntity>()
-        if (root.has("fordiItems")) {
-            val arr = root.getJSONArray("fordiItems")
-            for (i in 0 until arr.length()) {
-                val f = arr.getJSONObject(i)
-                val prodId = f.optLong("productId", -1L)
-                fordiItems.add(
-                    FordiItemEntity(
-                        id = f.optLong("id", 0L),
-                        productId = if (prodId > 0) prodId else null,
-                        productName = f.optString("productName", "পণ্য"),
-                        plannedQuantity = f.optDouble("plannedQuantity", 1.0),
-                        unit = f.optString("unit", "কেজি"),
-                        purchaseRate = f.optDouble("purchaseRate", 0.0),
-                        sellingRate = f.optDouble("sellingRate", 0.0),
-                        isPurchased = f.optBoolean("isPurchased", false),
-                        actualQuantity = f.optDouble("actualQuantity", 0.0),
-                        actualRate = f.optDouble("actualRate", 0.0),
-                        actualTotal = f.optDouble("actualTotal", 0.0),
-                        createdAt = f.optLong("createdAt", System.currentTimeMillis()),
-                        purchaseDate = f.optLong("purchaseDate", 0L).takeIf { it > 0 }
-                    )
-                )
+        val fordiArr = root.optJSONArray("fordiItems") 
+            ?: root.optJSONArray("fordi_items") 
+            ?: root.optJSONArray("fordi") 
+            ?: root.optJSONArray("shopping_list")
+        if (fordiArr != null) {
+            for (i in 0 until fordiArr.length()) {
+                val f = fordiArr.optJSONObject(i) ?: continue
+                fordiItems.add(parseFordiItem(f))
             }
         }
 
         // Products
         val products = mutableListOf<ProductEntity>()
-        if (root.has("products")) {
-            val arr = root.getJSONArray("products")
-            for (i in 0 until arr.length()) {
-                val p = arr.getJSONObject(i)
-                products.add(
-                    ProductEntity(
-                        id = p.optLong("id", 0L),
-                        name = p.optString("name", "পণ্য"),
-                        banglaName = p.optString("banglaName", ""),
-                        unit = p.optString("unit", "কেজি"),
-                        defaultPurchasePrice = p.optDouble("defaultPurchasePrice", 0.0),
-                        defaultSellingPrice = p.optDouble("defaultSellingPrice", 0.0),
-                        category = p.optString("category", "মুদি"),
-                        createdAt = p.optLong("createdAt", System.currentTimeMillis()),
-                        isActive = p.optBoolean("isActive", true)
-                    )
-                )
+        val prodArr = root.optJSONArray("products") 
+            ?: root.optJSONArray("product_list") 
+            ?: root.optJSONArray("productList") 
+            ?: root.optJSONArray("items")
+        if (prodArr != null) {
+            for (i in 0 until prodArr.length()) {
+                val p = prodArr.optJSONObject(i) ?: continue
+                products.add(parseProductItem(p))
             }
         }
 
         // Personal Transactions
         val personalTransactions = mutableListOf<PersonalTransactionEntity>()
-        if (root.has("personalTransactions")) {
-            val arr = root.getJSONArray("personalTransactions")
-            for (i in 0 until arr.length()) {
-                val pt = arr.getJSONObject(i)
-                val typeStr = pt.optString("type", "EXPENSE")
-                val pType = try {
-                    PersonalTransactionType.valueOf(typeStr)
-                } catch (e: Exception) {
-                    PersonalTransactionType.EXPENSE
-                }
+        val ptxArr = root.optJSONArray("personalTransactions") 
+            ?: root.optJSONArray("personal_transactions") 
+            ?: root.optJSONArray("personal")
+        if (ptxArr != null) {
+            for (i in 0 until ptxArr.length()) {
+                val pt = ptxArr.optJSONObject(i) ?: continue
+                val typeStr = pt.optString("type", pt.optString("tx_type", "EXPENSE"))
+                val pType = parsePersonalTransactionType(typeStr)
                 personalTransactions.add(
                     PersonalTransactionEntity(
                         id = pt.optLong("id", 0L),
                         type = pType,
-                        amount = pt.optDouble("amount", 0.0),
-                        title = pt.optString("title", "ব্যক্তিগত"),
+                        amount = pt.optDouble("amount", pt.optDouble("taka", 0.0)),
+                        title = pt.optString("title", pt.optString("name", "ব্যক্তিগত")),
                         category = pt.optString("category", "অন্যান্য"),
                         note = pt.optString("note", ""),
-                        timestamp = pt.optLong("timestamp", System.currentTimeMillis())
+                        timestamp = pt.optLong("timestamp", pt.optLong("date", System.currentTimeMillis()))
                     )
                 )
             }
@@ -317,6 +373,78 @@ object DataBackupRestoreManager {
             fordiItems = fordiItems,
             products = products,
             personalTransactions = personalTransactions
+        )
+    }
+
+    private fun parseCustomerItem(c: JSONObject): CustomerEntity {
+        return CustomerEntity(
+            id = c.optLong("id", 0L),
+            name = c.optString("name", c.optString("customer_name", c.optString("customerName", "নামহীন"))),
+            phone = c.optString("phone", c.optString("mobile", c.optString("contact", ""))),
+            address = c.optString("address", c.optString("location", "")),
+            openingBalance = c.optDouble("openingBalance", c.optDouble("opening_balance", c.optDouble("baki", c.optDouble("due", 0.0)))),
+            creditLimit = c.optDouble("creditLimit", c.optDouble("credit_limit", 0.0)),
+            promisedPaymentDate = c.optLong("promisedPaymentDate", c.optLong("promised_payment_date", 0L)),
+            categoryTag = c.optString("categoryTag", c.optString("category_tag", "REGULAR")),
+            nidOrGuarantor = c.optString("nidOrGuarantor", c.optString("nid_or_guarantor", "")),
+            note = c.optString("note", c.optString("remark", "")),
+            createdAt = c.optLong("createdAt", c.optLong("created_at", System.currentTimeMillis()))
+        )
+    }
+
+    private fun parseTransactionItem(t: JSONObject): TransactionEntity {
+        val typeStr = t.optString("type", t.optString("tx_type", t.optString("transaction_type", "EXPENSE_SHOP")))
+        val txType = parseTransactionType(typeStr)
+        val custId = t.optLong("customerId", t.optLong("customer_id", -1L))
+        val prodId = t.optLong("productId", t.optLong("product_id", -1L))
+
+        return TransactionEntity(
+            id = t.optLong("id", 0L),
+            type = txType,
+            amount = t.optDouble("amount", t.optDouble("taka", t.optDouble("total", 0.0))),
+            timestamp = t.optLong("timestamp", t.optLong("date", t.optLong("created_at", System.currentTimeMillis()))),
+            customerId = if (custId > 0) custId else null,
+            customerName = t.optString("customerName", t.optString("customer_name", "")).takeIf { it.isNotBlank() },
+            productId = if (prodId > 0) prodId else null,
+            productName = t.optString("productName", t.optString("product_name", "")).takeIf { it.isNotBlank() },
+            quantity = t.optDouble("quantity", t.optDouble("qty", 0.0)),
+            unit = t.optString("unit", "টি"),
+            rate = t.optDouble("rate", t.optDouble("price", 0.0)),
+            category = t.optString("category", "সাধারণ"),
+            note = t.optString("note", t.optString("memo", ""))
+        )
+    }
+
+    private fun parseFordiItem(f: JSONObject): FordiItemEntity {
+        val prodId = f.optLong("productId", f.optLong("product_id", -1L))
+        return FordiItemEntity(
+            id = f.optLong("id", 0L),
+            productId = if (prodId > 0) prodId else null,
+            productName = f.optString("productName", f.optString("product_name", f.optString("name", "পণ্য"))),
+            plannedQuantity = f.optDouble("plannedQuantity", f.optDouble("planned_quantity", f.optDouble("quantity", 1.0))),
+            unit = f.optString("unit", "কেজি"),
+            purchaseRate = f.optDouble("purchaseRate", f.optDouble("purchase_rate", f.optDouble("rate", 0.0))),
+            sellingRate = f.optDouble("sellingRate", f.optDouble("selling_rate", 0.0)),
+            isPurchased = f.optBoolean("isPurchased", f.optBoolean("is_purchased", false)),
+            actualQuantity = f.optDouble("actualQuantity", f.optDouble("actual_quantity", 0.0)),
+            actualRate = f.optDouble("actualRate", f.optDouble("actual_rate", 0.0)),
+            actualTotal = f.optDouble("actualTotal", f.optDouble("actual_total", 0.0)),
+            createdAt = f.optLong("createdAt", f.optLong("created_at", System.currentTimeMillis())),
+            purchaseDate = f.optLong("purchaseDate", f.optLong("purchase_date", 0L)).takeIf { it > 0 }
+        )
+    }
+
+    private fun parseProductItem(p: JSONObject): ProductEntity {
+        return ProductEntity(
+            id = p.optLong("id", 0L),
+            name = p.optString("name", p.optString("product_name", "পণ্য")),
+            banglaName = p.optString("banglaName", p.optString("bangla_name", "")),
+            unit = p.optString("unit", "কেজি"),
+            defaultPurchasePrice = p.optDouble("defaultPurchasePrice", p.optDouble("default_purchase_price", p.optDouble("purchase_price", 0.0))),
+            defaultSellingPrice = p.optDouble("defaultSellingPrice", p.optDouble("default_selling_price", p.optDouble("selling_price", 0.0))),
+            category = p.optString("category", "মুদি"),
+            createdAt = p.optLong("createdAt", p.optLong("created_at", System.currentTimeMillis())),
+            isActive = p.optBoolean("isActive", p.optBoolean("is_active", true))
         )
     }
 

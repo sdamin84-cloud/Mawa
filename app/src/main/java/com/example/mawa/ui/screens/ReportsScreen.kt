@@ -191,8 +191,12 @@ fun ReportsScreen(
         transactions.filter { it.type == TransactionType.EXPENSE_HOME }.sumOf { it.amount }
     }
 
-    // Accounting Formulas
-    val estimatedBusinessProfit = periodTotalSales - periodPurchases - periodShopExpenses
+    var profitMarginPercent by remember {
+        mutableStateOf(com.example.mawa.util.ProfitMarginManager.getProfitMargin(context))
+    }
+
+    // Accounting Formulas (টাকার উপর শতকরা লাভ)
+    val estimatedBusinessProfit = com.example.mawa.util.ProfitMarginManager.calculateProfit(periodTotalSales, profitMarginPercent)
     val profitRemaining = estimatedBusinessProfit - periodHomeWithdrawals
 
     Column(
@@ -589,7 +593,7 @@ fun ReportsScreen(
                         ) {
                             Column {
                                 Text(
-                                    text = "আনুমানিক ব্যবসায়িক লাভ",
+                                    text = "টাকার উপর শতকরা লাভ (${BengaliUtils.toBengaliDigits(if (profitMarginPercent % 1.0 == 0.0) profitMarginPercent.toInt().toString() else profitMarginPercent.toString())}%)",
                                     style = MaterialTheme.typography.titleMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -598,7 +602,7 @@ fun ReportsScreen(
                                     text = BengaliUtils.formatTaka(estimatedBusinessProfit),
                                     style = MaterialTheme.typography.displayMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (estimatedBusinessProfit >= 0) FinancialPositive else FinancialNegative
+                                    color = FinancialPositive
                                 )
                             }
 
@@ -606,24 +610,54 @@ fun ReportsScreen(
                                 modifier = Modifier
                                     .size(46.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        if (estimatedBusinessProfit >= 0) FinancialPositiveContainer
-                                        else FinancialNegativeContainer
-                                    ),
+                                    .background(FinancialPositiveContainer),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.TrendingUp,
                                     contentDescription = null,
-                                    tint = if (estimatedBusinessProfit >= 0) FinancialPositive else FinancialNegative,
+                                    tint = FinancialPositive,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Preset Margin Chips in Report
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            com.example.mawa.util.ProfitMarginManager.PRESET_MARGINS.forEach { preset ->
+                                val isSelected = Math.abs(profitMarginPercent - preset) < 0.1
+                                val label = "${preset.toInt()}%"
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            profitMarginPercent = preset
+                                            com.example.mawa.util.ProfitMarginManager.setProfitMargin(context, preset)
+                                        },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) FinancialPositive else Color.Transparent,
+                                    border = BorderStroke(1.dp, if (isSelected) FinancialPositive else MaterialTheme.colorScheme.outlineVariant)
+                                ) {
+                                    Text(
+                                        text = label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
                         HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         // Profit Remaining After Home Withdrawals
                         Row(

@@ -354,12 +354,17 @@ fun MawaApp(
     // Shop Settings Dialog
     if (showSettingsDialog) {
         val settings = viewModel.shopSettings.value
+        val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
         ShopSettingsDialog(
             currentSettings = settings,
+            currentThemeMode = themeMode,
             onDismiss = { showSettingsDialog = false },
             onSave = { updated ->
                 viewModel.updateSettings(updated)
                 showSettingsDialog = false
+            },
+            onThemeChanged = { newTheme ->
+                viewModel.setThemeMode(newTheme)
             }
         )
     }

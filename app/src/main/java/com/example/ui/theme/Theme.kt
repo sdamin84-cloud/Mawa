@@ -10,32 +10,57 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+import com.example.mawa.data.model.AppThemeMode
 
 private val ElegantDarkColorScheme = darkColorScheme(
-    primary = MawaPrimary,
-    onPrimary = MawaOnPrimary,
-    primaryContainer = MawaPrimaryContainer,
-    onPrimaryContainer = MawaOnPrimaryContainer,
-    secondary = MawaSecondary,
-    onSecondary = MawaOnSecondary,
-    secondaryContainer = MawaSecondaryContainer,
-    onSecondaryContainer = MawaOnSecondaryContainer,
-    background = MawaBackground,
-    onBackground = MawaOnBackground,
-    surface = MawaSurface,
-    onSurface = MawaOnSurface,
-    surfaceVariant = MawaSurfaceVariant,
-    onSurfaceVariant = MawaOnSurfaceVariant,
-    outline = MawaOutline,
-    outlineVariant = MawaOutlineVariant
+    primary = MawaPrimaryDark,
+    onPrimary = MawaOnPrimaryDark,
+    primaryContainer = MawaPrimaryContainerDark,
+    onPrimaryContainer = MawaOnPrimaryContainerDark,
+    secondary = MawaSecondaryDark,
+    onSecondary = MawaOnSecondaryDark,
+    secondaryContainer = MawaSecondaryContainerDark,
+    onSecondaryContainer = MawaOnSecondaryContainerDark,
+    background = MawaBackgroundDark,
+    onBackground = MawaOnBackgroundDark,
+    surface = MawaSurfaceDark,
+    onSurface = MawaOnSurfaceDark,
+    surfaceVariant = MawaSurfaceVariantDark,
+    onSurfaceVariant = MawaOnSurfaceVariantDark,
+    outline = MawaOutlineDark,
+    outlineVariant = MawaOutlineVariantDark
+)
+
+private val ElegantLightColorScheme = lightColorScheme(
+    primary = MawaPrimaryLight,
+    onPrimary = MawaOnPrimaryLight,
+    primaryContainer = MawaPrimaryContainerLight,
+    onPrimaryContainer = MawaOnPrimaryContainerLight,
+    secondary = MawaSecondaryLight,
+    onSecondary = MawaOnSecondaryLight,
+    secondaryContainer = MawaSecondaryContainerLight,
+    onSecondaryContainer = MawaOnSecondaryContainerLight,
+    background = MawaBackgroundLight,
+    onBackground = MawaOnBackgroundLight,
+    surface = MawaSurfaceLight,
+    onSurface = MawaOnSurfaceLight,
+    surfaceVariant = MawaSurfaceVariantLight,
+    onSurfaceVariant = MawaOnSurfaceVariantLight,
+    outline = MawaOutlineLight,
+    outlineVariant = MawaOutlineVariantLight
 )
 
 @Composable
 fun MyApplicationTheme(
-    darkTheme: Boolean = true,
+    themeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    darkTheme: Boolean = when (themeMode) {
+        AppThemeMode.SYSTEM -> isSystemInDarkTheme()
+        AppThemeMode.DARK -> true
+        AppThemeMode.LIGHT -> false
+    },
     content: @Composable () -> Unit
 ) {
-    val colorScheme = ElegantDarkColorScheme
+    val colorScheme = if (darkTheme) ElegantDarkColorScheme else ElegantLightColorScheme
 
     val view = LocalView.current
     if (!view.isInEditMode) {
@@ -45,8 +70,8 @@ fun MyApplicationTheme(
                 window.statusBarColor = colorScheme.background.toArgb()
                 window.navigationBarColor = colorScheme.background.toArgb()
                 val insetsController = WindowCompat.getInsetsController(window, view)
-                insetsController.isAppearanceLightStatusBars = false
-                insetsController.isAppearanceLightNavigationBars = false
+                insetsController.isAppearanceLightStatusBars = !darkTheme
+                insetsController.isAppearanceLightNavigationBars = !darkTheme
             }
         }
     }
@@ -57,3 +82,4 @@ fun MyApplicationTheme(
         content = content
     )
 }
+

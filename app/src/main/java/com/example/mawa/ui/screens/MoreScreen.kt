@@ -1,6 +1,7 @@
 package com.example.mawa.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,16 +19,20 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -57,7 +62,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mawa.data.local.entity.ShopSettingsEntity
+import com.example.mawa.data.model.AppThemeMode
 import com.example.mawa.ui.components.MawaTopBar
+import com.example.mawa.ui.components.ThemeSelectionDialog
 import com.example.mawa.ui.viewmodel.MawaViewModel
 import com.example.mawa.util.BengaliUtils
 import com.example.ui.theme.FinancialNegative
@@ -81,8 +88,10 @@ fun MoreScreen(
     val settings by viewModel.shopSettings.collectAsStateWithLifecycle()
     val accountingSummary by viewModel.accountingSummary.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showAccountingGuideDialog by remember { mutableStateOf(false) }
+    var showThemeDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -114,13 +123,13 @@ fun MoreScreen(
                                 modifier = Modifier
                                     .size(46.dp)
                                     .clip(CircleShape)
-                                    .background(MawaPrimaryContainer),
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Store,
                                     contentDescription = null,
-                                    tint = MawaPrimary,
+                                    tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(24.dp)
                                 )
                             }
@@ -179,7 +188,7 @@ fun MoreScreen(
                                     modifier = Modifier
                                         .size(38.dp)
                                         .clip(CircleShape)
-                                        .background(FinancialWarning),
+                                    .background(FinancialWarning),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
@@ -252,6 +261,21 @@ fun MoreScreen(
                     color = MaterialTheme.colorScheme.surface
                 ) {
                     Column(modifier = Modifier.fillMaxWidth()) {
+                        // App Theme Mode Toggle Item
+                        MoreMenuItem(
+                            icon = when (themeMode) {
+                                AppThemeMode.LIGHT -> Icons.Default.LightMode
+                                AppThemeMode.DARK -> Icons.Default.DarkMode
+                                AppThemeMode.SYSTEM -> Icons.Default.BrightnessAuto
+                            },
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            iconBg = MaterialTheme.colorScheme.primaryContainer,
+                            title = "অ্যাপ থিম (Light / Dark / System)",
+                            subtitle = "বর্তমান মোড: ${themeMode.banglaTitle}",
+                            onClick = { showThemeDialog = true },
+                            testTag = "menu_theme_settings"
+                        )
+
                         // Supabase Cloud Card in More Menu
                         MoreMenuItem(
                             icon = Icons.Default.Sync,
@@ -285,8 +309,8 @@ fun MoreScreen(
 
                         MoreMenuItem(
                             icon = Icons.Default.ShoppingCart,
-                            iconTint = MawaPrimary,
-                            iconBg = MawaPrimaryContainer,
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            iconBg = MaterialTheme.colorScheme.primaryContainer,
                             title = "সরাসরি মাল কেনা",
                             subtitle = "ডিলার বা মহাজন থেকে সরাসরি কেনা ও ক্রয় ইতিহাস",
                             onClick = onNavigateDirectPurchases,
@@ -315,8 +339,8 @@ fun MoreScreen(
 
                         MoreMenuItem(
                             icon = Icons.Default.HelpOutline,
-                            iconTint = MawaPrimary,
-                            iconBg = MawaPrimaryContainer,
+                            iconTint = MaterialTheme.colorScheme.primary,
+                            iconBg = MaterialTheme.colorScheme.primaryContainer,
                             title = "হিসাবের নিয়মাবলী",
                             subtitle = "লাভ-ক্ষতি, বিক্রি ও ক্যাশ মেলানোর গাইড",
                             onClick = { showAccountingGuideDialog = true },
@@ -339,7 +363,7 @@ fun MoreScreen(
                         text = "MAWA · ডিজিটাল খাতা ও দোকান হিসাব",
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
-                        color = MawaPrimary
+                        color = MaterialTheme.colorScheme.primary
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -360,10 +384,25 @@ fun MoreScreen(
     if (showSettingsDialog) {
         ShopSettingsDialog(
             currentSettings = settings,
+            currentThemeMode = themeMode,
             onDismiss = { showSettingsDialog = false },
             onSave = { updated ->
                 viewModel.updateSettings(updated)
                 showSettingsDialog = false
+            },
+            onThemeChanged = { newTheme ->
+                viewModel.setThemeMode(newTheme)
+            }
+        )
+    }
+
+    // Theme Selection Dialog
+    if (showThemeDialog) {
+        ThemeSelectionDialog(
+            currentTheme = themeMode,
+            onDismiss = { showThemeDialog = false },
+            onSelectTheme = { selectedTheme ->
+                viewModel.setThemeMode(selectedTheme)
             }
         )
     }
@@ -450,19 +489,106 @@ fun MoreMenuItem(
 @Composable
 fun ShopSettingsDialog(
     currentSettings: ShopSettingsEntity?,
+    currentThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
     onDismiss: () -> Unit,
-    onSave: (ShopSettingsEntity) -> Unit
+    onSave: (ShopSettingsEntity) -> Unit,
+    onThemeChanged: (AppThemeMode) -> Unit = {}
 ) {
     var shopName by remember { mutableStateOf(currentSettings?.shopName ?: "মাওয়া জেনারেল স্টোর") }
     var ownerName by remember { mutableStateOf(currentSettings?.ownerName ?: "") }
     var phone by remember { mutableStateOf(currentSettings?.phone ?: "") }
     var openingCash by remember { mutableStateOf((currentSettings?.openingBalance ?: 0.0).toString()) }
+    var selectedTheme by remember { mutableStateOf(currentThemeMode) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(text = "দোকানের সেটিংস", fontWeight = FontWeight.Bold) },
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Settings,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(text = "দোকানের সেটিংস", fontWeight = FontWeight.Bold)
+            }
+        },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
+                // Theme Toggle Section
+                Text(
+                    text = "অ্যাপ থিম (Theme)",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    AppThemeMode.entries.forEach { mode ->
+                        val isSelected = mode == selectedTheme
+                        val modeIcon = when (mode) {
+                            AppThemeMode.LIGHT -> Icons.Default.LightMode
+                            AppThemeMode.DARK -> Icons.Default.DarkMode
+                            AppThemeMode.SYSTEM -> Icons.Default.BrightnessAuto
+                        }
+                        val shortLabel = when (mode) {
+                            AppThemeMode.LIGHT -> "লাইট"
+                            AppThemeMode.DARK -> "ডার্ক"
+                            AppThemeMode.SYSTEM -> "সিস্টেম"
+                        }
+
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(
+                                    width = if (isSelected) 1.5.dp else 1.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    shape = RoundedCornerShape(8.dp)
+                                )
+                                .clickable {
+                                    selectedTheme = mode
+                                    onThemeChanged(mode)
+                                }
+                                .testTag("btn_theme_${mode.name.lowercase()}"),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = modeIcon,
+                                    contentDescription = null,
+                                    tint = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = shortLabel,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Spacer(modifier = Modifier.height(12.dp))
+
                 OutlinedTextField(
                     value = shopName,
                     onValueChange = { shopName = it },
@@ -470,7 +596,7 @@ fun ShopSettingsDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = ownerName,
                     onValueChange = { ownerName = it },
@@ -478,7 +604,7 @@ fun ShopSettingsDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = phone,
                     onValueChange = { phone = it },
@@ -486,7 +612,7 @@ fun ShopSettingsDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = openingCash,
                     onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) openingCash = it },
@@ -502,6 +628,7 @@ fun ShopSettingsDialog(
                 onClick = {
                     if (shopName.isNotBlank()) {
                         val cash = openingCash.toDoubleOrNull() ?: 0.0
+                        onThemeChanged(selectedTheme)
                         onSave(
                             ShopSettingsEntity(
                                 id = currentSettings?.id ?: 1,
@@ -516,7 +643,7 @@ fun ShopSettingsDialog(
                     }
                 },
                 enabled = shopName.isNotBlank(),
-                colors = ButtonDefaults.buttonColors(containerColor = MawaPrimary)
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 Text("সংরক্ষণ করুন")
             }
@@ -524,6 +651,21 @@ fun ShopSettingsDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) { Text("বাতিল") }
         }
+    )
+}
+
+@Composable
+fun ShopSettingsDialog(
+    currentSettings: ShopSettingsEntity?,
+    onDismiss: () -> Unit,
+    onSave: (ShopSettingsEntity) -> Unit
+) {
+    ShopSettingsDialog(
+        currentSettings = currentSettings,
+        currentThemeMode = AppThemeMode.SYSTEM,
+        onDismiss = onDismiss,
+        onSave = onSave,
+        onThemeChanged = {}
     )
 }
 
@@ -562,10 +704,11 @@ fun AccountingGuideDialog(onDismiss: () -> Unit) {
         confirmButton = {
             Button(
                 onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = MawaPrimary)
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
             ) {
                 Text("বুঝেছি")
             }
         }
     )
 }
+

@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -41,9 +42,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,6 +70,13 @@ fun PurchaseScreen(
 ) {
     val allPurchases by viewModel.allPurchases.collectAsStateWithLifecycle()
     val activeProducts by viewModel.activeProducts.collectAsStateWithLifecycle()
+    val focusManager = LocalFocusManager.current
+
+    val qtyFocus = remember { FocusRequester() }
+    val unitFocus = remember { FocusRequester() }
+    val rateFocus = remember { FocusRequester() }
+    val totalFocus = remember { FocusRequester() }
+    val noteFocus = remember { FocusRequester() }
 
     var productName by remember { mutableStateOf("") }
     var selectedProductId by remember { mutableStateOf<Long?>(null) }
@@ -85,6 +97,36 @@ fun PurchaseScreen(
 
     val totalPurchasedValue = remember(allPurchases) {
         allPurchases.sumOf { it.amount }
+    }
+
+    val qNum = quantity.toDoubleOrNull() ?: 0.0
+    val rNum = rate.toDoubleOrNull() ?: 0.0
+    val tNum = totalAmount.toDoubleOrNull() ?: (qNum * rNum)
+    val canSave = productName.isNotBlank() && (tNum > 0 || (qNum > 0 && rNum > 0))
+
+    val performSavePurchase = {
+        if (canSave) {
+            val finalTotal = if (tNum > 0) tNum else (qNum * rNum)
+            val finalRate = if (rNum > 0) rNum else if (qNum > 0) finalTotal / qNum else 0.0
+
+            viewModel.recordDirectPurchase(
+                productName = productName.trim(),
+                productId = selectedProductId,
+                quantity = qNum,
+                unit = unit.trim(),
+                rate = finalRate,
+                total = finalTotal,
+                note = note.trim()
+            )
+
+            // Clear inputs
+            productName = ""
+            rate = ""
+            totalAmount = ""
+            note = ""
+            showSuccessMessage = true
+            focusManager.clearFocus()
+        }
     }
 
     Column(
@@ -134,6 +176,8 @@ fun PurchaseScreen(
                             label = { Text("পণ্যের নাম *") },
                             placeholder = { Text("যেমন: চিনি, ডাল, তেল, বিস্কুট") },
                             singleLine = true,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                            keyboardActions = KeyboardActions(onNext = { qtyFocus.requestFocus() }),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .testTag("direct_purchase_name_input"),
@@ -157,6 +201,7 @@ fun PurchaseScreen(
                                                 selectedProductId = p.id
                                                 unit = p.unit
                                                 rate = if (p.defaultPurchasePrice > 0) p.defaultPurchasePrice.toInt().toString() else ""
+                                                qtyFocus.requestFocus()
                                             }
                                             .padding(horizontal = 8.dp, vertical = 4.dp)
                                     ) {
@@ -184,17 +229,27 @@ fun PurchaseScreen(
                                     }
                                 },
                                 label = { Text("পরিমাণ *") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Next
+                                ),
+                                keyboardActions = KeyboardActions(onNext = { unitFocus.requestFocus() }),
                                 singleLine = true,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .focusRequester(qtyFocus)
                             )
 
                             OutlinedTextField(
                                 value = unit,
                                 onValueChange = { unit = it },
                                 label = { Text("একক") },
+                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                                keyboardActions = KeyboardActions(onNext = { rateFocus.requestFocus() }),
                                 singleLine = true,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .focusRequester(unitFocus)
                             )
                         }
 
@@ -217,9 +272,15 @@ fun PurchaseScreen(
                                 },
                                 label = { Text("দর (প্রতি একক)") },
                                 placeholder = { Text("৳") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Next
+                                ),
+                                keyboardActions = KeyboardActions(onNext = { totalFocus.requestFocus() }),
                                 singleLine = true,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .focusRequester(rateFocus)
                             )
 
                             OutlinedTextField(
@@ -229,9 +290,15 @@ fun PurchaseScreen(
                                 },
                                 label = { Text("মোট টাকা *") },
                                 placeholder = { Text("৳") },
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number,
+                                    imeAction = ImeAction.Next
+                                ),
+                                keyboardActions = KeyboardActions(onNext = { noteFocus.requestFocus() }),
                                 singleLine = true,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .focusRequester(totalFocus)
                             )
                         }
 
@@ -244,40 +311,18 @@ fun PurchaseScreen(
                             label = { Text("ডিলার বা চালানের বিবরণ (ঐচ্ছিক)") },
                             placeholder = { Text("যেমন: ভাই ভাই ট্রেডার্স চালান নং ১২") },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { performSavePurchase() }),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(noteFocus)
                         )
 
                         Spacer(modifier = Modifier.height(16.dp))
 
                         // Save Button
-                        val qNum = quantity.toDoubleOrNull() ?: 0.0
-                        val rNum = rate.toDoubleOrNull() ?: 0.0
-                        val tNum = totalAmount.toDoubleOrNull() ?: (qNum * rNum)
-
-                        val canSave = productName.isNotBlank() && (tNum > 0 || (qNum > 0 && rNum > 0))
-
                         Button(
-                            onClick = {
-                                val finalTotal = if (tNum > 0) tNum else (qNum * rNum)
-                                val finalRate = if (rNum > 0) rNum else if (qNum > 0) finalTotal / qNum else 0.0
-
-                                viewModel.recordDirectPurchase(
-                                    productName = productName.trim(),
-                                    productId = selectedProductId,
-                                    quantity = qNum,
-                                    unit = unit.trim(),
-                                    rate = finalRate,
-                                    total = finalTotal,
-                                    note = note.trim()
-                                )
-
-                                // Clear inputs
-                                productName = ""
-                                rate = ""
-                                totalAmount = ""
-                                note = ""
-                                showSuccessMessage = true
-                            },
+                            onClick = { performSavePurchase() },
                             enabled = canSave,
                             modifier = Modifier
                                 .fillMaxWidth()

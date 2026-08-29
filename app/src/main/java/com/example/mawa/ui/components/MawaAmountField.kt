@@ -30,6 +30,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -51,6 +53,9 @@ fun MawaAmountInput(
     label: String = "টাকার পরিমাণ",
     imeAction: ImeAction = ImeAction.Done,
     onDone: () -> Unit = {},
+    onNext: () -> Unit = {},
+    keyboardActions: KeyboardActions? = null,
+    focusRequester: FocusRequester? = null,
     quickAmounts: List<Int> = listOf(50, 100, 500, 1000, 2000, 5000),
     testTag: String = "amount_input"
 ) {
@@ -65,6 +70,7 @@ fun MawaAmountInput(
             },
             modifier = Modifier
                 .fillMaxWidth()
+                .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .testTag(testTag),
             label = { Text(label) },
             placeholder = { Text("0") },
@@ -98,7 +104,10 @@ fun MawaAmountInput(
                 keyboardType = KeyboardType.Number,
                 imeAction = imeAction
             ),
-            keyboardActions = KeyboardActions(onDone = { onDone() }),
+            keyboardActions = keyboardActions ?: KeyboardActions(
+                onDone = { onDone() },
+                onNext = { onNext() }
+            ),
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MawaPrimary,

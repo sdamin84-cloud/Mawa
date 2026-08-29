@@ -25,13 +25,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.filled.LightMode
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PointOfSale
@@ -49,6 +52,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.mawa.data.model.AppThemeMode
 import com.example.mawa.ui.viewmodel.MawaViewModel
 import com.example.mawa.util.BengaliUtils
 import com.example.ui.theme.FinancialNeutral
@@ -89,6 +96,8 @@ fun MawaSideDrawer(
     val settings by viewModel.shopSettings.collectAsStateWithLifecycle()
     val appMode by viewModel.currentAppMode.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    var showThemeDialog by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
     ModalDrawerSheet(
@@ -301,6 +310,20 @@ fun MawaSideDrawer(
             )
 
             DrawerNavMenuItem(
+                icon = when (themeMode) {
+                    AppThemeMode.LIGHT -> Icons.Default.LightMode
+                    AppThemeMode.DARK -> Icons.Default.DarkMode
+                    AppThemeMode.SYSTEM -> Icons.Default.BrightnessAuto
+                },
+                iconTint = MaterialTheme.colorScheme.primary,
+                iconBg = MaterialTheme.colorScheme.primaryContainer,
+                title = "অ্যাপ থিম পরিবর্তন",
+                subtitle = "বর্তমান: ${themeMode.banglaTitle}",
+                onClick = { showThemeDialog = true },
+                testTag = "drawer_theme_toggle"
+            )
+
+            DrawerNavMenuItem(
                 icon = Icons.Default.Settings,
                 iconTint = MawaPrimary,
                 iconBg = MawaPrimaryContainer,
@@ -389,6 +412,16 @@ fun MawaSideDrawer(
                 )
             }
         }
+    }
+
+    if (showThemeDialog) {
+        ThemeSelectionDialog(
+            currentTheme = themeMode,
+            onDismiss = { showThemeDialog = false },
+            onSelectTheme = { selectedTheme ->
+                viewModel.setThemeMode(selectedTheme)
+            }
+        )
     }
 }
 

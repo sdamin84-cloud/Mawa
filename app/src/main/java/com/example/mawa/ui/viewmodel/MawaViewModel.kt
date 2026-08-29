@@ -1,6 +1,7 @@
 package com.example.mawa.ui.viewmodel
 
 import android.app.Application
+import android.content.Context
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -15,6 +16,7 @@ import com.example.mawa.data.local.entity.TransactionEntity
 import com.example.mawa.data.local.entity.TransactionType
 import com.example.mawa.data.model.AccountingSummary
 import com.example.mawa.data.model.AppMode
+import com.example.mawa.data.model.AppThemeMode
 import com.example.mawa.data.model.CustomerWithBalance
 import com.example.mawa.data.model.PersonalSummary
 import com.example.mawa.data.model.ProductStats
@@ -44,6 +46,18 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = MawaDatabase.getDatabase(application)
     val repository = MawaRepository(database)
+
+    // Theme Mode Preference
+    private val appPrefs = application.getSharedPreferences("mawa_app_prefs", Context.MODE_PRIVATE)
+    private val _themeMode = MutableStateFlow(
+        AppThemeMode.fromKey(appPrefs.getString("app_theme_mode", AppThemeMode.SYSTEM.key))
+    )
+    val themeMode: StateFlow<AppThemeMode> = _themeMode.asStateFlow()
+
+    fun setThemeMode(mode: AppThemeMode) {
+        _themeMode.value = mode
+        appPrefs.edit().putString("app_theme_mode", mode.key).apply()
+    }
 
     // Supabase Cloud Integration
     val supabaseAuthManager = SupabaseAuthManager(application)
@@ -547,6 +561,8 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         purchasePrice: Double,
         sellingPrice: Double,
         category: String,
+        barcode: String = "",
+        stockQuantity: Double = 0.0,
         onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -554,9 +570,11 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             val product = ProductEntity(
                 name = name.trim(),
                 banglaName = banglaName.ifBlank { name }.trim(),
+                barcode = barcode.trim(),
                 unit = unit.trim(),
                 defaultPurchasePrice = purchasePrice,
                 defaultSellingPrice = sellingPrice,
+                stockQuantity = stockQuantity,
                 category = category.ifBlank { "সাধারণ" }.trim()
             )
             repository.addProduct(product)
@@ -773,15 +791,46 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         return com.example.mawa.util.DataBackupRestoreManager.exportToJsonString(backupData)
     }
 
-    suspend fun restoreFullBackupFromJson(jsonString: String, overwriteExisting: Boolean = true): Boolean {
+    fun parseBackupPreview(jsonString: String): com.example.mawa.util.FullBackupData? {
+        return try {
+            com.example.mawa.util.DataBackupRestoreManager.parseFromJsonString(jsonString)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    suspend fun restoreFullBackupFromJson(
+        jsonString: String, 
+        overwriteExisting: Boolean = true,
+        onComplete: (Boolean, String, com.example.mawa.util.FullBackupData?) -> Unit = { _, _, _ -> }
+    ): Boolean {
         return try {
             val backupData = com.example.mawa.util.DataBackupRestoreManager.parseFromJsonString(jsonString)
             repository.restoreFullBackup(backupData, overwriteExisting)
-            _feedbackMessage.emit("জেসন ব্যাকআপ থেকে সকল ডাটা সফলভাবে রিস্টোর হয়েছে!")
+            
+            // If the restored backup contains transactions, update selected date to latest transaction or today
+            val latestTxTimestamp = backupData.transactions.maxOfOrNull { it.timestamp }
+            if (latestTxTimestamp != null && latestTxTimestamp > 0) {
+                _selectedHomeDateMillis.value = latestTxTimestamp
+            }
+
+            val summaryMsg = "ডাটা সফলভাবে রিস্টোর হয়েছে! (কাস্টমার: ${backupData.customers.size} জন, লেনদেন: ${backupData.transactions.size} টি, ফর্দ: ${backupData.fordiItems.size} টি, পণ্য: ${backupData.products.size} টি)"
+            _feedbackMessage.emit(summaryMsg)
+            onComplete(true, summaryMsg, backupData)
             true
         } catch (e: Exception) {
-            _feedbackMessage.emit("রিস্টোর ব্যর্থ হয়েছে: ${e.localizedMessage}")
+            val err = "রিস্টোর ব্যর্থ হয়েছে: ${e.localizedMessage ?: "অজ্ঞাত ত্রুটি"}"
+            _feedbackMessage.emit(err)
+            onComplete(false, err, null)
             false
+        }
+    }
+
+    fun clearAllSampleData(clearSettings: Boolean = false, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.clearAllData(clearSettings)
+            _feedbackMessage.emit("সকল ডামি ও স্যাম্পল ডাটা মুছে ফেলা হয়েছে")
+            onSuccess()
         }
     }
 

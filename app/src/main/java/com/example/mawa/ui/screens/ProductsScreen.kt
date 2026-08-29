@@ -32,6 +32,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -75,6 +76,12 @@ import com.example.ui.theme.FinancialWarning
 import com.example.ui.theme.FinancialWarningContainer
 import com.example.ui.theme.MawaPrimary
 
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Sell
+import com.example.mawa.ui.components.BarcodeScannerDialog
+
 @Composable
 fun ProductsScreen(
     viewModel: MawaViewModel,
@@ -87,6 +94,8 @@ fun ProductsScreen(
     var searchQuery by remember { mutableStateOf("") }
     var selectedProductForDetail by remember { mutableStateOf<ProductEntity?>(null) }
     var showAddProductDialog by remember { mutableStateOf(false) }
+    var initialBarcodeForNewProduct by remember { mutableStateOf("") }
+    var showBarcodeScanner by remember { mutableStateOf(false) }
     var showDuplicateDetector by remember { mutableStateOf(false) }
 
     // If detail is active, show the Product Detail screen
@@ -108,7 +117,9 @@ fun ProductsScreen(
         else allProducts.filter {
             it.name.contains(searchQuery, ignoreCase = true) ||
                     it.banglaName.contains(searchQuery) ||
-                    it.category.contains(searchQuery, ignoreCase = true)
+                    it.category.contains(searchQuery, ignoreCase = true) ||
+                    it.barcode.contains(searchQuery, ignoreCase = true) ||
+                    it.id.toString() == searchQuery.trim()
         }
     }
 
@@ -123,11 +134,16 @@ fun ProductsScreen(
     ) {
         // Top Header
         MawaTopBar(
-            title = "পণ্য তালিকা ও হিসাব",
+            title = "পণ্য ও স্টক তালিকা",
             subtitle = "${BengaliUtils.toBanglaDigits(allProducts.size.toLong())} টি পণ্য সংরক্ষিত",
             navigationIcon = {
                 IconButton(onClick = onBack) {
                     Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "পেছনে")
+                }
+            },
+            actions = {
+                IconButton(onClick = { showBarcodeScanner = true }) {
+                    Icon(imageVector = Icons.Default.QrCodeScanner, contentDescription = "বারকোড স্ক্যান", tint = MaterialTheme.colorScheme.onPrimary)
                 }
             }
         )
@@ -151,8 +167,13 @@ fun ProductsScreen(
                             OutlinedTextField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },
-                                placeholder = { Text("পণ্যের নাম দিয়ে খুঁজুন") },
+                                placeholder = { Text("নাম বা বারকোড দিয়ে খুঁজুন") },
                                 leadingIcon = { Icon(imageVector = Icons.Default.Search, contentDescription = null) },
+                                trailingIcon = {
+                                    IconButton(onClick = { showBarcodeScanner = true }) {
+                                        Icon(imageVector = Icons.Default.QrCodeScanner, contentDescription = "স্ক্যান", tint = MawaPrimary)
+                                    }
+                                },
                                 modifier = Modifier
                                     .weight(1f)
                                     .testTag("product_search_input"),
@@ -167,7 +188,10 @@ fun ProductsScreen(
                             Spacer(modifier = Modifier.width(8.dp))
 
                             IconButton(
-                                onClick = { showAddProductDialog = true },
+                                onClick = { 
+                                    initialBarcodeForNewProduct = ""
+                                    showAddProductDialog = true 
+                                },
                                 modifier = Modifier
                                     .size(50.dp)
                                     .clip(RoundedCornerShape(10.dp))
@@ -230,7 +254,7 @@ fun ProductsScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "পণ্য ও ক্যাটাগরি", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(text = "পণ্য, বারকোড ও স্টক", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(text = "ডিফল্ট দর (ক্রয়→বিক্রয়)", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -240,9 +264,12 @@ fun ProductsScreen(
                     MawaEmptyState(
                         icon = Icons.Default.Inventory,
                         title = "কোনো পণ্য নেই",
-                        subtitle = "নতুন পণ্য যোগ করে ক্রয়-বিক্রয় ট্র্যাক করুন",
+                        subtitle = "নতুন পণ্য যোগ করে বা বারকোড দিয়ে ক্রয়-বিক্রয় ও ফর্দ তৈরি সহজ করুন",
                         actionLabel = "পণ্য যোগ করুন",
-                        onActionClick = { showAddProductDialog = true }
+                        onActionClick = { 
+                            initialBarcodeForNewProduct = ""
+                            showAddProductDialog = true 
+                        }
                     )
                 }
             } else {
@@ -267,11 +294,46 @@ fun ProductsScreen(
                                         style = MaterialTheme.typography.bodyLarge,
                                         fontWeight = FontWeight.Medium
                                     )
-                                    Text(
-                                        text = "${product.category} · প্রতি ${product.unit}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = "${product.category} · প্রতি ${product.unit}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        if (product.barcode.isNotBlank()) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Surface(
+                                                color = MawaPrimary.copy(alpha = 0.12f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "🏷️ ${product.barcode}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MawaPrimary,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                        if (product.stockQuantity > 0) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Surface(
+                                                color = FinancialPositive.copy(alpha = 0.12f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "স্টক: ${BengaliUtils.formatQuantity(product.stockQuantity, product.unit)}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = FinancialPositive,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
 
                                 Column(horizontalAlignment = Alignment.End) {
@@ -306,12 +368,39 @@ fun ProductsScreen(
         }
     }
 
+    // Barcode Scanner Dialog for Products Screen
+    if (showBarcodeScanner) {
+        BarcodeScannerDialog(
+            allProducts = allProducts,
+            onProductSelected = { matchedProd ->
+                selectedProductForDetail = matchedProd
+                showBarcodeScanner = false
+            },
+            onDismiss = { showBarcodeScanner = false },
+            onAddNewProductWithBarcode = { barcode ->
+                initialBarcodeForNewProduct = barcode
+                showAddProductDialog = true
+                showBarcodeScanner = false
+            }
+        )
+    }
+
     // Add Product Dialog
     if (showAddProductDialog) {
         AddProductDialog(
+            initialBarcode = initialBarcodeForNewProduct,
             onDismiss = { showAddProductDialog = false },
-            onAdd = { name, bangla, unit, pPrice, sPrice, category ->
-                viewModel.addProduct(name, bangla, unit, pPrice, sPrice, category)
+            onAdd = { name, bangla, unit, pPrice, sPrice, category, barcode, stock ->
+                viewModel.addProduct(
+                    name = name,
+                    banglaName = bangla,
+                    unit = unit,
+                    purchasePrice = pPrice,
+                    sellingPrice = sPrice,
+                    category = category,
+                    barcode = barcode,
+                    stockQuantity = stock
+                )
                 showAddProductDialog = false
             }
         )
@@ -356,6 +445,67 @@ fun ProductDetailScreen(
         )
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
+            // Barcode / SKU Info Card
+            if (product.barcode.isNotBlank()) {
+                item {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MawaPrimary.copy(alpha = 0.08f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.25f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.QrCode,
+                                    contentDescription = null,
+                                    tint = MawaPrimary,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "বারকোড / প্রোডাক্ট কোড",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = product.barcode,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MawaPrimary
+                                    )
+                                }
+                            }
+
+                            if (product.stockQuantity > 0) {
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text(
+                                        text = "বর্তমান স্টক",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    Text(
+                                        text = BengaliUtils.formatQuantity(product.stockQuantity, product.unit),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = FinancialPositive
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Main Metrics Grid / Cards
             item {
                 Surface(
@@ -536,14 +686,19 @@ fun ProductDetailScreen(
 
 @Composable
 fun AddProductDialog(
+    initialBarcode: String = "",
     onDismiss: () -> Unit,
-    onAdd: (name: String, banglaName: String, unit: String, purchasePrice: Double, sellingPrice: Double, category: String) -> Unit
+    onAdd: (name: String, banglaName: String, unit: String, purchasePrice: Double, sellingPrice: Double, category: String, barcode: String, stockQuantity: Double) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
+    var barcode by remember { mutableStateOf(initialBarcode) }
     var unit by remember { mutableStateOf("কেজি") }
     var purchasePrice by remember { mutableStateOf("") }
     var sellingPrice by remember { mutableStateOf("") }
+    var stockQuantity by remember { mutableStateOf("") }
     var category by remember { mutableStateOf("মুদি") }
+
+    val categories = listOf("মুদি", "কনফেকশনারি", "পান/সিগারেট", "কসমেটিক্স", "ফল/সবজি", "স্টেশনারি", "সাধারণ")
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -554,23 +709,64 @@ fun AddProductDialog(
                     value = name,
                     onValueChange = { name = it },
                     label = { Text("পণ্যের নাম *") },
-                    placeholder = { Text("যেমন: মিনিকেট চাল") },
+                    placeholder = { Text("যেমন: চিনি, সয়াবিন তেল, মিনিকেট চাল") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth().testTag("product_name_input")
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+
+                // Barcode / QR code field with auto-generate button
+                OutlinedTextField(
+                    value = barcode,
+                    onValueChange = { barcode = it },
+                    label = { Text("বারকোড / কিউআর কোড (ঐচ্ছিক)") },
+                    placeholder = { Text("যেমন: 890123456789") },
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                // Auto generate an 8-digit unique product barcode
+                                val randomDigits = (10000000..99999999).random().toString()
+                                barcode = randomDigits
+                            }
+                        ) {
+                            Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "অটো কোড তৈরি", tint = MawaPrimary)
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Category Chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    categories.take(4).forEach { cat ->
+                        FilterChip(
+                            selected = category == cat,
+                            onClick = { category = cat },
+                            label = { Text(cat, fontSize = 11.sp) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(6.dp))
+
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = unit,
                         onValueChange = { unit = it },
                         label = { Text("একক") },
+                        placeholder = { Text("কেজি/পিস/লিটার") },
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
-                        value = category,
-                        onValueChange = { category = it },
-                        label = { Text("ক্যাটাগরি") },
+                        value = stockQuantity,
+                        onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) stockQuantity = it },
+                        label = { Text("বর্তমান স্টক") },
+                        placeholder = { Text("০") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
@@ -602,7 +798,8 @@ fun AddProductDialog(
                     if (name.isNotBlank()) {
                         val pPrice = purchasePrice.toDoubleOrNull() ?: 0.0
                         val sPrice = sellingPrice.toDoubleOrNull() ?: 0.0
-                        onAdd(name.trim(), name.trim(), unit.trim(), pPrice, sPrice, category.trim())
+                        val stock = stockQuantity.toDoubleOrNull() ?: 0.0
+                        onAdd(name.trim(), name.trim(), unit.trim(), pPrice, sPrice, category.trim(), barcode.trim(), stock)
                     }
                 },
                 enabled = name.isNotBlank(),
@@ -625,9 +822,11 @@ fun EditProductDialog(
     onDelete: () -> Unit
 ) {
     var name by remember { mutableStateOf(product.name) }
+    var barcode by remember { mutableStateOf(product.barcode) }
     var unit by remember { mutableStateOf(product.unit) }
-    var purchasePrice by remember { mutableStateOf(product.defaultPurchasePrice.toString()) }
-    var sellingPrice by remember { mutableStateOf(product.defaultSellingPrice.toString()) }
+    var purchasePrice by remember { mutableStateOf(if (product.defaultPurchasePrice > 0) product.defaultPurchasePrice.toString() else "") }
+    var sellingPrice by remember { mutableStateOf(if (product.defaultSellingPrice > 0) product.defaultSellingPrice.toString() else "") }
+    var stockQuantity by remember { mutableStateOf(if (product.stockQuantity > 0) product.stockQuantity.toString() else "") }
     var category by remember { mutableStateOf(product.category) }
 
     AlertDialog(
@@ -643,6 +842,26 @@ fun EditProductDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+
+                OutlinedTextField(
+                    value = barcode,
+                    onValueChange = { barcode = it },
+                    label = { Text("বারকোড / কিউআর কোড") },
+                    trailingIcon = {
+                        IconButton(
+                            onClick = {
+                                val randomDigits = (10000000..99999999).random().toString()
+                                barcode = randomDigits
+                            }
+                        ) {
+                            Icon(imageVector = Icons.Default.AutoAwesome, contentDescription = "অটো কোড", tint = MawaPrimary)
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = unit,
@@ -652,9 +871,10 @@ fun EditProductDialog(
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
-                        value = category,
-                        onValueChange = { category = it },
-                        label = { Text("ক্যাটাগরি") },
+                        value = stockQuantity,
+                        onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) stockQuantity = it },
+                        label = { Text("স্টক") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
@@ -665,6 +885,7 @@ fun EditProductDialog(
                         value = purchasePrice,
                         onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) purchasePrice = it },
                         label = { Text("ক্রয় দর") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
@@ -672,6 +893,7 @@ fun EditProductDialog(
                         value = sellingPrice,
                         onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) sellingPrice = it },
                         label = { Text("বিক্রয় দর") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
                         modifier = Modifier.weight(1f)
                     )
@@ -694,13 +916,16 @@ fun EditProductDialog(
                     if (name.isNotBlank()) {
                         val p = purchasePrice.toDoubleOrNull() ?: 0.0
                         val s = sellingPrice.toDoubleOrNull() ?: 0.0
+                        val stock = stockQuantity.toDoubleOrNull() ?: 0.0
                         onSave(
                             product.copy(
                                 name = name.trim(),
                                 banglaName = name.trim(),
+                                barcode = barcode.trim(),
                                 unit = unit.trim(),
                                 defaultPurchasePrice = p,
                                 defaultSellingPrice = s,
+                                stockQuantity = stock,
                                 category = category.trim()
                             )
                         )

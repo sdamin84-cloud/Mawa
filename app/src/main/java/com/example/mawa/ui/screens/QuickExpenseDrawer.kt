@@ -49,9 +49,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mawa.ui.components.MawaAmountInput
@@ -71,6 +77,13 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.mawa.data.local.entity.ProductEntity
+import com.example.mawa.ui.components.BarcodeScannerDialog
+
 enum class QuickExpenseTarget {
     SHOP,      // দোকান পরিচালনা খরচ
     HOME,      // সংসার / বাড়ি খরচ
@@ -85,14 +98,117 @@ fun QuickExpenseDrawer(
     initialTarget: QuickExpenseTarget = QuickExpenseTarget.SHOP,
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 ) {
+    val activeProducts by viewModel.activeProducts.collectAsStateWithLifecycle()
+
     var amount by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
     var expenseTarget by remember(initialTarget) { mutableStateOf(initialTarget) }
     var successNotice by remember { mutableStateOf<String?>(null) }
     var isManualSelection by remember { mutableStateOf(false) }
     var selectedTimestamp by remember { mutableStateOf(System.currentTimeMillis()) }
+    var showBarcodeScanner by remember { mutableStateOf(false) }
+
+    val cal = remember(selectedTimestamp) {
+        Calendar.getInstance().apply { timeInMillis = selectedTimestamp }
+    }
+    val isToday = remember(selectedTimestamp) {
+        val now = Calendar.getInstance()
+        cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
+                cal.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR)
+    }
+    val isYesterday = remember(selectedTimestamp) {
+        val yesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+        cal.get(Calendar.YEAR) == yesterday.get(Calendar.YEAR) &&
+                cal.get(Calendar.DAY_OF_YEAR) == yesterday.get(Calendar.DAY_OF_YEAR)
+    }
+
+    val dateDisplayString = remember(selectedTimestamp) {
+        val formatter = SimpleDateFormat("dd MMMM, yyyy", Locale.getDefault())
+        val formatted = formatter.format(Date(selectedTimestamp))
+        when {
+            isToday -> "আজ ($formatted)"
+            isYesterday -> "গতকাল ($formatted)"
+            else -> formatted
+        }
+    }
 
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val descriptionFocusRequester = remember { FocusRequester() }
+
+    val amountNum = amount.toDoubleOrNull() ?: 0.0
+
+    val performSaveExpense: () -> Unit = {
+        if (amountNum > 0) {
+            val savedAmount = amountNum
+            val savedTargetName: String
+
+            when (expenseTarget) {
+                QuickExpenseTarget.PURCHASE -> {
+                    savedTargetName = "পণ্য ক্রয়"
+                    val note = description.ifBlank { "পণ্য ক্রয় (স্টক)" }
+                    viewModel.recordDirectPurchase(
+                        productName = note,
+                        quantity = 1.0,
+                        unit = "পিস",
+                        rate = savedAmount,
+                        total = savedAmount,
+                        note = note,
+                        timestamp = selectedTimestamp
+                    )
+                }
+                QuickExpenseTarget.HOME -> {
+                    savedTargetName = "সংসার / বাড়ি"
+                    val note = description.ifBlank { "বাড়ির খরচ" }
+                    viewModel.recordExpense(
+                        amount = savedAmount,
+                        description = note,
+                        isHome = true,
+                        timestamp = selectedTimestamp
+                    )
+                }
+                QuickExpenseTarget.SHOP -> {
+                    savedTargetName = "দোকান খরচ"
+                    val note = description.ifBlank { "দোকান পরিচালনা খরচ" }
+                    viewModel.recordExpense(
+                        amount = savedAmount,
+                        description = note,
+                        isHome = false,
+                        timestamp = selectedTimestamp
+                    )
+                }
+            }
+
+            // Clear inputs and keep drawer open for consecutive entries
+            amount = ""
+            description = ""
+            isManualSelection = false
+            val dateSuffix = if (!isToday) " (${SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(selectedTimestamp))})" else ""
+            successNotice = "$savedTargetName ৳${BengaliUtils.toBanglaDigits(savedAmount)}$dateSuffix সংরক্ষিত হয়েছে"
+        }
+    }
+
+    if (showBarcodeScanner) {
+        BarcodeScannerDialog(
+            allProducts = activeProducts,
+            onProductSelected = { p ->
+                description = p.name
+                expenseTarget = QuickExpenseTarget.PURCHASE
+                isManualSelection = true
+                if (amount.isBlank() && p.defaultPurchasePrice > 0) {
+                    amount = p.defaultPurchasePrice.toInt().toString()
+                }
+                showBarcodeScanner = false
+            },
+            onDismiss = { showBarcodeScanner = false },
+            onAddNewProductWithBarcode = { barcode ->
+                description = "পণ্য ($barcode)"
+                expenseTarget = QuickExpenseTarget.PURCHASE
+                isManualSelection = true
+                showBarcodeScanner = false
+            }
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -119,6 +235,19 @@ fun QuickExpenseDrawer(
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { showBarcodeScanner = true },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.QrCodeScanner,
+                            contentDescription = "বারকোড স্ক্যান",
+                            tint = MawaPrimary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(4.dp))
+
                     VoiceInputButton(
                         onVoiceResult = { parsed ->
                             if (parsed.amount != null && parsed.amount > 0) {
@@ -202,6 +331,9 @@ fun QuickExpenseDrawer(
                     successNotice = null
                 },
                 label = "কত টাকা?",
+                imeAction = ImeAction.Next,
+                onNext = { descriptionFocusRequester.requestFocus() },
+                onDone = { descriptionFocusRequester.requestFocus() },
                 quickAmounts = listOf(20, 50, 100, 200, 500, 1000),
                 testTag = "expense_amount_input"
             )
@@ -325,6 +457,18 @@ fun QuickExpenseDrawer(
             Spacer(modifier = Modifier.height(14.dp))
 
             // 3. Description Note with Smart Keyword Classifier
+            val matchedExpenseProducts = remember(description, activeProducts) {
+                if (description.isBlank()) {
+                    if (expenseTarget == QuickExpenseTarget.PURCHASE) activeProducts.take(5) else emptyList()
+                } else {
+                    activeProducts.filter {
+                        it.name.contains(description, ignoreCase = true) ||
+                        it.banglaName.contains(description, ignoreCase = true) ||
+                        it.barcode.contains(description, ignoreCase = true)
+                    }.take(5)
+                }
+            }
+
             OutlinedTextField(
                 value = description,
                 onValueChange = {
@@ -342,8 +486,9 @@ fun QuickExpenseDrawer(
                 },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .focusRequester(descriptionFocusRequester)
                     .testTag("expense_description_input"),
-                label = { Text("কী জন্য? (বিবরণ / পণ্যের নাম)") },
+                label = { Text("কী জন্য? (বিবরণ / পণ্যের নাম বা বারকোড)") },
                 placeholder = {
                     Text(
                         when (expenseTarget) {
@@ -353,7 +498,25 @@ fun QuickExpenseDrawer(
                         }
                     )
                 },
+                trailingIcon = {
+                    IconButton(onClick = { showBarcodeScanner = true }) {
+                        Icon(
+                            imageVector = Icons.Default.QrCodeScanner,
+                            contentDescription = "বারকোড স্ক্যান",
+                            tint = MawaPrimary
+                        )
+                    }
+                },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        performSaveExpense()
+                        focusManager.clearFocus()
+                    }
+                ),
                 shape = RoundedCornerShape(10.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = MawaPrimary,
@@ -361,33 +524,54 @@ fun QuickExpenseDrawer(
                 )
             )
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 4. Date Picker Component (Backdating & Custom Date Selection)
-            val cal = remember(selectedTimestamp) {
-                Calendar.getInstance().apply { timeInMillis = selectedTimestamp }
-            }
-            val isToday = remember(selectedTimestamp) {
-                val now = Calendar.getInstance()
-                cal.get(Calendar.YEAR) == now.get(Calendar.YEAR) &&
-                        cal.get(Calendar.DAY_OF_YEAR) == now.get(Calendar.DAY_OF_YEAR)
-            }
-            val isYesterday = remember(selectedTimestamp) {
-                val yesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
-                cal.get(Calendar.YEAR) == yesterday.get(Calendar.YEAR) &&
-                        cal.get(Calendar.DAY_OF_YEAR) == yesterday.get(Calendar.DAY_OF_YEAR)
-            }
-
-            val dateDisplayString = remember(selectedTimestamp) {
-                val formatter = SimpleDateFormat("dd MMMM, yyyy", Locale.getDefault())
-                val formatted = formatter.format(Date(selectedTimestamp))
-                when {
-                    isToday -> "আজ ($formatted)"
-                    isYesterday -> "গতকাল ($formatted)"
-                    else -> formatted
+            if (matchedExpenseProducts.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(4.dp))
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(matchedExpenseProducts, key = { it.id }) { p ->
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    description = p.name
+                                    expenseTarget = QuickExpenseTarget.PURCHASE
+                                    isManualSelection = true
+                                    if (amount.isBlank() && p.defaultPurchasePrice > 0) {
+                                        amount = p.defaultPurchasePrice.toInt().toString()
+                                    }
+                                },
+                            color = FinancialPositiveContainer.copy(alpha = 0.6f),
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = p.name,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = FinancialPositive
+                                )
+                                if (p.defaultPurchasePrice > 0) {
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "৳${p.defaultPurchasePrice.toInt()}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // 4. Date Picker Component (Backdating & Custom Date Selection)
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -555,56 +739,10 @@ fun QuickExpenseDrawer(
             Spacer(modifier = Modifier.height(18.dp))
 
             // 5. Save Button
-            val amountNum = amount.toDoubleOrNull() ?: 0.0
             Button(
                 onClick = {
-                    if (amountNum > 0) {
-                        val savedAmount = amountNum
-                        val savedTargetName: String
-                        
-                        when (expenseTarget) {
-                            QuickExpenseTarget.PURCHASE -> {
-                                savedTargetName = "পণ্য ক্রয়"
-                                val note = description.ifBlank { "পণ্য ক্রয় (স্টক)" }
-                                viewModel.recordDirectPurchase(
-                                    productName = note,
-                                    quantity = 1.0,
-                                    unit = "পিস",
-                                    rate = savedAmount,
-                                    total = savedAmount,
-                                    note = note,
-                                    timestamp = selectedTimestamp
-                                )
-                            }
-                            QuickExpenseTarget.HOME -> {
-                                savedTargetName = "সংসার / বাড়ি"
-                                val note = description.ifBlank { "বাড়ির খরচ" }
-                                viewModel.recordExpense(
-                                    amount = savedAmount,
-                                    description = note,
-                                    isHome = true,
-                                    timestamp = selectedTimestamp
-                                )
-                            }
-                            QuickExpenseTarget.SHOP -> {
-                                savedTargetName = "দোকান খরচ"
-                                val note = description.ifBlank { "দোকান পরিচালনা খরচ" }
-                                viewModel.recordExpense(
-                                    amount = savedAmount,
-                                    description = note,
-                                    isHome = false,
-                                    timestamp = selectedTimestamp
-                                )
-                            }
-                        }
-
-                        // Clear inputs and keep drawer open for consecutive entries
-                        amount = ""
-                        description = ""
-                        isManualSelection = false
-                        val dateSuffix = if (!isToday) " (${SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(selectedTimestamp))})" else ""
-                        successNotice = "$savedTargetName ৳${BengaliUtils.toBanglaDigits(savedAmount)}$dateSuffix সংরক্ষিত হয়েছে"
-                    }
+                    performSaveExpense()
+                    focusManager.clearFocus()
                 },
                 enabled = amountNum > 0,
                 modifier = Modifier

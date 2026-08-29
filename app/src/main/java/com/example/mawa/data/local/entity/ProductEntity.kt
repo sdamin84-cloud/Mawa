@@ -9,10 +9,13 @@ data class ProductEntity(
     val id: Long = 0,
     val name: String,
     val banglaName: String = "",
+    val barcode: String = "",
     val unit: String = "কেজি",
     val defaultPurchasePrice: Double = 0.0,
     val defaultSellingPrice: Double = 0.0,
+    val stockQuantity: Double = 0.0,
     val category: String = "মুদি",
     val createdAt: Long = System.currentTimeMillis(),
     val isActive: Boolean = true
 )
+

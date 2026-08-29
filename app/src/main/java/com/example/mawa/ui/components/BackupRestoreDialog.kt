@@ -1,7 +1,10 @@
 package com.example.mawa.ui.components
 
 import android.content.Context
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,22 +24,28 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.FileUpload
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TableChart
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,6 +61,7 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -77,6 +87,7 @@ import com.example.mawa.data.local.entity.TransactionType
 import com.example.mawa.ui.viewmodel.MawaViewModel
 import com.example.mawa.util.BengaliUtils
 import com.example.mawa.util.DataBackupRestoreManager
+import com.example.mawa.util.FullBackupData
 import com.example.ui.theme.FinancialNegative
 import com.example.ui.theme.FinancialNegativeContainer
 import com.example.ui.theme.FinancialPositive
@@ -105,9 +116,13 @@ fun BackupRestoreDialog(
     val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
 
-    var selectedTab by remember { mutableStateOf(BackupTab.BACKUP) }
+    var selectedTab by remember { mutableStateOf(BackupTab.RESTORE) }
     var restoreJsonInput by remember { mutableStateOf("") }
+    var selectedFileName by remember { mutableStateOf<String?>(null) }
     var showRestoreConfirmDialog by remember { mutableStateOf(false) }
+    var restoreWithOverwrite by remember { mutableStateOf(true) }
+    var showClearDataConfirmDialog by remember { mutableStateOf(false) }
+    var restoreSuccessMessage by remember { mutableStateOf<String?>(null) }
 
     var isProcessing by remember { mutableStateOf(false) }
 
@@ -119,13 +134,47 @@ fun BackupRestoreDialog(
 
     val shopName = shopSettings?.shopName?.ifBlank { "মাওয়া স্মার্ট খাতা" } ?: "মাওয়া স্মার্ট খাতা"
 
+    // Parse preview of loaded JSON
+    val parsedBackupPreview by remember(restoreJsonInput) {
+        derivedStateOf {
+            if (restoreJsonInput.isNotBlank()) {
+                viewModel.parseBackupPreview(restoreJsonInput)
+            } else {
+                null
+            }
+        }
+    }
+
+    // File Picker for JSON Backup
+    val jsonFilePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                isProcessing = true
+                val content = DataBackupRestoreManager.readTextFromUri(context, uri)
+                if (content.isNotBlank()) {
+                    restoreJsonInput = content
+                    selectedFileName = uri.lastPathSegment ?: "backup.json"
+                    Toast.makeText(context, "ব্যাকআপ ফাইল লোড হয়েছে!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(context, "নির্বাচিত ফাইলটি ফাঁকা", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "ফাইল পড়তে সমস্যা: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            } finally {
+                isProcessing = false
+            }
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
+                .fillMaxWidth(0.96f)
                 .clip(RoundedCornerShape(20.dp)),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
@@ -133,7 +182,7 @@ fun BackupRestoreDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(20.dp)
+                    .padding(18.dp)
             ) {
                 // Header
                 Row(
@@ -165,7 +214,7 @@ fun BackupRestoreDialog(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "JSON, CSV ও PNG ছবি আকারে সংরক্ষণ",
+                                text = "JSON ফাইল আপলোড, রিস্টোর ও এক্সপোর্ট",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -179,7 +228,7 @@ fun BackupRestoreDialog(
 
                 Spacer(modifier = Modifier.height(14.dp))
 
-                // Tabs: [ ডাটা ব্যাকআপ ] | [ ডাটা রিস্টোর ] | [ মেমো ও ছবি ]
+                // Tabs: [ ডাটা রিস্টোর ] | [ ডাটা ব্যাকআপ ] | [ মেমো ও ছবি ]
                 TabRow(
                     selectedTabIndex = selectedTab.ordinal,
                     containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
@@ -210,7 +259,7 @@ fun BackupRestoreDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 // Tab Contents
                 Column(
@@ -220,8 +269,373 @@ fun BackupRestoreDialog(
                         .verticalScroll(rememberScrollState())
                 ) {
                     when (selectedTab) {
+                        BackupTab.RESTORE -> {
+                            // --- TAB 1: RESTORE OPTIONS ---
+
+                            // 1. JSON File Upload Card (PROMINENT BUTTON)
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        jsonFilePickerLauncher.launch("*/*")
+                                    },
+                                colors = CardDefaults.cardColors(containerColor = MawaPrimaryContainer.copy(alpha = 0.45f)),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.5.dp, MawaPrimary)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(16.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(CircleShape)
+                                                .background(MawaPrimary),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.FolderOpen,
+                                                contentDescription = null,
+                                                tint = Color.White,
+                                                modifier = Modifier.size(24.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text(
+                                                text = "📁 JSON ফাইল আপলোড করুন",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = if (selectedFileName != null) "লোড হয়েছে: $selectedFileName" else "মোবাইল স্টোরেজ বা ডাউনলোড ফোল্ডার থেকে ফাইল বাছুন",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            jsonFilePickerLauncher.launch("*/*")
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = MawaPrimary),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Icon(imageVector = Icons.Default.FileUpload, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("ফাইল বাছুন", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // 2. Supabase Cloud Restore Card
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        onDismiss()
+                                        onOpenSupabaseCloud()
+                                    },
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF3ECF8E).copy(alpha = 0.12f)),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.2.dp, Color(0xFF10B981).copy(alpha = 0.5f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(14.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF10B981).copy(alpha = 0.2f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CloudDownload,
+                                                contentDescription = null,
+                                                tint = Color(0xFF047857),
+                                                modifier = Modifier.size(22.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = "সুপাবেজ ক্লাউড থেকে রিস্টোর ☁️",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF047857)
+                                            )
+                                            Text(
+                                                text = "অনলাইন ডাটাবেজে সংরক্ষিত ব্যাকআপ দেখুন",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    Button(
+                                        onClick = {
+                                            onDismiss()
+                                            onOpenSupabaseCloud()
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("ক্লাউড দেখুন ➔", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // 3. BACKUP PREVIEW CARD (If JSON loaded)
+                            if (parsedBackupPreview != null) {
+                                val preview = parsedBackupPreview!!
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = CardDefaults.cardColors(containerColor = FinancialPositiveContainer.copy(alpha = 0.5f)),
+                                    border = BorderStroke(1.5.dp, FinancialPositive)
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(imageVector = Icons.Default.CheckCircle, contentDescription = null, tint = FinancialPositive, modifier = Modifier.size(20.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "সঠিক ব্যাকআপ ফাইল প্রস্তুত!",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = FinancialPositive
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        preview.shopSettings?.shopName?.let {
+                                            Text("🏪 দোকান: $it", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("👥 কাস্টমার: ${preview.customers.size} জন", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                            Text("📝 লেনদেন: ${preview.transactions.size} টি", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text("🛒 বাজার ফর্দ: ${preview.fordiItems.size} টি", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                            Text("📦 পণ্য তালিকা: ${preview.products.size} টি", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                        }
+
+                                        Spacer(modifier = Modifier.height(12.dp))
+
+                                        // Restore Actions
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Button(
+                                                onClick = {
+                                                    restoreWithOverwrite = true
+                                                    showRestoreConfirmDialog = true
+                                                },
+                                                modifier = Modifier.weight(1.2f),
+                                                colors = ButtonDefaults.buttonColors(containerColor = FinancialNegative),
+                                                shape = RoundedCornerShape(8.dp)
+                                            ) {
+                                                Icon(imageVector = Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("মুছে রিস্টোর", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = {
+                                                    restoreWithOverwrite = false
+                                                    showRestoreConfirmDialog = true
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                                shape = RoundedCornerShape(8.dp)
+                                            ) {
+                                                Text("যুক্ত করুন", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+
+                            // 4. JSON Text Input Box
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "অথবা JSON টেক্সট পেস্ট করুন:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+
+                                TextButton(
+                                    onClick = {
+                                        val clipText = clipboardManager.getText()?.text ?: ""
+                                        if (clipText.isNotBlank()) {
+                                            restoreJsonInput = clipText
+                                            Toast.makeText(context, "ক্লিপবোর্ড থেকে পেস্ট হয়েছে", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            Toast.makeText(context, "ক্লিপবোর্ডে কোনো ডাটা নেই", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                ) {
+                                    Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("ক্লিপবোর্ড পেস্ট", fontSize = 12.sp)
+                                }
+                            }
+
+                            OutlinedTextField(
+                                value = restoreJsonInput,
+                                onValueChange = { 
+                                    restoreJsonInput = it 
+                                    selectedFileName = null
+                                },
+                                placeholder = { Text("এখানে ব্যাকআপের সম্পূর্ণ JSON টেক্সট পেস্ট করতে পারেন...") },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(110.dp)
+                                    .testTag("input_restore_json"),
+                                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = MawaPrimary,
+                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                                )
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            if (parsedBackupPreview == null && restoreJsonInput.isNotBlank()) {
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = CardDefaults.cardColors(containerColor = FinancialNegativeContainer.copy(alpha = 0.5f))
+                                ) {
+                                    Text(
+                                        text = "⚠️ টেক্সটটি সঠিক JSON ব্যাকআপ ফরম্যাটে নেই। অনুগ্রহ করে ফাইল আপলোড করুন অথবা সম্পূর্ণ জেসন টেক্সট দিন।",
+                                        modifier = Modifier.padding(10.dp),
+                                        fontSize = 12.sp,
+                                        color = FinancialNegative
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(10.dp))
+                            }
+
+                            if (parsedBackupPreview == null) {
+                                Button(
+                                    onClick = {
+                                        if (restoreJsonInput.isBlank()) {
+                                            Toast.makeText(context, "অনুগ্রহ করে JSON ব্যাকআপ ফাইল বাছুন বা টেক্সট দিন", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            restoreWithOverwrite = true
+                                            showRestoreConfirmDialog = true
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("btn_trigger_restore"),
+                                    shape = RoundedCornerShape(10.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = FinancialNegative),
+                                    enabled = restoreJsonInput.isNotBlank()
+                                ) {
+                                    Icon(imageVector = Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("রিস্টোর প্রক্রিয়া শুরু করুন", fontWeight = FontWeight.Bold)
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            // 5. WIPE SAMPLE / DUMMY DATA CARD
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteSweep,
+                                            contentDescription = null,
+                                            tint = FinancialNegative,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(10.dp))
+                                        Column {
+                                            Text(
+                                                text = "স্যাম্পল / ডামি ডাটা মুছুন",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = "সকল পরীক্ষামূলক ডামি কাস্টমার ও হিসাব খালি করুন",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    OutlinedButton(
+                                        onClick = {
+                                            showClearDataConfirmDialog = true
+                                        },
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = FinancialNegative),
+                                        border = BorderStroke(1.dp, FinancialNegative.copy(alpha = 0.6f)),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Text("ডাটা মুছুন", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+
                         BackupTab.BACKUP -> {
-                            // --- TAB 1: BACKUP OPTIONS ---
+                            // --- TAB 2: BACKUP OPTIONS ---
                             // Supabase Cloud Card
                             Card(
                                 modifier = Modifier
@@ -232,7 +646,7 @@ fun BackupRestoreDialog(
                                     },
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFF3ECF8E).copy(alpha = 0.12f)),
                                 shape = RoundedCornerShape(14.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF10B981).copy(alpha = 0.6f))
+                                border = BorderStroke(1.5.dp, Color(0xFF10B981).copy(alpha = 0.6f))
                             ) {
                                 Row(
                                     modifier = Modifier
@@ -357,173 +771,6 @@ fun BackupRestoreDialog(
                                     )
                                 }
                             )
-                        }
-
-                        BackupTab.RESTORE -> {
-                            // --- TAB 2: RESTORE OPTIONS ---
-                            // Supabase Cloud Restore Card
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        onDismiss()
-                                        onOpenSupabaseCloud()
-                                    },
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF3ECF8E).copy(alpha = 0.12f)),
-                                shape = RoundedCornerShape(14.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF10B981).copy(alpha = 0.6f))
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(14.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(42.dp)
-                                                .clip(CircleShape)
-                                                .background(Color(0xFF10B981).copy(alpha = 0.2f)),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.CloudDownload,
-                                                contentDescription = null,
-                                                tint = Color(0xFF047857),
-                                                modifier = Modifier.size(24.dp)
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(12.dp))
-                                        Column {
-                                            Text(
-                                                text = "সুপাবেজ ক্লাউড থেকে রিস্টোর ☁️",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF047857)
-                                            )
-                                            Text(
-                                                text = "অনলাইন ডাটাবেজে সংরক্ষিত ব্যাকআপ তালিকা থেকে ১-ক্লিকে রিস্টোর করুন",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-
-                                    Button(
-                                        onClick = {
-                                            onDismiss()
-                                            onOpenSupabaseCloud()
-                                        },
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Text("ক্লাউড দেখুন ➔", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(12.dp))
-
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = CardDefaults.cardColors(containerColor = FinancialWarning.copy(alpha = 0.1f)),
-                                border = BorderStroke(1.dp, FinancialWarning.copy(alpha = 0.4f))
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Warning,
-                                        contentDescription = null,
-                                        tint = FinancialWarning,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(10.dp))
-                                    Text(
-                                        text = "সতর্কতা: রিস্টোর করলে ব্যাকআপ ফাইলের ডাটা দিয়ে বর্তমান হিসাব প্রতিস্থাপিত হবে।",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(14.dp))
-
-                            Text(
-                                text = "JSON ব্যাকআপ টেক্সট বা ফাইল পেস্ট করুন:",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            OutlinedTextField(
-                                value = restoreJsonInput,
-                                onValueChange = { restoreJsonInput = it },
-                                placeholder = { Text("এখানে ব্যাকআপের JSON টেক্সট পেস্ট করুন...") },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(140.dp)
-                                    .testTag("input_restore_json"),
-                                textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MawaPrimary,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                                )
-                            )
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                OutlinedButton(
-                                    onClick = {
-                                        val clipText = clipboardManager.getText()?.text ?: ""
-                                        if (clipText.isNotBlank()) {
-                                            restoreJsonInput = clipText
-                                            Toast.makeText(context, "ক্লিপবোর্ড থেকে পেস্ট হয়েছে", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            Toast.makeText(context, "ক্লিপবোর্ডে কোনো ডাটা নেই", Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Icon(imageVector = Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("পেস্ট করুন")
-                                }
-
-                                Button(
-                                    onClick = {
-                                        if (restoreJsonInput.isBlank()) {
-                                            Toast.makeText(context, "অনুগ্রহ করে JSON ব্যাকআপ টেক্সট দিন", Toast.LENGTH_SHORT).show()
-                                        } else {
-                                            showRestoreConfirmDialog = true
-                                        }
-                                    },
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .testTag("btn_trigger_restore"),
-                                    shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = FinancialNegative)
-                                ) {
-                                    Icon(imageVector = Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("রিস্টোর করুন", fontWeight = FontWeight.Bold)
-                                }
-                            }
                         }
 
                         BackupTab.MEMO_EXPORT -> {
@@ -662,43 +909,140 @@ fun BackupRestoreDialog(
                 Icon(
                     imageVector = Icons.Default.Warning,
                     contentDescription = null,
-                    tint = FinancialNegative,
+                    tint = if (restoreWithOverwrite) FinancialNegative else MawaPrimary,
                     modifier = Modifier.size(32.dp)
                 )
             },
             title = {
                 Text(
-                    text = "আপনি কি নিশ্চিতভাবে রিস্টোর করতে চান?",
+                    text = if (restoreWithOverwrite) "ডাটা প্রতিস্থাপন করে রিস্টোর করবেন?" else "বিদ্যমান ডাটার সাথে যুক্ত করবেন?",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
             },
             text = {
                 Text(
-                    text = "রিস্টোর সম্পন্ন হলে বর্তমান ডাটাবেজ মুছে গিয়ে ব্যাকআপ ফাইলের সকল কাস্টমার, হিসাব, লেনদেন ও ফর্দ প্রতিস্থাপিত হবে।",
+                    text = if (restoreWithOverwrite) 
+                        "বর্তমান ডাটাবেজের সকল পুরনো হিসাব ও ডামি ডাটা মুছে গিয়ে ব্যাকআপ ফাইলের কাস্টমার, লেনদেন, ফর্দ ও সেটিংস প্রতিস্থাপিত হবে।"
+                        else "বর্তমান হিসাবগুলো অপরিবর্তিত থাকবে এবং ব্যাকআপের নতুন কাস্টমার ও লেনদেন যুক্ত হবে।",
                     style = MaterialTheme.typography.bodyMedium
                 )
             },
             confirmButton = {
                 Button(
                     onClick = {
+                        showRestoreConfirmDialog = false
+                        isProcessing = true
                         scope.launch {
-                            showRestoreConfirmDialog = false
-                            val success = viewModel.restoreFullBackupFromJson(restoreJsonInput, overwriteExisting = true)
-                            if (success) {
-                                restoreJsonInput = ""
-                                onDismiss()
+                            viewModel.restoreFullBackupFromJson(
+                                jsonString = restoreJsonInput, 
+                                overwriteExisting = restoreWithOverwrite
+                            ) { success, msg, _ ->
+                                isProcessing = false
+                                if (success) {
+                                    restoreSuccessMessage = msg
+                                    restoreJsonInput = ""
+                                }
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = FinancialNegative)
+                    colors = ButtonDefaults.buttonColors(containerColor = if (restoreWithOverwrite) FinancialNegative else MawaPrimary)
                 ) {
-                    Text("হ্যাঁ, রিস্টোর নিশ্চিত করুন", fontWeight = FontWeight.Bold, color = Color.White)
+                    Text(if (restoreWithOverwrite) "হ্যাঁ, রিস্টোর নিশ্চিত করুন" else "হ্যাঁ, যুক্ত করুন", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showRestoreConfirmDialog = false }) {
                     Text("বাতিল")
+                }
+            }
+        )
+    }
+
+    // Confirmation Alert before clearing dummy sample data
+    if (showClearDataConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDataConfirmDialog = false },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.DeleteSweep,
+                    contentDescription = null,
+                    tint = FinancialNegative,
+                    modifier = Modifier.size(32.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "সকল ডামি ও স্যাম্পল ডাটা মুছে ফেলবেন?",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Text(
+                    text = "অ্যাপের সকল পরীক্ষামূলক কাস্টমার, বাকি লেনদেন ও ফর্দ মুছে ডাটাবেজ সম্পূর্ণ খালি করা হবে। আপনি একদম নতুন করে নিজস্ব হিসাব লিখতে পারবেন।",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearDataConfirmDialog = false
+                        viewModel.clearAllSampleData {
+                            Toast.makeText(context, "সকল ডামি ডাটা মুছে ফেলা হয়েছে!", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = FinancialNegative)
+                ) {
+                    Text("হ্যাঁ, সব মুছুন", fontWeight = FontWeight.Bold, color = Color.White)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDataConfirmDialog = false }) {
+                    Text("বাতিল")
+                }
+            }
+        )
+    }
+
+    // Success Dialog after restore
+    if (restoreSuccessMessage != null) {
+        AlertDialog(
+            onDismissRequest = { 
+                restoreSuccessMessage = null
+                onDismiss()
+            },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.CheckCircle,
+                    contentDescription = null,
+                    tint = FinancialPositive,
+                    modifier = Modifier.size(36.dp)
+                )
+            },
+            title = {
+                Text(
+                    text = "রিস্টোর সফল হয়েছে! 🎉",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = FinancialPositive
+                )
+            },
+            text = {
+                Text(
+                    text = restoreSuccessMessage ?: "",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        restoreSuccessMessage = null
+                        onDismiss()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = FinancialPositive)
+                ) {
+                    Text("ঠিক আছে", fontWeight = FontWeight.Bold, color = Color.White)
                 }
             }
         )

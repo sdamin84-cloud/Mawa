@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -50,6 +51,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Tab
@@ -65,10 +67,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -90,6 +96,13 @@ import com.example.ui.theme.FinancialWarning
 import com.example.ui.theme.FinancialWarningContainer
 import com.example.ui.theme.MawaPrimary
 
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.FilterChip
+import com.example.mawa.ui.components.BarcodeScannerDialog
+
 enum class FordiTab {
     CURRENT, // বর্তমান ফর্দ
     HISTORY  // আগে করা সব ফর্দ
@@ -106,6 +119,9 @@ fun FordiScreen(
 
     var activeTab by remember { mutableStateOf(FordiTab.CURRENT) }
     var showAddDialog by remember { mutableStateOf(false) }
+    var showBarcodeScanner by remember { mutableStateOf(false) }
+    var showProductPickerSheet by remember { mutableStateOf(false) }
+    var preselectedProductForAdd by remember { mutableStateOf<ProductEntity?>(null) }
     var itemToEdit by remember { mutableStateOf<FordiItemEntity?>(null) }
     var showNewFordiConfirmDialog by remember { mutableStateOf(false) }
 
@@ -148,7 +164,16 @@ fun FordiScreen(
             } else {
                 "পূর্বে সম্পন্ন ফর্দ: ${BengaliUtils.toBanglaDigits(purchasedItems.size.toLong())} টি"
             },
-            onMenuClick = onOpenDrawer
+            onMenuClick = onOpenDrawer,
+            actions = {
+                IconButton(onClick = { showBarcodeScanner = true }) {
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = "বারকোড স্ক্যান",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+            }
         )
 
         // Tab Switcher: [ বর্তমান ফর্দ ] [ আগে করা সব ফর্দ ]
@@ -232,7 +257,7 @@ fun FordiScreen(
                                     Text("নতুন ফর্দ", fontWeight = FontWeight.Bold, color = MawaPrimary)
                                 }
 
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                     // Select All Checkbox Button
                                     if (pendingItems.isNotEmpty()) {
                                         val allChecked = pendingItems.isNotEmpty() && validCheckedIds.size == pendingItems.size
@@ -249,16 +274,30 @@ fun FordiScreen(
                                         }
                                     }
 
+                                    // Pick from Saved Products / Stock
+                                    OutlinedButton(
+                                        onClick = { showProductPickerSheet = true },
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.testTag("pick_from_saved_products_btn")
+                                    ) {
+                                        Icon(imageVector = Icons.Default.Category, contentDescription = null, modifier = Modifier.size(16.dp), tint = MawaPrimary)
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text("পণ্য তালিকা", fontSize = 12.sp, color = MawaPrimary)
+                                    }
+
                                     // Add Item Button
                                     Button(
-                                        onClick = { showAddDialog = true },
+                                        onClick = { 
+                                            preselectedProductForAdd = null
+                                            showAddDialog = true 
+                                        },
                                         shape = RoundedCornerShape(8.dp),
                                         colors = ButtonDefaults.buttonColors(containerColor = MawaPrimary),
                                         modifier = Modifier.testTag("add_fordi_item_btn")
                                     ) {
                                         Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(4.dp))
-                                        Text("পণ্য যোগ")
+                                        Text("যোগ")
                                     }
                                 }
                             }
@@ -881,11 +920,50 @@ fun FordiScreen(
         }
     }
 
+    // BARCODE SCANNER DIALOG FOR FORDI
+    if (showBarcodeScanner) {
+        BarcodeScannerDialog(
+            allProducts = activeProducts,
+            onProductSelected = { product ->
+                preselectedProductForAdd = product
+                showBarcodeScanner = false
+                showAddDialog = true
+            },
+            onDismiss = { showBarcodeScanner = false },
+            onAddNewProductWithBarcode = { barcode ->
+                showBarcodeScanner = false
+                preselectedProductForAdd = ProductEntity(
+                    name = "",
+                    barcode = barcode,
+                    unit = "কেজি"
+                )
+                showAddDialog = true
+            }
+        )
+    }
+
+    // QUICK PRODUCT PICKER FROM SAVED STOCK / PRODUCTS
+    if (showProductPickerSheet) {
+        SelectProductFromStockDialog(
+            products = activeProducts,
+            onDismiss = { showProductPickerSheet = false },
+            onProductSelected = { product ->
+                preselectedProductForAdd = product
+                showProductPickerSheet = false
+                showAddDialog = true
+            }
+        )
+    }
+
     // ADD FORDI ITEM DIALOG
     if (showAddDialog) {
         AddFordiItemDialog(
+            initialProduct = preselectedProductForAdd,
             products = activeProducts,
-            onDismiss = { showAddDialog = false },
+            onDismiss = { 
+                showAddDialog = false
+                preselectedProductForAdd = null
+            },
             onAdd = { name, prodId, qty, unit, purchaseRate, sellingRate ->
                 viewModel.addFordiItem(
                     productName = name,
@@ -896,6 +974,7 @@ fun FordiScreen(
                     sellingRate = sellingRate
                 )
                 showAddDialog = false
+                preselectedProductForAdd = null
             }
         )
     }
@@ -953,45 +1032,114 @@ fun FordiScreen(
 
 @Composable
 fun AddFordiItemDialog(
+    initialProduct: ProductEntity? = null,
     products: List<ProductEntity>,
     onDismiss: () -> Unit,
     onAdd: (name: String, productId: Long?, qty: Double, unit: String, purchaseRate: Double, sellingRate: Double) -> Unit
 ) {
-    var productName by remember { mutableStateOf("") }
-    var selectedProductId by remember { mutableStateOf<Long?>(null) }
+    var productName by remember { mutableStateOf(initialProduct?.name ?: "") }
+    var selectedProductId by remember { mutableStateOf<Long?>(initialProduct?.id) }
     var quantity by remember { mutableStateOf("1") }
-    var unit by remember { mutableStateOf("কেজি") }
-    var purchaseRate by remember { mutableStateOf("") }
-    var sellingRate by remember { mutableStateOf("") }
+    var unit by remember { mutableStateOf(initialProduct?.unit?.ifBlank { "কেজি" } ?: "কেজি") }
+    var purchaseRate by remember {
+        mutableStateOf(
+            if ((initialProduct?.defaultPurchasePrice ?: 0.0) > 0)
+                initialProduct!!.defaultPurchasePrice.toString().removeSuffix(".0")
+            else ""
+        )
+    }
+    var sellingRate by remember {
+        mutableStateOf(
+            if ((initialProduct?.defaultSellingPrice ?: 0.0) > 0)
+                initialProduct!!.defaultSellingPrice.toString().removeSuffix(".0")
+            else ""
+        )
+    }
+    var showBarcodeScannerInDialog by remember { mutableStateOf(false) }
+
+    val focusManager = LocalFocusManager.current
+    val qtyFocus = remember { FocusRequester() }
+    val unitFocus = remember { FocusRequester() }
+    val pRateFocus = remember { FocusRequester() }
+    val sRateFocus = remember { FocusRequester() }
 
     val matchedProducts = remember(productName, products) {
-        if (productName.isBlank()) emptyList()
-        else products.filter {
-            it.name.contains(productName, ignoreCase = true) || it.banglaName.contains(productName)
-        }.take(4)
+        if (productName.isBlank()) {
+            products.take(4)
+        } else {
+            products.filter {
+                it.name.contains(productName, ignoreCase = true) ||
+                it.banglaName.contains(productName, ignoreCase = true) ||
+                it.category.contains(productName, ignoreCase = true) ||
+                it.barcode.contains(productName, ignoreCase = true)
+            }.take(5)
+        }
     }
 
     val qtyNum = quantity.toDoubleOrNull() ?: 0.0
     val rateNum = purchaseRate.toDoubleOrNull() ?: 0.0
     val calculatedTotal = qtyNum * rateNum
 
+    if (showBarcodeScannerInDialog) {
+        BarcodeScannerDialog(
+            allProducts = products,
+            onProductSelected = { p ->
+                productName = p.name
+                selectedProductId = p.id
+                unit = p.unit.ifBlank { "কেজি" }
+                purchaseRate = if (p.defaultPurchasePrice > 0) p.defaultPurchasePrice.toString().removeSuffix(".0") else ""
+                sellingRate = if (p.defaultSellingPrice > 0) p.defaultSellingPrice.toString().removeSuffix(".0") else ""
+                showBarcodeScannerInDialog = false
+            },
+            onDismiss = { showBarcodeScannerInDialog = false },
+            onAddNewProductWithBarcode = { barcode ->
+                productName = "পণ্য ($barcode)"
+                showBarcodeScannerInDialog = false
+            }
+        )
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Text(text = "ফর্দে পণ্য যোগ করুন", fontWeight = FontWeight.Bold)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = "ফর্দে পণ্য যোগ করুন", fontWeight = FontWeight.Bold)
+                IconButton(onClick = { showBarcodeScannerInDialog = true }) {
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = "বারকোড স্ক্যান",
+                        tint = MawaPrimary
+                    )
+                }
+            }
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
-                // Product Name input with autocomplete suggestions
+                // Product Name input with autocomplete suggestions & scan icon
                 OutlinedTextField(
                     value = productName,
                     onValueChange = {
                         productName = it
                         selectedProductId = null
                     },
-                    label = { Text("পণ্যের নাম *") },
+                    label = { Text("পণ্যের নাম বা বারকোড *") },
                     placeholder = { Text("যেমন: চিনি, সয়াবিন তেল, মসুর ডাল") },
+                    trailingIcon = {
+                        IconButton(onClick = { showBarcodeScannerInDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "বারকোড স্ক্যান",
+                                tint = MawaPrimary
+                            )
+                        }
+                    },
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                    keyboardActions = KeyboardActions(onNext = { qtyFocus.requestFocus() }),
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("fordi_product_name_input")
@@ -999,7 +1147,13 @@ fun AddFordiItemDialog(
 
                 // Autocomplete suggestion chips
                 if (matchedProducts.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = if (productName.isBlank()) "সংরক্ষিত পণ্য সমূহ:" else "পরামর্শ:",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -1012,16 +1166,19 @@ fun AddFordiItemDialog(
                                     .clickable {
                                         productName = p.name
                                         selectedProductId = p.id
-                                        unit = p.unit
-                                        purchaseRate = if (p.defaultPurchasePrice > 0) p.defaultPurchasePrice.toInt().toString() else ""
-                                        sellingRate = if (p.defaultSellingPrice > 0) p.defaultSellingPrice.toInt().toString() else ""
+                                        unit = p.unit.ifBlank { "কেজি" }
+                                        purchaseRate = if (p.defaultPurchasePrice > 0) p.defaultPurchasePrice.toString().removeSuffix(".0") else ""
+                                        sellingRate = if (p.defaultSellingPrice > 0) p.defaultSellingPrice.toString().removeSuffix(".0") else ""
+                                        qtyFocus.requestFocus()
                                     }
                                     .padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
                                 Text(
                                     text = p.name,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MawaPrimary
+                                    color = MawaPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -1039,17 +1196,27 @@ fun AddFordiItemDialog(
                         value = quantity,
                         onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) quantity = it },
                         label = { Text("পরিমাণ *") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(onNext = { unitFocus.requestFocus() }),
                         singleLine = true,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(qtyFocus)
                     )
 
                     OutlinedTextField(
                         value = unit,
                         onValueChange = { unit = it },
                         label = { Text("একক") },
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                        keyboardActions = KeyboardActions(onNext = { pRateFocus.requestFocus() }),
                         singleLine = true,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(unitFocus)
                     )
                 }
 
@@ -1065,9 +1232,15 @@ fun AddFordiItemDialog(
                         onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) purchaseRate = it },
                         label = { Text("ক্রয় দর (৳)") },
                         placeholder = { Text("৳") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Next
+                        ),
+                        keyboardActions = KeyboardActions(onNext = { sRateFocus.requestFocus() }),
                         singleLine = true,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(pRateFocus)
                     )
 
                     OutlinedTextField(
@@ -1075,9 +1248,22 @@ fun AddFordiItemDialog(
                         onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) sellingRate = it },
                         label = { Text("বিক্রয় দর (৳)") },
                         placeholder = { Text("৳") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Number,
+                            imeAction = ImeAction.Done
+                        ),
+                        keyboardActions = KeyboardActions(onDone = {
+                            if (productName.isNotBlank() && qtyNum > 0) {
+                                val pRate = purchaseRate.toDoubleOrNull() ?: 0.0
+                                val sRate = sellingRate.toDoubleOrNull() ?: 0.0
+                                onAdd(productName.trim(), selectedProductId, qtyNum, unit.trim(), pRate, sRate)
+                            }
+                            focusManager.clearFocus()
+                        }),
                         singleLine = true,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(sRateFocus)
                     )
                 }
 
@@ -1125,6 +1311,145 @@ fun AddFordiItemDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("বাতিল")
+            }
+        }
+    )
+}
+
+@Composable
+fun SelectProductFromStockDialog(
+    products: List<ProductEntity>,
+    onDismiss: () -> Unit,
+    onProductSelected: (ProductEntity) -> Unit
+) {
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredProducts = remember(searchQuery, products) {
+        if (searchQuery.isBlank()) {
+            products
+        } else {
+            products.filter {
+                it.name.contains(searchQuery, ignoreCase = true) ||
+                it.banglaName.contains(searchQuery, ignoreCase = true) ||
+                it.barcode.contains(searchQuery, ignoreCase = true) ||
+                it.category.contains(searchQuery, ignoreCase = true)
+            }
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(text = "সংরক্ষিত পণ্য থেকে ফর্দে যোগ", fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(380.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = { Text("নাম বা বারকোড দিয়ে খুঁজুন...") },
+                    leadingIcon = {
+                        Icon(imageVector = Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                if (filteredProducts.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (products.isEmpty()) "কোনো পণ্য সংরক্ষিত নেই" else "কোনো পণ্য পাওয়া যায়নি",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        items(filteredProducts, key = { it.id }) { prod ->
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onProductSelected(prod) },
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = prod.name,
+                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.bodyMedium
+                                        )
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (prod.barcode.isNotBlank()) {
+                                                Text(
+                                                    text = "বারকোড: ${prod.barcode}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MawaPrimary
+                                                )
+                                            }
+                                            if (prod.stockQuantity > 0) {
+                                                Text(
+                                                    text = "স্টক: ${BengaliUtils.toBanglaDigits(prod.stockQuantity.toLong())} ${prod.unit}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = FinancialPositive
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        if (prod.defaultPurchasePrice > 0) {
+                                            Text(
+                                                text = "ক্রয়: ৳${prod.defaultPurchasePrice.toInt()}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = FinancialWarning
+                                            )
+                                        }
+                                        if (prod.defaultSellingPrice > 0) {
+                                            Text(
+                                                text = "বিক্রয়: ৳${prod.defaultSellingPrice.toInt()}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = FinancialPositive
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("বন্ধ করুন")
             }
         }
     )
