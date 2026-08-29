@@ -135,6 +135,18 @@ object BengaliUtils {
     fun toBengaliDigits(input: String): String = toBanglaDigits(input)
     fun toBengaliDigits(number: Long): String = toBanglaDigits(number)
     fun toBengaliDigits(number: Double): String = toBanglaDigits(number)
+    fun toEnglishDigits(input: String): String {
+        val sb = StringBuilder()
+        for (ch in input) {
+            val idx = bengaliDigits.indexOf(ch)
+            if (idx != -1) {
+                sb.append(englishDigits[idx])
+            } else {
+                sb.append(ch)
+            }
+        }
+        return sb.toString()
+    }
     fun formatNumber(number: Double): String = formatTaka(number)
     fun formatNumber(number: Long): String = toBanglaDigits(number)
 

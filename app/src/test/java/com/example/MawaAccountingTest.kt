@@ -8,7 +8,12 @@ import com.example.mawa.util.BengaliUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [36])
 class MawaAccountingTest {
 
     @Test
@@ -76,5 +81,112 @@ class MawaAccountingTest {
         val sellingPrice = 145.0
         val margin = sellingPrice - purchaseRate
         assertEquals(25.0, margin, 0.001)
+    }
+
+    @Test
+    fun testKeyValueJsonBackupParsing() {
+        val sampleJson = """
+        {
+          "key_baki_records": [
+            {
+              "amount": 50.0,
+              "customerName": "টিপু",
+              "date": "20/08/2026",
+              "deletedAt": 0,
+              "details": "",
+              "dueDate": "",
+              "id": "4e44d24c-3193-4064-aed9-d656e4ad3d06",
+              "phone": "01700000000",
+              "transactions": [
+                {
+                  "amount": 50.0,
+                  "balanceAfter": 50.0,
+                  "date": "20/08/2026",
+                  "deletedAt": 0,
+                  "id": "28000df2-801e-40d8-8c20-f7f43807b064",
+                  "note": "নতুন বাকি শুরু",
+                  "time": "06:28 PM",
+                  "type": "BAKI",
+                  "updatedAt": 1787228925047
+                }
+              ],
+              "updatedAt": 1787228925047
+            }
+          ],
+          "key_expenses_06-08-2026": [
+            {
+              "amount": 6787.0,
+              "date": "06-08-2026",
+              "deletedAt": 0,
+              "expenseType": "SHOP",
+              "id": "050c3abd-fbd6-412b-82b8-dd4f5b723216",
+              "name": "মাল কেনা",
+              "time": "09:17 PM",
+              "type": "PURCHASE",
+              "updatedAt": 1787671036534
+            }
+          ],
+          "key_fordi_records": [
+            {
+              "colorHex": "#F0FDFA",
+              "date": "21/08/2026",
+              "deletedAt": 0,
+              "id": "e97b466b-7a4d-41fa-bccf-de943594190a",
+              "items": [
+                {
+                  "actualPurchaseRate": 185.0,
+                  "actualQuantity": 0.0,
+                  "actualTotal": 0.0,
+                  "id": "ddcc6593-c0f4-4465-b8eb-5ce42d2ec20e",
+                  "isChecked": false,
+                  "name": "সয়াবিন তেল",
+                  "plannedQuantity": 12.0,
+                  "plannedTotal": 2220.0,
+                  "postedToAccounting": false,
+                  "potentialProfit": 180.0,
+                  "price": 2220.0,
+                  "productName": "সয়াবিন তেল",
+                  "purchaseRate": 185.0,
+                  "sellingRate": 200.0,
+                  "status": "NOT_BOUGHT",
+                  "unit": "liter"
+                }
+              ],
+              "postedAmount": 0.0,
+              "postedToAccounting": false,
+              "status": "DRAFT",
+              "title": "২১ আগস্ট বাজার ফর্দ",
+              "updatedAt": 1787315775868
+            }
+          ],
+          "key_product_memory": [
+            {
+              "averagePurchasePrice": 45.0,
+              "category": "বিস্কুট",
+              "createdAt": 1787228506180,
+              "deletedAt": 0,
+              "id": "1572c2f7-0693-4b84-9d93-1ebb544ec11d",
+              "lastPurchaseDate": "20-08-2026",
+              "lastPurchasePrice": 45.0,
+              "name": "টোস্ট বিস্কুট",
+              "purchaseCount": 1,
+              "sellingPrice": 55.0,
+              "unit": "packet",
+              "updatedAt": 1787228506180
+            }
+          ],
+          "key_sabek_cash_29-08-2026": 4180.0
+        }
+        """.trimIndent()
+
+        val parsed = com.example.mawa.util.DataBackupRestoreManager.parseFromJsonString(sampleJson)
+        assertEquals(1, parsed.customers.size)
+        assertEquals("টিপু", parsed.customers[0].name)
+        assertEquals(1, parsed.fordiItems.size)
+        assertEquals("সয়াবিন তেল", parsed.fordiItems[0].productName)
+        assertEquals(1, parsed.products.size)
+        assertEquals("টোস্ট বিস্কুট", parsed.products[0].name)
+        assertEquals(2, parsed.transactions.size) // 1 baki transaction + 1 purchase transaction
+        assertEquals(4180.0, parsed.shopSettings?.openingBalance ?: 0.0, 0.001)
     }
 }

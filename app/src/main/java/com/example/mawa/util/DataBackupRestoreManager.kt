@@ -208,6 +208,54 @@ object DataBackupRestoreManager {
         } ?: throw IllegalArgumentException("ফাইলটি পড়া সম্ভব হয়নি")
     }
 
+    fun parseDateAndTimeToMillis(
+        dateStr: String?,
+        timeStr: String? = null,
+        fallbackMillis: Long = System.currentTimeMillis()
+    ): Long {
+        if (dateStr.isNullOrBlank()) return fallbackMillis
+        val engDate = BengaliUtils.toEnglishDigits(dateStr.trim())
+        val engTime = if (!timeStr.isNullOrBlank()) BengaliUtils.toEnglishDigits(timeStr.trim()) else null
+
+        val patternsWithTime = listOf(
+            "dd-MM-yyyy hh:mm a",
+            "dd/MM/yyyy hh:mm a",
+            "dd-MM-yyyy HH:mm",
+            "dd/MM/yyyy HH:mm",
+            "dd-MM-yyyy hh:mm:ss a",
+            "dd/MM/yyyy hh:mm:ss a",
+            "yyyy-MM-dd HH:mm:ss",
+            "yyyy-MM-dd HH:mm"
+        )
+
+        if (!engTime.isNullOrBlank()) {
+            val combined = "$engDate $engTime"
+            for (pattern in patternsWithTime) {
+                try {
+                    val sdf = SimpleDateFormat(pattern, Locale.US)
+                    val d = sdf.parse(combined)
+                    if (d != null) return d.time
+                } catch (_: Exception) {}
+            }
+        }
+
+        val patternsDateOnly = listOf(
+            "dd-MM-yyyy",
+            "dd/MM/yyyy",
+            "yyyy-MM-dd",
+            "yyyy/MM/dd"
+        )
+        for (pattern in patternsDateOnly) {
+            try {
+                val sdf = SimpleDateFormat(pattern, Locale.US)
+                val d = sdf.parse(engDate)
+                if (d != null) return d.time
+            } catch (_: Exception) {}
+        }
+
+        return fallbackMillis
+    }
+
     fun parseFromJsonString(jsonString: String): FullBackupData {
         var cleanJson = jsonString.trim()
         if (cleanJson.startsWith("\uFEFF")) {
@@ -248,10 +296,10 @@ object DataBackupRestoreManager {
 
             return FullBackupData(
                 exportDate = System.currentTimeMillis(),
-                customers = customers,
+                customers = customers.distinctBy { it.name.trim().lowercase() },
                 transactions = transactions,
                 fordiItems = fordiItems,
-                products = products
+                products = products.distinctBy { it.name.trim().lowercase() }
             )
         }
 
@@ -365,13 +413,254 @@ object DataBackupRestoreManager {
             }
         }
 
+        // --- Handle Key-Value / SharedPreferences Backup Format ---
+        // e.g. key_baki_records, key_expenses_DD-MM-YYYY, key_fordi_records, key_product_memory, key_sabek_cash_...
+        var latestSabekCashDate = 0L
+        var latestSabekCashValue = 0.0
+
+        val keys = root.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            val lowerKey = key.lowercase()
+
+            // 1. Customer Baki records (e.g. key_baki_records)
+            if (lowerKey.contains("baki_records") || lowerKey.contains("baki_list") || lowerKey == "key_baki_records") {
+                val bakiArr = root.optJSONArray(key)
+                if (bakiArr != null) {
+                    for (i in 0 until bakiArr.length()) {
+                        val cObj = bakiArr.optJSONObject(i) ?: continue
+                        if (cObj.optLong("deletedAt", 0L) > 0) continue
+                        val custName = cObj.optString("customerName", cObj.optString("name", "নামহীন")).trim()
+                        if (custName.isBlank()) continue
+                        val phone = cObj.optString("phone", "").trim()
+                        val address = cObj.optString("details", cObj.optString("address", "")).trim()
+                        val totalAmt = cObj.optDouble("amount", 0.0)
+                        val txArrInner = cObj.optJSONArray("transactions")
+
+                        var hasSpecificTransactions = false
+                        if (txArrInner != null && txArrInner.length() > 0) {
+                            for (j in 0 until txArrInner.length()) {
+                                val txObj = txArrInner.optJSONObject(j) ?: continue
+                                if (txObj.optLong("deletedAt", 0L) > 0) continue
+                                val txAmt = txObj.optDouble("amount", 0.0)
+                                if (txAmt <= 0) continue
+                                hasSpecificTransactions = true
+                                val typeStr = txObj.optString("type", "BAKI").uppercase()
+                                val txType = if (typeStr.contains("JOMA") || typeStr.contains("COLLECTION") || typeStr.contains("PAYMENT") || typeStr.contains("RECEIVED") || typeStr.contains("জমা")) {
+                                    TransactionType.BAKI_COLLECTION
+                                } else {
+                                    TransactionType.SALE_BAKI
+                                }
+                                val note = txObj.optString("note", if (txType == TransactionType.SALE_BAKI) "বাকি বিক্রি" else "বাকি আদায়")
+                                val updatedAt = txObj.optLong("updatedAt", 0L)
+                                val dateStr = txObj.optString("date", "")
+                                val timeStr = txObj.optString("time", "")
+                                val ts = if (updatedAt > 0) updatedAt else parseDateAndTimeToMillis(dateStr, timeStr)
+                                transactions.add(
+                                    TransactionEntity(
+                                        type = txType,
+                                        amount = txAmt,
+                                        customerName = custName,
+                                        note = note,
+                                        category = "বাকি",
+                                        timestamp = ts
+                                    )
+                                )
+                            }
+                        }
+
+                        customers.add(
+                            CustomerEntity(
+                                name = custName,
+                                phone = phone,
+                                address = address,
+                                openingBalance = if (!hasSpecificTransactions) totalAmt else 0.0
+                            )
+                        )
+                    }
+                }
+            }
+
+            // 2. Expenses / Purchases by date (e.g. key_expenses_06-08-2026, key_expenses_29-08-2026, etc.)
+            if (lowerKey.startsWith("key_expenses_") || lowerKey.startsWith("expenses_")) {
+                val expArr = root.optJSONArray(key)
+                val dateFromKey = if (key.contains("_")) key.substringAfterLast("_") else ""
+                if (expArr != null) {
+                    for (i in 0 until expArr.length()) {
+                        val item = expArr.optJSONObject(i) ?: continue
+                        if (item.optLong("deletedAt", 0L) > 0) continue
+                        val amt = item.optDouble("amount", 0.0)
+                        if (amt <= 0) continue
+                        val name = item.optString("name", "খরচ").trim()
+                        val typeStr = item.optString("type", "").uppercase()
+                        val expType = item.optString("expenseType", item.optString("expense_type", "")).uppercase()
+                        val dateStr = item.optString("date", dateFromKey)
+                        val timeStr = item.optString("time", "")
+                        val updatedAt = item.optLong("updatedAt", 0L)
+                        val ts = if (updatedAt > 0) updatedAt else parseDateAndTimeToMillis(dateStr, timeStr)
+
+                        val txType = when {
+                            typeStr == "PURCHASE" || expType == "PURCHASE" || name.contains("মাল কেনা") || name.contains("ক্রয়") -> TransactionType.PURCHASE_DIRECT
+                            typeStr == "HOME" || expType == "HOME" || name.contains("সংসার") || name.contains("উত্তোলন") || name.contains("বাড়ি") -> TransactionType.EXPENSE_HOME
+                            typeStr == "SALE_CASH" || typeStr == "CASH" -> TransactionType.SALE_CASH
+                            else -> TransactionType.EXPENSE_SHOP
+                        }
+
+                        transactions.add(
+                            TransactionEntity(
+                                type = txType,
+                                amount = amt,
+                                productName = if (txType == TransactionType.PURCHASE_DIRECT) name else null,
+                                note = name,
+                                category = if (txType == TransactionType.EXPENSE_HOME) "সংসার" else if (txType == TransactionType.PURCHASE_DIRECT) "পণ্য ক্রয়" else "দোকান খরচ",
+                                timestamp = ts
+                            )
+                        )
+                    }
+                }
+            }
+
+            // 3. Fordi / Shopping list (e.g. key_fordi_records)
+            if (lowerKey.contains("fordi_records") || lowerKey.contains("fordi_list") || lowerKey == "key_fordi_records") {
+                val fordiGroupArr = root.optJSONArray(key)
+                if (fordiGroupArr != null) {
+                    for (i in 0 until fordiGroupArr.length()) {
+                        val gObj = fordiGroupArr.optJSONObject(i) ?: continue
+                        if (gObj.optLong("deletedAt", 0L) > 0) continue
+                        val itemsArr = gObj.optJSONArray("items")
+                        val groupDate = gObj.optString("date", "")
+                        val groupUpdatedAt = gObj.optLong("updatedAt", parseDateAndTimeToMillis(groupDate))
+                        val isPosted = gObj.optBoolean("postedToAccounting", false)
+
+                        if (itemsArr != null && itemsArr.length() > 0) {
+                            for (j in 0 until itemsArr.length()) {
+                                val item = itemsArr.optJSONObject(j) ?: continue
+                                val pName = item.optString("productName", item.optString("name", "পণ্য")).trim()
+                                if (pName.isBlank()) continue
+                                val pQty = item.optDouble("plannedQuantity", item.optDouble("quantity", 1.0))
+                                val unit = item.optString("unit", "কেজি")
+                                val pRate = item.optDouble("purchaseRate", item.optDouble("actualPurchaseRate", 0.0))
+                                val sRate = item.optDouble("sellingRate", 0.0)
+                                val isChecked = item.optBoolean("isChecked", false)
+                                val status = item.optString("status", "")
+                                val isPurchased = isChecked || status == "FULLY_BOUGHT" || isPosted
+                                val actQty = item.optDouble("actualQuantity", 0.0)
+                                val actRate = item.optDouble("actualPurchaseRate", item.optDouble("actualRate", 0.0))
+                                val actTotal = item.optDouble("actualTotal", 0.0)
+
+                                fordiItems.add(
+                                    FordiItemEntity(
+                                        productName = pName,
+                                        plannedQuantity = if (pQty > 0) pQty else 1.0,
+                                        unit = unit,
+                                        purchaseRate = pRate,
+                                        sellingRate = sRate,
+                                        isPurchased = isPurchased,
+                                        actualQuantity = actQty,
+                                        actualRate = actRate,
+                                        actualTotal = actTotal,
+                                        createdAt = groupUpdatedAt,
+                                        purchaseDate = if (isPurchased) groupUpdatedAt else null
+                                    )
+                                )
+                            }
+                        } else {
+                            fordiItems.add(parseFordiItem(gObj))
+                        }
+                    }
+                }
+            }
+
+            // 4. Products / Product Memory (e.g. key_product_memory)
+            if (lowerKey.contains("product_memory") || lowerKey == "key_product_memory") {
+                val prodArrInner = root.optJSONArray(key)
+                if (prodArrInner != null) {
+                    for (i in 0 until prodArrInner.length()) {
+                        val p = prodArrInner.optJSONObject(i) ?: continue
+                        if (p.optLong("deletedAt", 0L) > 0) continue
+                        val name = p.optString("name", p.optString("product_name", "")).trim()
+                        if (name.isBlank()) continue
+                        val category = p.optString("category", "মুদি").trim()
+                        val unit = p.optString("unit", "কেজি").trim()
+                        val pPrice = p.optDouble("lastPurchasePrice", p.optDouble("averagePurchasePrice", p.optDouble("defaultPurchasePrice", 0.0)))
+                        val sPrice = p.optDouble("sellingPrice", p.optDouble("defaultSellingPrice", 0.0))
+                        val createdAt = p.optLong("createdAt", p.optLong("updatedAt", System.currentTimeMillis()))
+                        products.add(
+                            ProductEntity(
+                                name = name,
+                                banglaName = name,
+                                category = category,
+                                unit = unit,
+                                defaultPurchasePrice = pPrice,
+                                defaultSellingPrice = sPrice,
+                                createdAt = createdAt
+                            )
+                        )
+                    }
+                }
+            }
+
+            // 5. Product Suggestions (e.g. key_product_suggestions)
+            if (lowerKey.contains("product_suggestions") || lowerKey == "key_product_suggestions") {
+                val suggArr = root.optJSONArray(key)
+                if (suggArr != null) {
+                    for (i in 0 until suggArr.length()) {
+                        val sName = suggArr.optString(i, "").trim()
+                        if (sName.isNotBlank()) {
+                            products.add(
+                                ProductEntity(
+                                    name = sName,
+                                    banglaName = sName,
+                                    category = "মুদি",
+                                    unit = "কেজি"
+                                )
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 6. Cash Sales by date (e.g. key_cash_sale_15-06-2026)
+            if (lowerKey.startsWith("key_cash_sale_") || lowerKey.startsWith("cash_sale_")) {
+                val saleAmt = root.optDouble(key, 0.0)
+                if (saleAmt > 0) {
+                    val dateStr = if (key.contains("_")) key.substringAfterLast("_") else ""
+                    val ts = parseDateAndTimeToMillis(dateStr)
+                    transactions.add(
+                        TransactionEntity(
+                            type = TransactionType.SALE_CASH,
+                            amount = saleAmt,
+                            note = "নগদ বিক্রি ($dateStr)",
+                            timestamp = ts
+                        )
+                    )
+                }
+            }
+
+            // 7. Sabek Cash by date (e.g. key_sabek_cash_29-08-2026)
+            if (lowerKey.startsWith("key_sabek_cash_") || lowerKey.startsWith("sabek_cash_")) {
+                val sabekAmt = root.optDouble(key, 0.0)
+                val dateStr = if (key.contains("_")) key.substringAfterLast("_") else ""
+                val ts = parseDateAndTimeToMillis(dateStr)
+                if (ts >= latestSabekCashDate && sabekAmt > 0) {
+                    latestSabekCashDate = ts
+                    latestSabekCashValue = sabekAmt
+                }
+            }
+        }
+
+        // Apply latest opening balance if available
+        if (latestSabekCashValue > 0) {
+            settings = (settings ?: ShopSettingsEntity()).copy(openingBalance = latestSabekCashValue)
+        }
+
         return FullBackupData(
             exportDate = exportDate,
             shopSettings = settings,
-            customers = customers,
+            customers = customers.distinctBy { it.name.trim().lowercase() },
             transactions = transactions,
             fordiItems = fordiItems,
-            products = products,
+            products = products.distinctBy { it.name.trim().lowercase() },
             personalTransactions = personalTransactions
         )
     }
