@@ -189,4 +189,61 @@ class MawaAccountingTest {
         assertEquals(2, parsed.transactions.size) // 1 baki transaction + 1 purchase transaction
         assertEquals(4180.0, parsed.shopSettings?.openingBalance ?: 0.0, 0.001)
     }
+
+    @Test
+    fun testUserFullFragmentBackupParsing() {
+        val userJsonFragment = """
+        {
+          "key_expenses_14-06-2026": [
+            {
+              "amount": 550.0,
+              "date": "14-06-2026",
+              "deletedAt": 0,
+              "expenseType": "SHOP",
+              "id": "9ecc13dd-7dc4-4296-9de4-c05bc35f318e",
+              "name": "পান",
+              "time": "10:42 PM",
+              "type": "LEGACY_EXPENSE",
+              "updatedAt": 1787583918979
+            },
+            {
+              "amount": 2650.0,
+              "date": "14-06-2026",
+              "deletedAt": 0,
+              "expenseType": "SHOP",
+              "id": "9f30e4c7-7cfe-4067-9ac5-3f64aadc8306",
+              "name": "চাল",
+              "time": "10:47 PM",
+              "type": "LEGACY_EXPENSE",
+              "updatedAt": 1787583918979
+            }
+          ],
+          "key_expenses_26-08-2026": [
+            {
+              "amount": 3500.0,
+              "date": "26-08-2026",
+              "deletedAt": 0,
+              "expenseType": "SHOP",
+              "id": "10be97d7-82fd-4eed-be1a-edaad14d076b",
+              "name": "বাজার",
+              "time": "09:42 PM",
+              "type": "PURCHASE",
+              "updatedAt": 1787672546488
+            }
+          ],
+          "key_product_suggestions": ["সয়াবিন তেল", "চাল", "ডিম", "পান"],
+          "key_sabek_cash_27-08-2026": 1710.0
+        }
+        """.trimIndent()
+
+        val parsed = com.example.mawa.util.DataBackupRestoreManager.parseFromJsonString(userJsonFragment)
+        assertEquals(3, parsed.transactions.size)
+        // Verify that the date was parsed from 14-06-2026 rather than updatedAt August 2026
+        val txJune = parsed.transactions.first { it.note.contains("পান") }
+        val cal = java.util.Calendar.getInstance().apply { timeInMillis = txJune.timestamp }
+        assertEquals(java.util.Calendar.JUNE, cal.get(java.util.Calendar.MONTH))
+        assertEquals(14, cal.get(java.util.Calendar.DAY_OF_MONTH))
+        assertEquals(4, parsed.products.size)
+        assertEquals(1710.0, parsed.shopSettings?.openingBalance ?: 0.0, 0.001)
+    }
 }

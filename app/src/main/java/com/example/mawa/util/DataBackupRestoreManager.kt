@@ -24,6 +24,7 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -214,18 +215,20 @@ object DataBackupRestoreManager {
         fallbackMillis: Long = System.currentTimeMillis()
     ): Long {
         if (dateStr.isNullOrBlank()) return fallbackMillis
-        val engDate = BengaliUtils.toEnglishDigits(dateStr.trim())
+        val engDate = BengaliUtils.toEnglishDigits(dateStr.trim().replace("/", "-"))
         val engTime = if (!timeStr.isNullOrBlank()) BengaliUtils.toEnglishDigits(timeStr.trim()) else null
 
         val patternsWithTime = listOf(
             "dd-MM-yyyy hh:mm a",
-            "dd/MM/yyyy hh:mm a",
             "dd-MM-yyyy HH:mm",
-            "dd/MM/yyyy HH:mm",
             "dd-MM-yyyy hh:mm:ss a",
-            "dd/MM/yyyy hh:mm:ss a",
+            "dd-MM-yyyy HH:mm:ss",
             "yyyy-MM-dd HH:mm:ss",
-            "yyyy-MM-dd HH:mm"
+            "yyyy-MM-dd HH:mm",
+            "yyyy-MM-dd hh:mm a",
+            "yyyy-MM-dd hh:mm:ss a",
+            "MM-dd-yyyy hh:mm a",
+            "MM-dd-yyyy HH:mm"
         )
 
         if (!engTime.isNullOrBlank()) {
@@ -233,6 +236,7 @@ object DataBackupRestoreManager {
             for (pattern in patternsWithTime) {
                 try {
                     val sdf = SimpleDateFormat(pattern, Locale.US)
+                    sdf.isLenient = true
                     val d = sdf.parse(combined)
                     if (d != null) return d.time
                 } catch (_: Exception) {}
@@ -241,35 +245,101 @@ object DataBackupRestoreManager {
 
         val patternsDateOnly = listOf(
             "dd-MM-yyyy",
-            "dd/MM/yyyy",
             "yyyy-MM-dd",
-            "yyyy/MM/dd"
+            "MM-dd-yyyy"
         )
         for (pattern in patternsDateOnly) {
             try {
                 val sdf = SimpleDateFormat(pattern, Locale.US)
+                sdf.isLenient = true
                 val d = sdf.parse(engDate)
-                if (d != null) return d.time
+                if (d != null) {
+                    val cal = Calendar.getInstance()
+                    cal.time = d
+                    cal.set(Calendar.HOUR_OF_DAY, 12)
+                    cal.set(Calendar.MINUTE, 0)
+                    cal.set(Calendar.SECOND, 0)
+                    cal.set(Calendar.MILLISECOND, 0)
+                    return cal.timeInMillis
+                }
             } catch (_: Exception) {}
+        }
+
+        // Try parsing timestamp if dateStr was numeric millis string
+        dateStr.toLongOrNull()?.let {
+            if (it > 100000000000L) return it
         }
 
         return fallbackMillis
     }
 
+    private fun extractDateStringFromKey(key: String): String {
+        // Look for date pattern like DD-MM-YYYY, YYYY-MM-DD, DD/MM/YYYY inside key
+        val regex = Regex("""(\d{1,4}[-/]\d{1,2}[-/]\d{1,4})""")
+        val match = regex.find(key)
+        return if (match != null) {
+            match.value.replace("/", "-")
+        } else if (key.contains("_")) {
+            key.substringAfterLast("_")
+        } else {
+            ""
+        }
+    }
+
+    private fun sanitizeJsonText(input: String): String {
+        var clean = input.trim()
+        if (clean.startsWith("\uFEFF")) {
+            clean = clean.substring(1).trim()
+        }
+        if (clean.startsWith("```json")) {
+            clean = clean.removePrefix("```json").trim()
+        }
+        if (clean.startsWith("```")) {
+            clean = clean.removePrefix("```").trim()
+        }
+        if (clean.endsWith("```")) {
+            clean = clean.removeSuffix("```").trim()
+        }
+
+        // If it starts with an unexpected character like colon, comma, quote
+        if (!clean.startsWith("{") && !clean.startsWith("[")) {
+            val firstBrace = clean.indexOf('{')
+            val firstBracket = clean.indexOf('[')
+            if (firstBrace != -1 && (firstBracket == -1 || firstBrace < firstBracket)) {
+                clean = clean.substring(firstBrace)
+            } else if (firstBracket != -1) {
+                clean = clean.substring(firstBracket)
+            } else if (clean.contains("\":") || clean.contains("key_")) {
+                // Fragment of JSON object properties
+                val firstQuote = clean.indexOf('"')
+                if (firstQuote != -1) {
+                    clean = "{" + clean.substring(firstQuote)
+                } else {
+                    clean = "{$clean}"
+                }
+            }
+        }
+
+        // Check matching closing braces
+        var openBraceCount = clean.count { it == '{' }
+        var closeBraceCount = clean.count { it == '}' }
+        while (closeBraceCount < openBraceCount) {
+            clean += "}"
+            closeBraceCount++
+        }
+
+        var openBracketCount = clean.count { it == '[' }
+        var closeBracketCount = clean.count { it == ']' }
+        while (closeBracketCount < openBracketCount) {
+            clean += "]"
+            closeBracketCount++
+        }
+
+        return clean
+    }
+
     fun parseFromJsonString(jsonString: String): FullBackupData {
-        var cleanJson = jsonString.trim()
-        if (cleanJson.startsWith("\uFEFF")) {
-            cleanJson = cleanJson.substring(1).trim()
-        }
-        if (cleanJson.startsWith("```json")) {
-            cleanJson = cleanJson.removePrefix("```json").trim()
-        }
-        if (cleanJson.startsWith("```")) {
-            cleanJson = cleanJson.removePrefix("```").trim()
-        }
-        if (cleanJson.endsWith("```")) {
-            cleanJson = cleanJson.removeSuffix("```").trim()
-        }
+        val cleanJson = sanitizeJsonText(jsonString)
 
         if (cleanJson.startsWith("[")) {
             // Root is an Array of items
@@ -423,8 +493,8 @@ object DataBackupRestoreManager {
             val key = keys.next()
             val lowerKey = key.lowercase()
 
-            // 1. Customer Baki records (e.g. key_baki_records)
-            if (lowerKey.contains("baki_records") || lowerKey.contains("baki_list") || lowerKey == "key_baki_records") {
+            // 1. Customer Baki records (e.g. key_baki_records, baki_list, etc.)
+            if (lowerKey.contains("baki_record") || lowerKey.contains("baki_list") || lowerKey == "key_baki_records" || lowerKey == "baki") {
                 val bakiArr = root.optJSONArray(key)
                 if (bakiArr != null) {
                     for (i in 0 until bakiArr.length()) {
@@ -432,9 +502,9 @@ object DataBackupRestoreManager {
                         if (cObj.optLong("deletedAt", 0L) > 0) continue
                         val custName = cObj.optString("customerName", cObj.optString("name", "নামহীন")).trim()
                         if (custName.isBlank()) continue
-                        val phone = cObj.optString("phone", "").trim()
+                        val phone = cObj.optString("phone", cObj.optString("mobile", "")).trim()
                         val address = cObj.optString("details", cObj.optString("address", "")).trim()
-                        val totalAmt = cObj.optDouble("amount", 0.0)
+                        val totalAmt = cObj.optDouble("amount", cObj.optDouble("baki", cObj.optDouble("due", 0.0)))
                         val txArrInner = cObj.optJSONArray("transactions")
 
                         var hasSpecificTransactions = false
@@ -442,20 +512,24 @@ object DataBackupRestoreManager {
                             for (j in 0 until txArrInner.length()) {
                                 val txObj = txArrInner.optJSONObject(j) ?: continue
                                 if (txObj.optLong("deletedAt", 0L) > 0) continue
-                                val txAmt = txObj.optDouble("amount", 0.0)
+                                val txAmt = txObj.optDouble("amount", txObj.optDouble("taka", 0.0))
                                 if (txAmt <= 0) continue
                                 hasSpecificTransactions = true
-                                val typeStr = txObj.optString("type", "BAKI").uppercase()
-                                val txType = if (typeStr.contains("JOMA") || typeStr.contains("COLLECTION") || typeStr.contains("PAYMENT") || typeStr.contains("RECEIVED") || typeStr.contains("জমা")) {
+                                val typeStr = txObj.optString("type", txObj.optString("tx_type", "BAKI")).uppercase()
+                                val txType = if (typeStr.contains("JOMA") || typeStr.contains("COLLECTION") || typeStr.contains("PAYMENT") || typeStr.contains("RECEIVED") || typeStr.contains("জমা") || typeStr.contains("আদায়")) {
                                     TransactionType.BAKI_COLLECTION
                                 } else {
                                     TransactionType.SALE_BAKI
                                 }
-                                val note = txObj.optString("note", if (txType == TransactionType.SALE_BAKI) "বাকি বিক্রি" else "বাকি আদায়")
-                                val updatedAt = txObj.optLong("updatedAt", 0L)
+                                val note = txObj.optString("note", txObj.optString("memo", if (txType == TransactionType.SALE_BAKI) "বাকি বিক্রি" else "বাকি আদায়"))
                                 val dateStr = txObj.optString("date", "")
                                 val timeStr = txObj.optString("time", "")
-                                val ts = if (updatedAt > 0) updatedAt else parseDateAndTimeToMillis(dateStr, timeStr)
+                                val updatedAt = txObj.optLong("updatedAt", txObj.optLong("timestamp", 0L))
+                                val ts = if (dateStr.isNotBlank()) {
+                                    parseDateAndTimeToMillis(dateStr, timeStr, if (updatedAt > 0) updatedAt else System.currentTimeMillis())
+                                } else {
+                                    if (updatedAt > 0) updatedAt else System.currentTimeMillis()
+                                }
                                 transactions.add(
                                     TransactionEntity(
                                         type = txType,
@@ -481,28 +555,32 @@ object DataBackupRestoreManager {
                 }
             }
 
-            // 2. Expenses / Purchases by date (e.g. key_expenses_06-08-2026, key_expenses_29-08-2026, etc.)
-            if (lowerKey.startsWith("key_expenses_") || lowerKey.startsWith("expenses_")) {
+            // 2. Expenses / Purchases by date (e.g. key_expenses_06-08-2026, key_expenses_29-08-2026, expenses_..., etc.)
+            if (lowerKey.contains("expense") || lowerKey.contains("cost_") || lowerKey.contains("khoroch")) {
                 val expArr = root.optJSONArray(key)
-                val dateFromKey = if (key.contains("_")) key.substringAfterLast("_") else ""
+                val dateFromKey = extractDateStringFromKey(key)
                 if (expArr != null) {
                     for (i in 0 until expArr.length()) {
                         val item = expArr.optJSONObject(i) ?: continue
                         if (item.optLong("deletedAt", 0L) > 0) continue
-                        val amt = item.optDouble("amount", 0.0)
+                        val amt = item.optDouble("amount", item.optDouble("taka", item.optDouble("cost", 0.0)))
                         if (amt <= 0) continue
-                        val name = item.optString("name", "খরচ").trim()
+                        val name = item.optString("name", item.optString("title", item.optString("note", "খরচ"))).trim()
                         val typeStr = item.optString("type", "").uppercase()
-                        val expType = item.optString("expenseType", item.optString("expense_type", "")).uppercase()
+                        val expType = item.optString("expenseType", item.optString("expense_type", item.optString("category", ""))).uppercase()
                         val dateStr = item.optString("date", dateFromKey)
                         val timeStr = item.optString("time", "")
-                        val updatedAt = item.optLong("updatedAt", 0L)
-                        val ts = if (updatedAt > 0) updatedAt else parseDateAndTimeToMillis(dateStr, timeStr)
+                        val updatedAt = item.optLong("updatedAt", item.optLong("timestamp", item.optLong("createdAt", 0L)))
+                        val ts = if (dateStr.isNotBlank()) {
+                            parseDateAndTimeToMillis(dateStr, timeStr, if (updatedAt > 0) updatedAt else System.currentTimeMillis())
+                        } else {
+                            if (updatedAt > 0) updatedAt else System.currentTimeMillis()
+                        }
 
                         val txType = when {
                             typeStr == "PURCHASE" || expType == "PURCHASE" || name.contains("মাল কেনা") || name.contains("ক্রয়") -> TransactionType.PURCHASE_DIRECT
                             typeStr == "HOME" || expType == "HOME" || name.contains("সংসার") || name.contains("উত্তোলন") || name.contains("বাড়ি") -> TransactionType.EXPENSE_HOME
-                            typeStr == "SALE_CASH" || typeStr == "CASH" -> TransactionType.SALE_CASH
+                            typeStr == "SALE_CASH" || typeStr == "CASH" || typeStr == "SALE" || expType == "SALE" -> TransactionType.SALE_CASH
                             else -> TransactionType.EXPENSE_SHOP
                         }
 
@@ -520,8 +598,8 @@ object DataBackupRestoreManager {
                 }
             }
 
-            // 3. Fordi / Shopping list (e.g. key_fordi_records)
-            if (lowerKey.contains("fordi_records") || lowerKey.contains("fordi_list") || lowerKey == "key_fordi_records") {
+            // 3. Fordi / Shopping list (e.g. key_fordi_records, fordis, etc.)
+            if (lowerKey.contains("fordi_records") || lowerKey.contains("fordi_list") || lowerKey == "key_fordi_records" || lowerKey == "fordi") {
                 val fordiGroupArr = root.optJSONArray(key)
                 if (fordiGroupArr != null) {
                     for (i in 0 until fordiGroupArr.length()) {
@@ -529,7 +607,7 @@ object DataBackupRestoreManager {
                         if (gObj.optLong("deletedAt", 0L) > 0) continue
                         val itemsArr = gObj.optJSONArray("items")
                         val groupDate = gObj.optString("date", "")
-                        val groupUpdatedAt = gObj.optLong("updatedAt", parseDateAndTimeToMillis(groupDate))
+                        val groupUpdatedAt = gObj.optLong("updatedAt", gObj.optLong("createdAt", parseDateAndTimeToMillis(groupDate)))
                         val isPosted = gObj.optBoolean("postedToAccounting", false)
 
                         if (itemsArr != null && itemsArr.length() > 0) {
@@ -620,31 +698,33 @@ object DataBackupRestoreManager {
                 }
             }
 
-            // 6. Cash Sales by date (e.g. key_cash_sale_15-06-2026)
-            if (lowerKey.startsWith("key_cash_sale_") || lowerKey.startsWith("cash_sale_")) {
+            // 6. Cash Sales by date (e.g. key_cash_sale_15-06-2026, cash_sale_...)
+            if (lowerKey.contains("cash_sale") || lowerKey.contains("nogod_sale") || lowerKey.contains("daily_sale")) {
                 val saleAmt = root.optDouble(key, 0.0)
                 if (saleAmt > 0) {
-                    val dateStr = if (key.contains("_")) key.substringAfterLast("_") else ""
+                    val dateStr = extractDateStringFromKey(key)
                     val ts = parseDateAndTimeToMillis(dateStr)
                     transactions.add(
                         TransactionEntity(
                             type = TransactionType.SALE_CASH,
                             amount = saleAmt,
-                            note = "নগদ বিক্রি ($dateStr)",
+                            note = if (dateStr.isNotBlank()) "নগদ বিক্রি ($dateStr)" else "নগদ বিক্রি",
                             timestamp = ts
                         )
                     )
                 }
             }
 
-            // 7. Sabek Cash by date (e.g. key_sabek_cash_29-08-2026)
-            if (lowerKey.startsWith("key_sabek_cash_") || lowerKey.startsWith("sabek_cash_")) {
+            // 7. Sabek Cash by date (e.g. key_sabek_cash_29-08-2026, sabek_cash_..., available_cash, opening_balance)
+            if (lowerKey.contains("sabek_cash") || lowerKey.contains("opening_cash") || lowerKey.contains("starting_cash") || lowerKey == "key_available_cash" || lowerKey == "openingbalance" || lowerKey == "opening_balance") {
                 val sabekAmt = root.optDouble(key, 0.0)
-                val dateStr = if (key.contains("_")) key.substringAfterLast("_") else ""
-                val ts = parseDateAndTimeToMillis(dateStr)
-                if (ts >= latestSabekCashDate && sabekAmt > 0) {
-                    latestSabekCashDate = ts
-                    latestSabekCashValue = sabekAmt
+                val dateStr = extractDateStringFromKey(key)
+                val ts = if (dateStr.isNotBlank()) parseDateAndTimeToMillis(dateStr) else 0L
+                if (sabekAmt > 0) {
+                    if (ts >= latestSabekCashDate || latestSabekCashValue == 0.0) {
+                        latestSabekCashDate = ts
+                        latestSabekCashValue = sabekAmt
+                    }
                 }
             }
         }
@@ -687,11 +767,20 @@ object DataBackupRestoreManager {
         val custId = t.optLong("customerId", t.optLong("customer_id", -1L))
         val prodId = t.optLong("productId", t.optLong("product_id", -1L))
 
+        val dateStr = t.optString("date", "")
+        val timeStr = t.optString("time", "")
+        val tsRaw = t.optLong("timestamp", t.optLong("created_at", t.optLong("updatedAt", 0L)))
+        val ts = if (dateStr.isNotBlank() && dateStr.contains(Regex("[0-9]"))) {
+            parseDateAndTimeToMillis(dateStr, timeStr, if (tsRaw > 0) tsRaw else System.currentTimeMillis())
+        } else {
+            if (tsRaw > 0) tsRaw else t.optLong("date", System.currentTimeMillis())
+        }
+
         return TransactionEntity(
             id = t.optLong("id", 0L),
             type = txType,
             amount = t.optDouble("amount", t.optDouble("taka", t.optDouble("total", 0.0))),
-            timestamp = t.optLong("timestamp", t.optLong("date", t.optLong("created_at", System.currentTimeMillis()))),
+            timestamp = ts,
             customerId = if (custId > 0) custId else null,
             customerName = t.optString("customerName", t.optString("customer_name", "")).takeIf { it.isNotBlank() },
             productId = if (prodId > 0) prodId else null,

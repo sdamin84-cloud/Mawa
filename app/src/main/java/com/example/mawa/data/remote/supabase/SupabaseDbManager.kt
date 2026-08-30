@@ -218,7 +218,27 @@ class SupabaseDbManager(
                 })
             }
 
-            // Customers
+            // Products
+            backupData.products.forEach { p ->
+                val pJson = JSONObject().apply {
+                    put("name", p.name)
+                    put("banglaName", p.banglaName)
+                    put("category", p.category)
+                    put("stockQuantity", p.stockQuantity)
+                    put("unit", p.unit)
+                    put("defaultPurchasePrice", p.defaultPurchasePrice)
+                    put("defaultSellingPrice", p.defaultSellingPrice)
+                }
+                recordsArray.put(JSONObject().apply {
+                    put("user_id", userId)
+                    put("domain", "BUSINESS")
+                    put("entity_type", "PRODUCT")
+                    put("entity_id", "prod_${p.id}")
+                    put("data", pJson)
+                })
+            }
+
+            // Customers (BAKI_CUSTOMER)
             backupData.customers.forEach { c ->
                 val cJson = JSONObject().apply {
                     put("name", c.name)
@@ -231,13 +251,13 @@ class SupabaseDbManager(
                 recordsArray.put(JSONObject().apply {
                     put("user_id", userId)
                     put("domain", "BUSINESS")
-                    put("entity_type", "CUSTOMER")
+                    put("entity_type", "BAKI_CUSTOMER")
                     put("entity_id", "customer_${c.id}")
                     put("data", cJson)
                 })
             }
 
-            // Transactions
+            // Transactions (BAKI_TX, EXPENSE, SALE)
             backupData.transactions.forEach { t ->
                 val tJson = JSONObject().apply {
                     put("type", t.type.name)
@@ -248,16 +268,25 @@ class SupabaseDbManager(
                     put("note", t.note)
                     put("category", t.category)
                 }
+                val entityType = when (t.type) {
+                    com.example.mawa.data.local.entity.TransactionType.SALE_BAKI,
+                    com.example.mawa.data.local.entity.TransactionType.BAKI_COLLECTION -> "BAKI_TX"
+                    com.example.mawa.data.local.entity.TransactionType.EXPENSE_SHOP,
+                    com.example.mawa.data.local.entity.TransactionType.EXPENSE_HOME,
+                    com.example.mawa.data.local.entity.TransactionType.PURCHASE_DIRECT,
+                    com.example.mawa.data.local.entity.TransactionType.PURCHASE_FORDI -> "EXPENSE"
+                    else -> "SALE"
+                }
                 recordsArray.put(JSONObject().apply {
                     put("user_id", userId)
                     put("domain", "BUSINESS")
-                    put("entity_type", "TRANSACTION")
+                    put("entity_type", entityType)
                     put("entity_id", "tx_${t.id}")
                     put("data", tJson)
                 })
             }
 
-            // Fordi items
+            // Fordi items (FORDI)
             backupData.fordiItems.forEach { f ->
                 val fJson = JSONObject().apply {
                     put("productName", f.productName)
