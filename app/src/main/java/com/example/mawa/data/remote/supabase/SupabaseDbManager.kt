@@ -357,6 +357,147 @@ class SupabaseDbManager(
         }
     }
 
+    /**
+     * Fetch all incremental records from `mawa_cloud_records` table and assemble FullBackupData
+     */
+    suspend fun fetchAllIncrementalRecords(): CloudOperationResult<FullBackupData> = withContext(Dispatchers.IO) {
+        val userId = authManager.getUserId()
+        if (userId.isNullOrBlank()) {
+            return@withContext CloudOperationResult.Error("লগইন করা নেই")
+        }
+
+        try {
+            val url = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?user_id=eq.$userId&order=id.asc"
+            val requestBuilder = Request.Builder()
+                .url(url)
+                .get()
+
+            getAuthHeaders().forEach { (k, v) -> requestBuilder.addHeader(k, v) }
+
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                val responseBody = response.body?.string() ?: ""
+                Log.d("SupabaseDb", "fetchIncrementalRecords code: ${response.code}")
+
+                if (response.isSuccessful) {
+                    val arr = JSONArray(responseBody)
+                    val customers = mutableListOf<com.example.mawa.data.local.entity.CustomerEntity>()
+                    val transactions = mutableListOf<com.example.mawa.data.local.entity.TransactionEntity>()
+                    val fordiItems = mutableListOf<com.example.mawa.data.local.entity.FordiItemEntity>()
+                    val products = mutableListOf<com.example.mawa.data.local.entity.ProductEntity>()
+                    var shopSettings: com.example.mawa.data.local.entity.ShopSettingsEntity? = null
+                    val personalTx = mutableListOf<com.example.mawa.data.local.entity.PersonalTransactionEntity>()
+
+                    for (i in 0 until arr.length()) {
+                        val obj = arr.getJSONObject(i)
+                        val entityType = obj.optString("entity_type", "")
+                        val dataObj = if (obj.has("data")) {
+                            val d = obj.get("data")
+                            if (d is JSONObject) d else JSONObject(d.toString())
+                        } else JSONObject()
+
+                        when (entityType) {
+                            "BAKI_CUSTOMER" -> {
+                                customers.add(com.example.mawa.data.local.entity.CustomerEntity(
+                                    name = dataObj.optString("name", "গ্রাহক"),
+                                    phone = dataObj.optString("phone", ""),
+                                    address = dataObj.optString("address", ""),
+                                    openingBalance = dataObj.optDouble("openingBalance", 0.0),
+                                    note = dataObj.optString("note", ""),
+                                    createdAt = dataObj.optLong("createdAt", System.currentTimeMillis())
+                                ))
+                            }
+                            "BAKI_TX", "EXPENSE", "SALE" -> {
+                                val typeStr = dataObj.optString("type", "EXPENSE_SHOP")
+                                val txType = try {
+                                    com.example.mawa.data.local.entity.TransactionType.valueOf(typeStr)
+                                } catch (e: Exception) {
+                                    when (entityType) {
+                                        "BAKI_TX" -> com.example.mawa.data.local.entity.TransactionType.SALE_BAKI
+                                        "EXPENSE" -> com.example.mawa.data.local.entity.TransactionType.EXPENSE_SHOP
+                                        else -> com.example.mawa.data.local.entity.TransactionType.SALE_CASH
+                                    }
+                                }
+                                transactions.add(com.example.mawa.data.local.entity.TransactionEntity(
+                                    type = txType,
+                                    amount = dataObj.optDouble("amount", 0.0),
+                                    timestamp = dataObj.optLong("timestamp", System.currentTimeMillis()),
+                                    customerId = if (dataObj.has("customerId") && !dataObj.isNull("customerId")) dataObj.optLong("customerId") else null,
+                                    customerName = dataObj.optString("customerName", null),
+                                    note = dataObj.optString("note", ""),
+                                    category = dataObj.optString("category", "")
+                                ))
+                            }
+                            "FORDI" -> {
+                                fordiItems.add(com.example.mawa.data.local.entity.FordiItemEntity(
+                                    productName = dataObj.optString("productName", ""),
+                                    plannedQuantity = dataObj.optDouble("plannedQuantity", 1.0),
+                                    unit = dataObj.optString("unit", "কেজি"),
+                                    purchaseRate = dataObj.optDouble("purchaseRate", 0.0),
+                                    isPurchased = dataObj.optBoolean("isPurchased", false),
+                                    actualTotal = dataObj.optDouble("actualTotal", 0.0)
+                                ))
+                            }
+                            "PRODUCT" -> {
+                                products.add(com.example.mawa.data.local.entity.ProductEntity(
+                                    name = dataObj.optString("name", ""),
+                                    banglaName = dataObj.optString("banglaName", ""),
+                                    category = dataObj.optString("category", ""),
+                                    stockQuantity = dataObj.optDouble("stockQuantity", 0.0),
+                                    unit = dataObj.optString("unit", "কেজি"),
+                                    defaultPurchasePrice = dataObj.optDouble("defaultPurchasePrice", 0.0),
+                                    defaultSellingPrice = dataObj.optDouble("defaultSellingPrice", 0.0)
+                                ))
+                            }
+                            "SETTINGS" -> {
+                                shopSettings = com.example.mawa.data.local.entity.ShopSettingsEntity(
+                                    shopName = dataObj.optString("shopName", "আমার দোকান"),
+                                    ownerName = dataObj.optString("ownerName", ""),
+                                    phone = dataObj.optString("phone", ""),
+                                    openingBalance = dataObj.optDouble("openingBalance", 0.0),
+                                    appMode = dataObj.optString("appMode", "PRO")
+                                )
+                            }
+                            "PERSONAL_TX" -> {
+                                val pTypeStr = dataObj.optString("type", "EXPENSE")
+                                val pType = try {
+                                    com.example.mawa.data.local.entity.PersonalTransactionType.valueOf(pTypeStr)
+                                } catch (e: Exception) {
+                                    com.example.mawa.data.local.entity.PersonalTransactionType.EXPENSE
+                                }
+                                personalTx.add(com.example.mawa.data.local.entity.PersonalTransactionEntity(
+                                    type = pType,
+                                    amount = dataObj.optDouble("amount", 0.0),
+                                    title = dataObj.optString("title", ""),
+                                    category = dataObj.optString("category", ""),
+                                    timestamp = dataObj.optLong("timestamp", System.currentTimeMillis())
+                                ))
+                            }
+                        }
+                    }
+
+                    val backupData = FullBackupData(
+                        shopSettings = shopSettings,
+                        customers = customers,
+                        transactions = transactions,
+                        fordiItems = fordiItems,
+                        products = products,
+                        personalTransactions = personalTx
+                    )
+                    return@withContext CloudOperationResult.Success(backupData)
+                } else {
+                    return@withContext CloudOperationResult.Error(
+                        message = "রেকর্ডস আনা যায়নি: ${parseError(responseBody, response.code)}"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SupabaseDb", "fetchIncrementalRecords error", e)
+            return@withContext CloudOperationResult.Error(
+                message = "এরর: ${e.localizedMessage ?: "নেটওয়ার্ক সমস্যা"}"
+            )
+        }
+    }
+
     private fun parseBackupItem(obj: JSONObject): CloudBackupItem {
         val id = obj.optLong("id", 0L)
         val uId = obj.optString("user_id", "")

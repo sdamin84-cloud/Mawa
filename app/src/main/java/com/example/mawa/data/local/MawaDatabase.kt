@@ -9,12 +9,14 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.mawa.data.local.dao.CustomerDao
+import com.example.mawa.data.local.dao.DailyCashDao
 import com.example.mawa.data.local.dao.FordiDao
 import com.example.mawa.data.local.dao.PersonalTransactionDao
 import com.example.mawa.data.local.dao.ProductDao
 import com.example.mawa.data.local.dao.ShopSettingsDao
 import com.example.mawa.data.local.dao.TransactionDao
 import com.example.mawa.data.local.entity.CustomerEntity
+import com.example.mawa.data.local.entity.DailyCashEntity
 import com.example.mawa.data.local.entity.FordiItemEntity
 import com.example.mawa.data.local.entity.PersonalTransactionEntity
 import com.example.mawa.data.local.entity.PersonalTransactionType
@@ -106,6 +108,21 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `daily_cash_records` (
+                `dateKey` TEXT PRIMARY KEY NOT NULL,
+                `dateMillis` INTEGER NOT NULL,
+                `sabekCash` REAL NOT NULL DEFAULT 0.0,
+                `closingCash` REAL NOT NULL DEFAULT 0.0,
+                `isClosed` INTEGER NOT NULL DEFAULT 0,
+                `updatedAt` INTEGER NOT NULL DEFAULT 0
+            )
+        """.trimIndent())
+    }
+}
+
 @Database(
     entities = [
         TransactionEntity::class,
@@ -113,9 +130,10 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         ProductEntity::class,
         FordiItemEntity::class,
         ShopSettingsEntity::class,
-        PersonalTransactionEntity::class
+        PersonalTransactionEntity::class,
+        DailyCashEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -127,6 +145,7 @@ abstract class MawaDatabase : RoomDatabase() {
     abstract fun fordiDao(): FordiDao
     abstract fun shopSettingsDao(): ShopSettingsDao
     abstract fun personalTransactionDao(): PersonalTransactionDao
+    abstract fun dailyCashDao(): DailyCashDao
 
     companion object {
         @Volatile
@@ -139,7 +158,7 @@ abstract class MawaDatabase : RoomDatabase() {
                     MawaDatabase::class.java,
                     "mawa_khata_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .fallbackToDestructiveMigration(false)
                     .build()
                 INSTANCE = instance

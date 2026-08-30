@@ -11,6 +11,7 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.example.mawa.data.local.entity.CustomerEntity
+import com.example.mawa.data.local.entity.DailyCashEntity
 import com.example.mawa.data.local.entity.FordiItemEntity
 import com.example.mawa.data.local.entity.PersonalTransactionEntity
 import com.example.mawa.data.local.entity.PersonalTransactionType
@@ -36,7 +37,8 @@ data class FullBackupData(
     val transactions: List<TransactionEntity> = emptyList(),
     val fordiItems: List<FordiItemEntity> = emptyList(),
     val products: List<ProductEntity> = emptyList(),
-    val personalTransactions: List<PersonalTransactionEntity> = emptyList()
+    val personalTransactions: List<PersonalTransactionEntity> = emptyList(),
+    val dailyCashRecords: List<DailyCashEntity> = emptyList()
 )
 
 object DataBackupRestoreManager {
@@ -161,6 +163,28 @@ object DataBackupRestoreManager {
         }
         root.put("personalTransactions", ptxArr)
 
+        // Daily Cash Records (both structured array & backward compatible legacy keys)
+        val dailyCashArr = JSONArray()
+        data.dailyCashRecords.forEach { dc ->
+            val obj = JSONObject()
+            obj.put("dateKey", dc.dateKey)
+            obj.put("dateMillis", dc.dateMillis)
+            obj.put("sabekCash", dc.sabekCash)
+            obj.put("closingCash", dc.closingCash)
+            obj.put("isClosed", dc.isClosed)
+            obj.put("updatedAt", dc.updatedAt)
+            dailyCashArr.put(obj)
+
+            // Dynamic keys for backward compatibility with old scripts/tools
+            if (dc.sabekCash > 0) {
+                root.put("key_sabek_cash_${dc.dateKey}", dc.sabekCash)
+            }
+            if (dc.closingCash > 0) {
+                root.put("key_available_cash_${dc.dateKey}", dc.closingCash)
+            }
+        }
+        root.put("dailyCashRecords", dailyCashArr)
+
         return root.toString(2)
     }
 
@@ -271,6 +295,17 @@ object DataBackupRestoreManager {
         }
 
         return fallbackMillis
+    }
+
+    fun isSameDay(t1: Long, t2: Long): Boolean {
+        val c1 = Calendar.getInstance().apply { timeInMillis = t1 }
+        val c2 = Calendar.getInstance().apply { timeInMillis = t2 }
+        return c1.get(Calendar.YEAR) == c2.get(Calendar.YEAR) &&
+                c1.get(Calendar.DAY_OF_YEAR) == c2.get(Calendar.DAY_OF_YEAR)
+    }
+
+    fun formatDateKey(millis: Long): String {
+        return SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(millis))
     }
 
     private fun extractDateStringFromKey(key: String): String {
@@ -483,6 +518,34 @@ object DataBackupRestoreManager {
             }
         }
 
+        // Daily Cash Records (structured)
+        val dailyCashMap = mutableMapOf<String, DailyCashEntity>()
+        val dailyCashArr = root.optJSONArray("dailyCashRecords") 
+            ?: root.optJSONArray("daily_cash_records") 
+            ?: root.optJSONArray("daily_cash") 
+            ?: root.optJSONArray("dailyCash")
+        if (dailyCashArr != null) {
+            for (i in 0 until dailyCashArr.length()) {
+                val dc = dailyCashArr.optJSONObject(i) ?: continue
+                val dKey = dc.optString("dateKey", "")
+                val dMillis = dc.optLong("dateMillis", parseDateAndTimeToMillis(dKey))
+                val sabek = dc.optDouble("sabekCash", 0.0)
+                val closing = dc.optDouble("closingCash", 0.0)
+                val closed = dc.optBoolean("isClosed", false)
+                val updated = dc.optLong("updatedAt", System.currentTimeMillis())
+                if (dKey.isNotBlank()) {
+                    dailyCashMap[dKey] = DailyCashEntity(
+                        dateKey = dKey,
+                        dateMillis = dMillis,
+                        sabekCash = sabek,
+                        closingCash = closing,
+                        isClosed = closed,
+                        updatedAt = updated
+                    )
+                }
+            }
+        }
+
         // --- Handle Key-Value / SharedPreferences Backup Format ---
         // e.g. key_baki_records, key_expenses_DD-MM-YYYY, key_fordi_records, key_product_memory, key_sabek_cash_...
         var latestSabekCashDate = 0L
@@ -555,7 +618,7 @@ object DataBackupRestoreManager {
                 }
             }
 
-            // 2. Expenses / Purchases by date (e.g. key_expenses_06-08-2026, key_expenses_29-08-2026, expenses_..., etc.)
+            // 2. Expenses / Purchases / Sales by date (e.g. key_expenses_06-08-2026, key_expenses_29-08-2026, expenses_..., etc.)
             if (lowerKey.contains("expense") || lowerKey.contains("cost_") || lowerKey.contains("khoroch")) {
                 val expArr = root.optJSONArray(key)
                 val dateFromKey = extractDateStringFromKey(key)
@@ -578,9 +641,11 @@ object DataBackupRestoreManager {
                         }
 
                         val txType = when {
+                            typeStr == "SALE_CASH" || typeStr == "SALE" || typeStr == "CASH" || typeStr == "INCOME" || expType == "SALE" || expType == "INCOME" || name.contains("নগদ বিক্রি") || name.contains("মোট বিক্রি") || name.contains("বেচা") -> TransactionType.SALE_CASH
+                            typeStr == "SALE_BAKI" || typeStr == "BAKI" || expType == "BAKI" || name.contains("বাকি বিক্রি") -> TransactionType.SALE_BAKI
+                            typeStr == "BAKI_COLLECTION" || typeStr == "COLLECTION" || typeStr == "JOMA" || expType == "COLLECTION" || name.contains("বাকি আদায়") || name.contains("জমা") -> TransactionType.BAKI_COLLECTION
                             typeStr == "PURCHASE" || expType == "PURCHASE" || name.contains("মাল কেনা") || name.contains("ক্রয়") -> TransactionType.PURCHASE_DIRECT
                             typeStr == "HOME" || expType == "HOME" || name.contains("সংসার") || name.contains("উত্তোলন") || name.contains("বাড়ি") -> TransactionType.EXPENSE_HOME
-                            typeStr == "SALE_CASH" || typeStr == "CASH" || typeStr == "SALE" || expType == "SALE" -> TransactionType.SALE_CASH
                             else -> TransactionType.EXPENSE_SHOP
                         }
 
@@ -590,7 +655,7 @@ object DataBackupRestoreManager {
                                 amount = amt,
                                 productName = if (txType == TransactionType.PURCHASE_DIRECT) name else null,
                                 note = name,
-                                category = if (txType == TransactionType.EXPENSE_HOME) "সংসার" else if (txType == TransactionType.PURCHASE_DIRECT) "পণ্য ক্রয়" else "দোকান খরচ",
+                                category = if (txType == TransactionType.EXPENSE_HOME) "সংসার" else if (txType == TransactionType.PURCHASE_DIRECT) "পণ্য ক্রয়" else if (txType == TransactionType.SALE_CASH) "বিক্রি" else "দোকান খরচ",
                                 timestamp = ts
                             )
                         )
@@ -715,8 +780,8 @@ object DataBackupRestoreManager {
                 }
             }
 
-            // 7. Sabek Cash by date (e.g. key_sabek_cash_29-08-2026, sabek_cash_..., available_cash, opening_balance)
-            if (lowerKey.contains("sabek_cash") || lowerKey.contains("opening_cash") || lowerKey.contains("starting_cash") || lowerKey == "key_available_cash" || lowerKey == "openingbalance" || lowerKey == "opening_balance") {
+            // 7. Sabek Cash by date (e.g. key_sabek_cash_29-08-2026, sabek_cash_...)
+            if (lowerKey.contains("sabek_cash") || lowerKey.contains("opening_cash") || lowerKey.contains("starting_cash") || lowerKey == "openingbalance" || lowerKey == "opening_balance") {
                 val sabekAmt = root.optDouble(key, 0.0)
                 val dateStr = extractDateStringFromKey(key)
                 val ts = if (dateStr.isNotBlank()) parseDateAndTimeToMillis(dateStr) else 0L
@@ -724,6 +789,27 @@ object DataBackupRestoreManager {
                     if (ts >= latestSabekCashDate || latestSabekCashValue == 0.0) {
                         latestSabekCashDate = ts
                         latestSabekCashValue = sabekAmt
+                    }
+                    if (dateStr.isNotBlank()) {
+                        val existing = dailyCashMap[dateStr]
+                        dailyCashMap[dateStr] = existing?.copy(sabekCash = sabekAmt)
+                            ?: DailyCashEntity(dateKey = dateStr, dateMillis = ts, sabekCash = sabekAmt)
+                    }
+                }
+            }
+
+            // 8. Available / Closing Cash by date (e.g. key_available_cash_29-08-2026, key_closing_cash_..., key_available_cash)
+            if (lowerKey.contains("available_cash") || lowerKey.contains("closing_cash") || lowerKey.contains("hatekash") || lowerKey.contains("hate_cash")) {
+                val closingAmt = root.optDouble(key, 0.0)
+                val dateStr = extractDateStringFromKey(key)
+                val ts = if (dateStr.isNotBlank()) parseDateAndTimeToMillis(dateStr) else 0L
+                if (closingAmt > 0) {
+                    if (dateStr.isNotBlank()) {
+                        val existing = dailyCashMap[dateStr]
+                        dailyCashMap[dateStr] = existing?.copy(closingCash = closingAmt)
+                            ?: DailyCashEntity(dateKey = dateStr, dateMillis = ts, closingCash = closingAmt)
+                    } else if (lowerKey == "key_available_cash") {
+                        if (latestSabekCashValue == 0.0) latestSabekCashValue = closingAmt
                     }
                 }
             }
@@ -734,14 +820,51 @@ object DataBackupRestoreManager {
             settings = (settings ?: ShopSettingsEntity()).copy(openingBalance = latestSabekCashValue)
         }
 
+        // Auto-reconcile cash sales for dates where closing cash and expenses exist, but no explicit sale was exported
+        dailyCashMap.forEach { (dateKey, dailyCash) ->
+            if (dailyCash.closingCash > 0) {
+                val dayExpenses = transactions.filter {
+                    isSameDay(it.timestamp, dailyCash.dateMillis) &&
+                            (it.type == TransactionType.EXPENSE_SHOP ||
+                             it.type == TransactionType.EXPENSE_HOME ||
+                             it.type == TransactionType.PURCHASE_DIRECT ||
+                             it.type == TransactionType.PURCHASE_FORDI)
+                }.sumOf { it.amount }
+
+                val hasExplicitSale = transactions.any {
+                    isSameDay(it.timestamp, dailyCash.dateMillis) && it.type == TransactionType.SALE_CASH
+                }
+
+                if (!hasExplicitSale && dayExpenses > 0) {
+                    val computedSale = (dailyCash.closingCash + dayExpenses - dailyCash.sabekCash).coerceAtLeast(0.0)
+                    if (computedSale > 0) {
+                        transactions.add(
+                            TransactionEntity(
+                                type = TransactionType.SALE_CASH,
+                                amount = computedSale,
+                                note = "নগদ বিক্রি ($dateKey)",
+                                timestamp = dailyCash.dateMillis
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // Deduplicate parsed transactions to prevent duplicate entries
+        val distinctTransactions = transactions.distinctBy {
+            "${it.timestamp}_${it.amount}_${it.type}_${it.customerName}_${it.note}"
+        }
+
         return FullBackupData(
             exportDate = exportDate,
             shopSettings = settings,
             customers = customers.distinctBy { it.name.trim().lowercase() },
-            transactions = transactions,
+            transactions = distinctTransactions,
             fordiItems = fordiItems,
             products = products.distinctBy { it.name.trim().lowercase() },
-            personalTransactions = personalTransactions
+            personalTransactions = personalTransactions,
+            dailyCashRecords = dailyCashMap.values.toList()
         )
     }
 

@@ -2,6 +2,7 @@ package com.example.mawa.data.repository
 
 import com.example.mawa.data.local.MawaDatabase
 import com.example.mawa.data.local.entity.CustomerEntity
+import com.example.mawa.data.local.entity.DailyCashEntity
 import com.example.mawa.data.local.entity.FordiItemEntity
 import com.example.mawa.data.local.entity.PersonalTransactionEntity
 import com.example.mawa.data.local.entity.PersonalTransactionType
@@ -23,7 +24,10 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 class MawaRepository(private val database: MawaDatabase) {
 
@@ -33,6 +37,7 @@ class MawaRepository(private val database: MawaDatabase) {
     private val fordiDao = database.fordiDao()
     private val settingsDao = database.shopSettingsDao()
     private val personalTransactionDao = database.personalTransactionDao()
+    private val dailyCashDao = database.dailyCashDao()
 
     val allTransactions: Flow<List<TransactionEntity>> = transactionDao.getAllTransactions()
     val recentTransactions: Flow<List<TransactionEntity>> = transactionDao.getRecentTransactions(30)
@@ -43,6 +48,7 @@ class MawaRepository(private val database: MawaDatabase) {
     val pendingFordiItems: Flow<List<FordiItemEntity>> = fordiDao.getPendingFordiItems()
     val allPurchases: Flow<List<TransactionEntity>> = transactionDao.getAllPurchases()
     val shopSettings: Flow<ShopSettingsEntity?> = settingsDao.getSettings()
+    val allDailyCash: Flow<List<DailyCashEntity>> = dailyCashDao.getAllDailyCashFlow()
 
     // Personal Transactions
     val allPersonalTransactions: Flow<List<PersonalTransactionEntity>> = personalTransactionDao.getAllPersonalTransactions()
@@ -52,9 +58,10 @@ class MawaRepository(private val database: MawaDatabase) {
     val accountingSummary: Flow<AccountingSummary> = combine(
         allTransactions,
         shopSettings,
-        allCustomers
-    ) { transactions, settings, customers ->
-        calculateSummary(transactions, settings, customers)
+        allCustomers,
+        allDailyCash
+    ) { transactions, settings, customers, dailyCashList ->
+        calculateSummary(transactions, settings, customers, dailyCashList)
     }
 
     // Customers with real-time calculated balance
@@ -94,15 +101,22 @@ class MawaRepository(private val database: MawaDatabase) {
         transactions: List<TransactionEntity>,
         settings: ShopSettingsEntity?,
         customers: List<CustomerEntity>,
-        targetDateMillis: Long = System.currentTimeMillis()
+        targetDateMillis: Long = System.currentTimeMillis(),
+        dailyCashList: List<DailyCashEntity> = emptyList()
     ): AccountingSummary {
-        val openingBalance = settings?.openingBalance ?: 0.0
+        val targetDateKey = SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(targetDateMillis))
         val startOfTargetDay = getStartOfDayMillis(targetDateMillis)
         val endOfTargetDay = getEndOfDayMillis(targetDateMillis)
 
-        var totalCash = openingBalance
-        var todayCashChange = 0.0
+        val dayRecord = dailyCashList.find { it.dateKey == targetDateKey }
+        val effectiveOpeningBalance = if (dayRecord != null && dayRecord.sabekCash > 0) {
+            dayRecord.sabekCash
+        } else {
+            val prevRecord = dailyCashList.filter { it.dateMillis < startOfTargetDay && it.closingCash > 0 }.maxByOrNull { it.dateMillis }
+            prevRecord?.closingCash ?: (settings?.openingBalance ?: 0.0)
+        }
 
+        var todayCashChange = 0.0
         var todayCashSales = 0.0
         var todayBakiSales = 0.0
         var todayBakiCollection = 0.0
@@ -112,57 +126,55 @@ class MawaRepository(private val database: MawaDatabase) {
 
         for (tx in transactions) {
             val isTargetDay = tx.timestamp in startOfTargetDay..endOfTargetDay
-            val isBeforeOrOnTargetDay = tx.timestamp <= endOfTargetDay
 
             when (tx.type) {
                 TransactionType.SALE_CASH -> {
-                    if (isBeforeOrOnTargetDay) totalCash += tx.amount
                     if (isTargetDay) {
                         todayCashSales += tx.amount
                         todayCashChange += tx.amount
                     }
                 }
                 TransactionType.SALE_BAKI -> {
-                    // Baki sale does not affect cash in hand directly
                     if (isTargetDay) {
                         todayBakiSales += tx.amount
                     }
                 }
                 TransactionType.BAKI_COLLECTION -> {
-                    if (isBeforeOrOnTargetDay) totalCash += tx.amount
                     if (isTargetDay) {
                         todayBakiCollection += tx.amount
                         todayCashChange += tx.amount
                     }
                 }
                 TransactionType.PURCHASE_FORDI, TransactionType.PURCHASE_DIRECT -> {
-                    if (isBeforeOrOnTargetDay) totalCash -= tx.amount
                     if (isTargetDay) {
                         todayPurchases += tx.amount
                         todayCashChange -= tx.amount
                     }
                 }
                 TransactionType.EXPENSE_SHOP -> {
-                    if (isBeforeOrOnTargetDay) totalCash -= tx.amount
                     if (isTargetDay) {
                         todayShopExpenses += tx.amount
                         todayCashChange -= tx.amount
                     }
                 }
                 TransactionType.EXPENSE_HOME -> {
-                    if (isBeforeOrOnTargetDay) totalCash -= tx.amount
                     if (isTargetDay) {
                         todayHomeWithdrawals += tx.amount
                         todayCashChange -= tx.amount
                     }
                 }
                 TransactionType.CASH_ADJUSTMENT -> {
-                    if (isBeforeOrOnTargetDay) totalCash += tx.amount
                     if (isTargetDay) {
                         todayCashChange += tx.amount
                     }
                 }
             }
+        }
+
+        val totalCashInHand = if (dayRecord != null && dayRecord.isClosed && dayRecord.closingCash > 0) {
+            dayRecord.closingCash
+        } else {
+            effectiveOpeningBalance + todayCashChange
         }
 
         // Calculate total outstanding baki across all customers up to target date
@@ -175,8 +187,8 @@ class MawaRepository(private val database: MawaDatabase) {
         }
 
         return AccountingSummary(
-            openingBalance = openingBalance,
-            totalCashInHand = totalCash,
+            openingBalance = effectiveOpeningBalance,
+            totalCashInHand = totalCashInHand,
             todayCashChange = todayCashChange,
             todayTotalSales = todayCashSales + todayBakiSales,
             todayCashSales = todayCashSales,
@@ -193,9 +205,10 @@ class MawaRepository(private val database: MawaDatabase) {
     private fun calculateSummary(
         transactions: List<TransactionEntity>,
         settings: ShopSettingsEntity?,
-        customers: List<CustomerEntity>
+        customers: List<CustomerEntity>,
+        dailyCashList: List<DailyCashEntity> = emptyList()
     ): AccountingSummary {
-        return calculateSummaryForDate(transactions, settings, customers, System.currentTimeMillis())
+        return calculateSummaryForDate(transactions, settings, customers, System.currentTimeMillis(), dailyCashList)
     }
 
     fun getTransactionsForPeriod(filter: TimeFilter): Flow<List<TransactionEntity>> {
@@ -674,6 +687,7 @@ class MawaRepository(private val database: MawaDatabase) {
         val fordiItems = fordiDao.getAllFordiItems().first()
         val products = productDao.getAllProducts().first()
         val personalTransactions = personalTransactionDao.getAllPersonalTransactions().first()
+        val dailyCashRecords = dailyCashDao.getAllDailyCashDirect()
 
         FullBackupData(
             exportDate = System.currentTimeMillis(),
@@ -682,7 +696,8 @@ class MawaRepository(private val database: MawaDatabase) {
             transactions = transactions,
             fordiItems = fordiItems,
             products = products,
-            personalTransactions = personalTransactions
+            personalTransactions = personalTransactions,
+            dailyCashRecords = dailyCashRecords
         )
     }
 
@@ -693,10 +708,16 @@ class MawaRepository(private val database: MawaDatabase) {
             fordiDao.deleteAllFordiItems()
             productDao.deleteAllProducts()
             personalTransactionDao.deleteAll()
+            dailyCashDao.deleteAllDailyCash()
         }
 
         data.shopSettings?.let {
             settingsDao.insertOrUpdateSettings(it)
+        }
+
+        // Restore Daily Cash Records
+        if (data.dailyCashRecords.isNotEmpty()) {
+            dailyCashDao.insertDailyCashList(data.dailyCashRecords)
         }
 
         // Prepare customers to insert
@@ -775,6 +796,26 @@ class MawaRepository(private val database: MawaDatabase) {
             personalTransactionDao.insertAll(data.personalTransactions)
         }
     }
+
+    suspend fun saveDailySabekCash(dateKey: String, dateMillis: Long, sabekAmount: Double) = withContext(Dispatchers.IO) {
+        val existing = dailyCashDao.getDailyCashDirect(dateKey)
+        val updated = existing?.copy(sabekCash = sabekAmount, updatedAt = System.currentTimeMillis())
+            ?: DailyCashEntity(dateKey = dateKey, dateMillis = dateMillis, sabekCash = sabekAmount)
+        dailyCashDao.insertOrUpdateDailyCash(updated)
+    }
+
+    suspend fun saveDailyClosingCash(dateKey: String, dateMillis: Long, closingAmount: Double, isClosed: Boolean = true) = withContext(Dispatchers.IO) {
+        val existing = dailyCashDao.getDailyCashDirect(dateKey)
+        val updated = existing?.copy(closingCash = closingAmount, isClosed = isClosed, updatedAt = System.currentTimeMillis())
+            ?: DailyCashEntity(dateKey = dateKey, dateMillis = dateMillis, closingCash = closingAmount, isClosed = isClosed)
+        dailyCashDao.insertOrUpdateDailyCash(updated)
+    }
+
+    suspend fun getDailyCash(dateKey: String): DailyCashEntity? = withContext(Dispatchers.IO) {
+        dailyCashDao.getDailyCashDirect(dateKey)
+    }
+
+    fun getDailyCashFlow(dateKey: String): Flow<DailyCashEntity?> = dailyCashDao.getDailyCashFlow(dateKey)
 
     suspend fun importCustomers(customers: List<CustomerEntity>) = withContext(Dispatchers.IO) {
         if (customers.isNotEmpty()) {

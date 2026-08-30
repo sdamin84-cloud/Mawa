@@ -77,6 +77,10 @@ object BengaliUtils {
         }
     }
 
+    fun formatDateKey(timeMillis: Long = System.currentTimeMillis()): String {
+        return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(timeMillis))
+    }
+
     fun getFormattedTodayDate(timeMillis: Long = System.currentTimeMillis()): String {
         val cal = Calendar.getInstance()
         cal.timeInMillis = timeMillis

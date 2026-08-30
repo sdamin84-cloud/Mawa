@@ -126,9 +126,10 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         repository.allTransactions,
         repository.shopSettings,
         repository.allCustomers,
+        repository.allDailyCash,
         _selectedHomeDateMillis
-    ) { transactions, settings, customers, dateMillis ->
-        repository.calculateSummaryForDate(transactions, settings, customers, dateMillis)
+    ) { transactions, settings, customers, dailyCashList, dateMillis ->
+        repository.calculateSummaryForDate(transactions, settings, customers, dateMillis, dailyCashList)
     }.stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
@@ -297,11 +298,12 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         customerId: Long? = null,
         customerName: String? = null,
         note: String = "",
+        timestamp: Long = System.currentTimeMillis(),
         onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
             if (amount <= 0) return@launch
-            repository.recordSale(isCash, amount, customerId, customerName, note)
+            repository.recordSale(isCash, amount, customerId, customerName, note, timestamp)
             val typeStr = if (isCash) "নগদ বিক্রি" else "বাকি বিক্রি"
             _feedbackMessage.emit("$typeStr সফলভাবে সংরক্ষিত হয়েছে")
             onSuccess()
@@ -313,11 +315,12 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         customerName: String,
         amount: Double,
         note: String = "",
+        timestamp: Long = System.currentTimeMillis(),
         onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
             if (amount <= 0) return@launch
-            repository.recordBakiEntry(customerId, customerName, amount, note)
+            repository.recordBakiEntry(customerId, customerName, amount, note, timestamp)
             _feedbackMessage.emit("$customerName-কে বাকি ৳$amount দেওয়া হয়েছে")
             onSuccess()
         }
@@ -328,11 +331,12 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         customerName: String,
         amount: Double,
         note: String = "",
+        timestamp: Long = System.currentTimeMillis(),
         onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
             if (amount <= 0) return@launch
-            repository.recordJomaEntry(customerId, customerName, amount, note)
+            repository.recordJomaEntry(customerId, customerName, amount, note, timestamp)
             _feedbackMessage.emit("$customerName-এর থেকে জমা ৳$amount পাওয়া গেছে")
             onSuccess()
         }
@@ -858,6 +862,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
                 is SupabaseAuthResult.Success -> {
                     _feedbackMessage.emit(res.message)
                     loadCloudBackups()
+                    autoLoadLatestCloudDataIfEmpty()
                     onResult(true, res.message)
                 }
                 is SupabaseAuthResult.Error -> {
@@ -868,6 +873,88 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
                     onResult(true, res.message)
                 }
             }
+        }
+    }
+
+    fun autoLoadLatestCloudDataIfEmpty() {
+        viewModelScope.launch {
+            if (!supabaseAuthManager.isLoggedIn()) return@launch
+            val fullData = repository.getFullBackupData()
+            val isLocalEmpty = fullData.customers.isEmpty() && fullData.transactions.isEmpty() && fullData.fordiItems.isEmpty()
+            if (isLocalEmpty) {
+                syncAndRestoreFromCloud { _, _ -> }
+            }
+        }
+    }
+
+    fun syncAndRestoreFromCloud(onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch {
+            if (!supabaseAuthManager.isLoggedIn()) {
+                onResult(false, "ক্লাউড সিঙ্কের জন্য আগে লগইন করুন")
+                return@launch
+            }
+            _isCloudSyncing.value = true
+            // Try fetching from user_backups first
+            when (val res = supabaseDbManager.fetchCloudBackups()) {
+                is CloudOperationResult.Success -> {
+                    _cloudBackups.value = res.data
+                    if (res.data.isNotEmpty()) {
+                        val latestBackup = res.data.first()
+                        if (latestBackup.dataJson.isNotBlank()) {
+                            try {
+                                val backupData = com.example.mawa.util.DataBackupRestoreManager.parseFromJsonString(latestBackup.dataJson)
+                                repository.restoreFullBackup(backupData, overwriteExisting = true)
+                                _isCloudSyncing.value = false
+                                val msg = "সুপাবেজ ক্লাউড ব্যাকআপ '${latestBackup.backupName}' লোড হয়েছে!"
+                                _feedbackMessage.emit(msg)
+                                onResult(true, msg)
+                                return@launch
+                            } catch (e: Exception) {
+                                Log.e("MawaVM", "Error parsing cloud backup", e)
+                            }
+                        }
+                    }
+                }
+                else -> {}
+            }
+
+            // If user_backups was empty, try incremental records table
+            when (val incRes = supabaseDbManager.fetchAllIncrementalRecords()) {
+                is CloudOperationResult.Success -> {
+                    val incData = incRes.data
+                    if (incData.customers.isNotEmpty() || incData.transactions.isNotEmpty() || incData.fordiItems.isNotEmpty() || incData.products.isNotEmpty()) {
+                        repository.restoreFullBackup(incData, overwriteExisting = true)
+                        _isCloudSyncing.value = false
+                        val msg = "সুপাবেজ ক্লাউড রেকর্ডস সফলভাবে লোড হয়েছে!"
+                        _feedbackMessage.emit(msg)
+                        onResult(true, msg)
+                    } else {
+                        _isCloudSyncing.value = false
+                        val msg = "সুপাবেজে কোনো ডাটা পাওয়া যায়নি"
+                        _feedbackMessage.emit(msg)
+                        onResult(false, msg)
+                    }
+                }
+                is CloudOperationResult.Error -> {
+                    _isCloudSyncing.value = false
+                    _feedbackMessage.emit(incRes.message)
+                    onResult(false, incRes.message)
+                }
+            }
+        }
+    }
+
+    fun saveDailySabekCash(dateKey: String, dateMillis: Long, sabekAmount: Double) {
+        viewModelScope.launch {
+            repository.saveDailySabekCash(dateKey, dateMillis, sabekAmount)
+            _feedbackMessage.emit("সাবেক ক্যাশ ৳$sabekAmount সংরক্ষিত হয়েছে")
+        }
+    }
+
+    fun saveDailyClosingCash(dateKey: String, dateMillis: Long, closingAmount: Double, isClosed: Boolean = true) {
+        viewModelScope.launch {
+            repository.saveDailyClosingCash(dateKey, dateMillis, closingAmount, isClosed)
+            _feedbackMessage.emit("দিনের ক্লোজিং ক্যাশ ৳$closingAmount সংরক্ষিত হয়েছে")
         }
     }
 

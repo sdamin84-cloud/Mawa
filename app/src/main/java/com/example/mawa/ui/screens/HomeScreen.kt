@@ -156,8 +156,8 @@ fun HomeScreen(
         calSelected.get(Calendar.DAY_OF_YEAR) == calToday.get(Calendar.DAY_OF_YEAR)
     }
 
-    var sabekInput by remember(settings?.openingBalance) {
-        val initialSabek = settings?.openingBalance ?: summary.openingBalance
+    var sabekInput by remember(selectedHomeDateMillis, summary.openingBalance) {
+        val initialSabek = summary.openingBalance
         mutableStateOf(
             if (initialSabek > 0) {
                 if (initialSabek % 1.0 == 0.0) initialSabek.toLong().toString() else initialSabek.toString()
@@ -165,8 +165,13 @@ fun HomeScreen(
         )
     }
 
-    var closingCashInput by remember {
-        mutableStateOf("")
+    var closingCashInput by remember(selectedHomeDateMillis, summary.totalCashInHand) {
+        val initialClosing = if (summary.totalCashInHand > 0) summary.totalCashInHand else 0.0
+        mutableStateOf(
+            if (initialClosing > 0) {
+                if (initialClosing % 1.0 == 0.0) initialClosing.toLong().toString() else initialClosing.toString()
+            } else ""
+        )
     }
 
     val todayExpensesTotal = summary.todayPurchases + summary.todayShopExpenses + summary.todayHomeWithdrawals
@@ -630,7 +635,11 @@ fun HomeScreen(
                                     sabekInput = digitsOnly
                                     val d = digitsOnly.toDoubleOrNull()
                                     if (d != null && d >= 0) {
-                                        viewModel.updateOpeningBalance(d)
+                                        val dateKey = BengaliUtils.formatDateKey(selectedHomeDateMillis)
+                                        viewModel.saveDailySabekCash(dateKey, selectedHomeDateMillis, d)
+                                        if (isToday) {
+                                            viewModel.updateOpeningBalance(d)
+                                        }
                                     }
                                 },
                                 label = { Text("সাবেক (শুরুর ক্যাশ)") },
@@ -658,6 +667,11 @@ fun HomeScreen(
                                 onValueChange = { input ->
                                     val digitsOnly = input.filter { it.isDigit() || it == '.' }
                                     closingCashInput = digitsOnly
+                                    val d = digitsOnly.toDoubleOrNull()
+                                    if (d != null && d >= 0) {
+                                        val dateKey = BengaliUtils.formatDateKey(selectedHomeDateMillis)
+                                        viewModel.saveDailyClosingCash(dateKey, selectedHomeDateMillis, d, isClosed = true)
+                                    }
                                 },
                                 label = { Text("হাতে থাকা নগদ") },
                                 prefix = { Text("৳ ") },
