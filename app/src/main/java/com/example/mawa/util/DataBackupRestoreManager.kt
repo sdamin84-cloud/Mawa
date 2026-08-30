@@ -69,14 +69,17 @@ object DataBackupRestoreManager {
             root.put("shopSettings", sObj)
         }
 
-        // Customers
+        // Customers (Standard + BakiModel style baki_records)
         val custArr = JSONArray()
+        val bakiRecordsArr = JSONArray()
         data.customers.forEach { c ->
             val obj = JSONObject()
             obj.put("id", c.id)
             obj.put("name", c.name)
+            obj.put("customerName", c.name)
             obj.put("phone", c.phone)
             obj.put("address", c.address)
+            obj.put("details", c.address)
             obj.put("openingBalance", c.openingBalance)
             obj.put("creditLimit", c.creditLimit)
             obj.put("promisedPaymentDate", c.promisedPaymentDate)
@@ -84,9 +87,40 @@ object DataBackupRestoreManager {
             obj.put("nidOrGuarantor", c.nidOrGuarantor)
             obj.put("note", c.note)
             obj.put("createdAt", c.createdAt)
+            obj.put("updatedAt", c.createdAt)
             custArr.put(obj)
+
+            // Also build BakiModel JSON structure for cross-app parity
+            val custTxList = data.transactions.filter { it.customerId == c.id || it.customerName.equals(c.name, ignoreCase = true) }
+            val totalGiven = custTxList.filter { it.type == TransactionType.SALE_BAKI }.sumOf { it.amount }
+            val totalPaid = custTxList.filter { it.type == TransactionType.BAKI_COLLECTION }.sumOf { it.amount }
+            val netDue = (c.openingBalance + totalGiven - totalPaid).coerceAtLeast(0.0)
+
+            val bakiObj = JSONObject()
+            bakiObj.put("id", c.id.toString())
+            bakiObj.put("customerName", c.name)
+            bakiObj.put("phone", c.phone)
+            bakiObj.put("details", c.address)
+            bakiObj.put("amount", netDue)
+            bakiObj.put("updatedAt", c.createdAt)
+
+            val innerTxArr = JSONArray()
+            custTxList.forEach { ctx ->
+                val txO = JSONObject()
+                txO.put("id", ctx.id)
+                txO.put("type", ctx.type.name)
+                txO.put("amount", ctx.amount)
+                txO.put("note", ctx.note)
+                txO.put("date", SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(ctx.timestamp)))
+                txO.put("time", SimpleDateFormat("hh:mm a", Locale.US).format(Date(ctx.timestamp)))
+                txO.put("updatedAt", ctx.timestamp)
+                innerTxArr.put(txO)
+            }
+            bakiObj.put("transactions", innerTxArr)
+            bakiRecordsArr.put(bakiObj)
         }
         root.put("customers", custArr)
+        root.put("baki_records", bakiRecordsArr)
 
         // Transactions
         val txArr = JSONArray()
@@ -110,8 +144,37 @@ object DataBackupRestoreManager {
         }
         root.put("transactions", txArr)
 
-        // Fordi Items
+        // Expenses by Date (for cross-app parity with MawaSyncManager)
+        val expensesByDateObj = JSONObject()
+        val expensesGrouped = data.transactions.filter {
+            it.type == TransactionType.EXPENSE_SHOP ||
+            it.type == TransactionType.EXPENSE_HOME ||
+            it.type == TransactionType.PURCHASE_DIRECT ||
+            it.type == TransactionType.PURCHASE_FORDI ||
+            it.type == TransactionType.SALE_CASH
+        }.groupBy { SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(it.timestamp)) }
+
+        expensesGrouped.forEach { (dateKey, txList) ->
+            val expArr = JSONArray()
+            txList.forEach { tx ->
+                val eo = JSONObject()
+                eo.put("id", tx.id.toString())
+                eo.put("name", tx.note.ifBlank { tx.category })
+                eo.put("amount", tx.amount)
+                eo.put("type", tx.type.name)
+                eo.put("expenseType", if (tx.type == TransactionType.EXPENSE_HOME) "HOME" else if (tx.type == TransactionType.PURCHASE_DIRECT) "PURCHASE" else "SHOP")
+                eo.put("date", dateKey)
+                eo.put("time", SimpleDateFormat("hh:mm a", Locale.US).format(Date(tx.timestamp)))
+                eo.put("updatedAt", tx.timestamp)
+                expArr.put(eo)
+            }
+            expensesByDateObj.put(dateKey, expArr)
+        }
+        root.put("expenses_by_date", expensesByDateObj)
+
+        // Fordi Items (Standard + FordiModel style)
         val fordiArr = JSONArray()
+        val fordiRecordsArr = JSONArray()
         data.fordiItems.forEach { f ->
             val obj = JSONObject()
             obj.put("id", f.id)
@@ -131,6 +194,34 @@ object DataBackupRestoreManager {
         }
         root.put("fordiItems", fordiArr)
 
+        // Group fordi items by date for fordi_records
+        val fordiByDate = data.fordiItems.groupBy { SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(it.createdAt)) }
+        fordiByDate.forEach { (fDate, items) ->
+            val fGroup = JSONObject()
+            fGroup.put("id", "fordi_$fDate")
+            fGroup.put("date", fDate)
+            fGroup.put("updatedAt", items.firstOrNull()?.createdAt ?: System.currentTimeMillis())
+            fGroup.put("postedToAccounting", items.all { it.isPurchased })
+            val fItemArr = JSONArray()
+            items.forEach { fi ->
+                val fo = JSONObject()
+                fo.put("productName", fi.productName)
+                fo.put("plannedQuantity", fi.plannedQuantity)
+                fo.put("unit", fi.unit)
+                fo.put("purchaseRate", fi.purchaseRate)
+                fo.put("sellingRate", fi.sellingRate)
+                fo.put("isChecked", fi.isPurchased)
+                fo.put("isPurchased", fi.isPurchased)
+                fo.put("actualQuantity", fi.actualQuantity)
+                fo.put("actualPurchaseRate", fi.actualRate)
+                fo.put("actualTotal", fi.actualTotal)
+                fItemArr.put(fo)
+            }
+            fGroup.put("items", fItemArr)
+            fordiRecordsArr.put(fGroup)
+        }
+        root.put("fordi_records", fordiRecordsArr)
+
         // Products
         val prodArr = JSONArray()
         data.products.forEach { p ->
@@ -140,13 +231,17 @@ object DataBackupRestoreManager {
             obj.put("banglaName", p.banglaName)
             obj.put("unit", p.unit)
             obj.put("defaultPurchasePrice", p.defaultPurchasePrice)
+            obj.put("lastPurchasePrice", p.defaultPurchasePrice)
             obj.put("defaultSellingPrice", p.defaultSellingPrice)
+            obj.put("sellingPrice", p.defaultSellingPrice)
             obj.put("category", p.category)
             obj.put("createdAt", p.createdAt)
+            obj.put("updatedAt", p.createdAt)
             obj.put("isActive", p.isActive)
             prodArr.put(obj)
         }
         root.put("products", prodArr)
+        root.put("estimated_gross_margin", 15.0)
 
         // Personal Transactions
         val ptxArr = JSONArray()
@@ -409,8 +504,9 @@ object DataBackupRestoreManager {
         }
 
         val originalRoot = JSONObject(cleanJson)
-        // Unwrap nested payloads if present (e.g. data: { ... } or backup: { ... })
+        // Unwrap nested payloads if present (e.g. backup_data: { ... }, data: { ... } or backup: { ... })
         val root = when {
+            originalRoot.has("backup_data") && originalRoot.optJSONObject("backup_data") != null -> originalRoot.getJSONObject("backup_data")
             originalRoot.has("data") && originalRoot.optJSONObject("data") != null -> originalRoot.getJSONObject("data")
             originalRoot.has("backup") && originalRoot.optJSONObject("backup") != null -> originalRoot.getJSONObject("backup")
             originalRoot.has("payload") && originalRoot.optJSONObject("payload") != null -> originalRoot.getJSONObject("payload")
@@ -618,48 +714,67 @@ object DataBackupRestoreManager {
                 }
             }
 
-            // 2. Expenses / Purchases / Sales by date (e.g. key_expenses_06-08-2026, key_expenses_29-08-2026, expenses_..., etc.)
+            // 2. Expenses / Purchases / Sales by date (e.g. expenses_by_date, key_expenses_06-08-2026, expenses_..., etc.)
             if (lowerKey.contains("expense") || lowerKey.contains("cost_") || lowerKey.contains("khoroch")) {
                 val expArr = root.optJSONArray(key)
+                val expObj = root.optJSONObject(key)
                 val dateFromKey = extractDateStringFromKey(key)
+
+                val listToProcess = mutableListOf<Pair<String, JSONObject>>()
                 if (expArr != null) {
                     for (i in 0 until expArr.length()) {
                         val item = expArr.optJSONObject(i) ?: continue
-                        if (item.optLong("deletedAt", 0L) > 0) continue
-                        val amt = item.optDouble("amount", item.optDouble("taka", item.optDouble("cost", 0.0)))
-                        if (amt <= 0) continue
-                        val name = item.optString("name", item.optString("title", item.optString("note", "খরচ"))).trim()
-                        val typeStr = item.optString("type", "").uppercase()
-                        val expType = item.optString("expenseType", item.optString("expense_type", item.optString("category", ""))).uppercase()
-                        val dateStr = item.optString("date", dateFromKey)
-                        val timeStr = item.optString("time", "")
-                        val updatedAt = item.optLong("updatedAt", item.optLong("timestamp", item.optLong("createdAt", 0L)))
-                        val ts = if (dateStr.isNotBlank()) {
-                            parseDateAndTimeToMillis(dateStr, timeStr, if (updatedAt > 0) updatedAt else System.currentTimeMillis())
-                        } else {
-                            if (updatedAt > 0) updatedAt else System.currentTimeMillis()
-                        }
-
-                        val txType = when {
-                            typeStr == "SALE_CASH" || typeStr == "SALE" || typeStr == "CASH" || typeStr == "INCOME" || expType == "SALE" || expType == "INCOME" || name.contains("নগদ বিক্রি") || name.contains("মোট বিক্রি") || name.contains("বেচা") -> TransactionType.SALE_CASH
-                            typeStr == "SALE_BAKI" || typeStr == "BAKI" || expType == "BAKI" || name.contains("বাকি বিক্রি") -> TransactionType.SALE_BAKI
-                            typeStr == "BAKI_COLLECTION" || typeStr == "COLLECTION" || typeStr == "JOMA" || expType == "COLLECTION" || name.contains("বাকি আদায়") || name.contains("জমা") -> TransactionType.BAKI_COLLECTION
-                            typeStr == "PURCHASE" || expType == "PURCHASE" || name.contains("মাল কেনা") || name.contains("ক্রয়") -> TransactionType.PURCHASE_DIRECT
-                            typeStr == "HOME" || expType == "HOME" || name.contains("সংসার") || name.contains("উত্তোলন") || name.contains("বাড়ি") -> TransactionType.EXPENSE_HOME
-                            else -> TransactionType.EXPENSE_SHOP
-                        }
-
-                        transactions.add(
-                            TransactionEntity(
-                                type = txType,
-                                amount = amt,
-                                productName = if (txType == TransactionType.PURCHASE_DIRECT) name else null,
-                                note = name,
-                                category = if (txType == TransactionType.EXPENSE_HOME) "সংসার" else if (txType == TransactionType.PURCHASE_DIRECT) "পণ্য ক্রয়" else if (txType == TransactionType.SALE_CASH) "বিক্রি" else "দোকান খরচ",
-                                timestamp = ts
-                            )
-                        )
+                        listToProcess.add(dateFromKey to item)
                     }
+                } else if (expObj != null) {
+                    val dKeys = expObj.keys()
+                    while (dKeys.hasNext()) {
+                        val dKey = dKeys.next()
+                        val subArr = expObj.optJSONArray(dKey)
+                        if (subArr != null) {
+                            for (j in 0 until subArr.length()) {
+                                val item = subArr.optJSONObject(j) ?: continue
+                                listToProcess.add(dKey to item)
+                            }
+                        }
+                    }
+                }
+
+                for ((dKey, item) in listToProcess) {
+                    if (item.optLong("deletedAt", 0L) > 0) continue
+                    val amt = item.optDouble("amount", item.optDouble("taka", item.optDouble("cost", 0.0)))
+                    if (amt <= 0) continue
+                    val name = item.optString("name", item.optString("title", item.optString("note", "খরচ"))).trim()
+                    val typeStr = item.optString("type", "").uppercase()
+                    val expType = item.optString("expenseType", item.optString("expense_type", item.optString("category", ""))).uppercase()
+                    val dateStr = item.optString("date", dKey)
+                    val timeStr = item.optString("time", "")
+                    val updatedAt = item.optLong("updatedAt", item.optLong("timestamp", item.optLong("createdAt", 0L)))
+                    val ts = if (dateStr.isNotBlank()) {
+                        parseDateAndTimeToMillis(dateStr, timeStr, if (updatedAt > 0) updatedAt else System.currentTimeMillis())
+                    } else {
+                        if (updatedAt > 0) updatedAt else System.currentTimeMillis()
+                    }
+
+                    val txType = when {
+                        typeStr == "SALE_CASH" || typeStr == "SALE" || typeStr == "CASH" || typeStr == "INCOME" || expType == "SALE" || expType == "INCOME" || name.contains("নগদ বিক্রি") || name.contains("মোট বিক্রি") || name.contains("বেচা") -> TransactionType.SALE_CASH
+                        typeStr == "SALE_BAKI" || typeStr == "BAKI" || expType == "BAKI" || name.contains("বাকি বিক্রি") -> TransactionType.SALE_BAKI
+                        typeStr == "BAKI_COLLECTION" || typeStr == "COLLECTION" || typeStr == "JOMA" || expType == "COLLECTION" || name.contains("বাকি আদায়") || name.contains("জমা") -> TransactionType.BAKI_COLLECTION
+                        typeStr == "PURCHASE" || expType == "PURCHASE" || name.contains("মাল কেনা") || name.contains("ক্রয়") -> TransactionType.PURCHASE_DIRECT
+                        typeStr == "HOME" || expType == "HOME" || name.contains("সংসার") || name.contains("উত্তোলন") || name.contains("বাড়ি") -> TransactionType.EXPENSE_HOME
+                        else -> TransactionType.EXPENSE_SHOP
+                    }
+
+                    transactions.add(
+                        TransactionEntity(
+                            type = txType,
+                            amount = amt,
+                            productName = if (txType == TransactionType.PURCHASE_DIRECT) name else null,
+                            note = name,
+                            category = if (txType == TransactionType.EXPENSE_HOME) "সংসার" else if (txType == TransactionType.PURCHASE_DIRECT) "পণ্য ক্রয়" else if (txType == TransactionType.SALE_CASH) "বিক্রি" else "দোকান খরচ",
+                            timestamp = ts
+                        )
+                    )
                 }
             }
 

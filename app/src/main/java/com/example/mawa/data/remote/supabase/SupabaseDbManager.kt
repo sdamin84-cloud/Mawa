@@ -51,16 +51,20 @@ class SupabaseDbManager(
         try {
             val jsonString = DataBackupRestoreManager.exportToJsonString(backupData)
             val jsonObjectData = JSONObject(jsonString)
+            val nowIso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
 
             val record = JSONObject().apply {
                 put("user_id", userId)
+                authManager.getUserEmail()?.let { put("email", it) }
                 put("backup_name", backupName.ifBlank { "MAWA_BACKUP_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}" })
-                put("data", jsonObjectData)
+                put("backup_data", jsonObjectData) // Used by MawaSyncManager
+                put("data", jsonObjectData)        // Kept for backward compatibility
+                put("updated_at", nowIso)
             }
 
             val requestBuilder = Request.Builder()
                 .url("${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_USER_BACKUPS}")
-                .addHeader("Prefer", "return=representation")
+                .addHeader("Prefer", "resolution=merge-duplicates,return=representation")
                 .post(record.toString().toRequestBody(jsonMediaType))
 
             getAuthHeaders().forEach { (k, v) -> requestBuilder.addHeader(k, v) }
@@ -83,7 +87,7 @@ class SupabaseDbManager(
                         userId = userId,
                         backupName = backupName,
                         dataJson = jsonString,
-                        updatedAt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date())
+                        updatedAt = nowIso
                     )
 
                     return@withContext CloudOperationResult.Success(
@@ -115,7 +119,7 @@ class SupabaseDbManager(
         }
 
         try {
-            val url = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_USER_BACKUPS}?user_id=eq.$userId&order=id.desc"
+            val url = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_USER_BACKUPS}?user_id=eq.$userId&order=updated_at.desc,id.desc&limit=15"
             val requestBuilder = Request.Builder()
                 .url(url)
                 .get()
@@ -199,8 +203,9 @@ class SupabaseDbManager(
 
         try {
             val recordsArray = JSONArray()
+            val nowIso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
 
-            // Shop Settings
+            // 1. Shop Settings (SETTINGS)
             backupData.shopSettings?.let { s ->
                 val sJson = JSONObject().apply {
                     put("shopName", s.shopName)
@@ -211,62 +216,155 @@ class SupabaseDbManager(
                 }
                 recordsArray.put(JSONObject().apply {
                     put("user_id", userId)
-                    put("domain", "BUSINESS")
+                    put("domain", "business")
                     put("entity_type", "SETTINGS")
                     put("entity_id", "shop_settings_${s.id}")
                     put("data", sJson)
+                    put("updated_at", nowIso)
                 })
             }
 
-            // Products
+            // 2. Products (PRODUCT)
             backupData.products.forEach { p ->
                 val pJson = JSONObject().apply {
+                    put("id", p.id.toString())
                     put("name", p.name)
                     put("banglaName", p.banglaName)
                     put("category", p.category)
                     put("stockQuantity", p.stockQuantity)
                     put("unit", p.unit)
                     put("defaultPurchasePrice", p.defaultPurchasePrice)
+                    put("lastPurchasePrice", p.defaultPurchasePrice)
                     put("defaultSellingPrice", p.defaultSellingPrice)
+                    put("sellingPrice", p.defaultSellingPrice)
+                    put("createdAt", p.createdAt)
+                    put("updatedAt", p.createdAt)
                 }
                 recordsArray.put(JSONObject().apply {
                     put("user_id", userId)
-                    put("domain", "BUSINESS")
+                    put("domain", "business")
                     put("entity_type", "PRODUCT")
                     put("entity_id", "prod_${p.id}")
                     put("data", pJson)
+                    put("updated_at", nowIso)
                 })
             }
 
-            // Customers (BAKI_CUSTOMER)
+            // 3. Customers / Baki (BAKI)
             backupData.customers.forEach { c ->
+                val custTxList = backupData.transactions.filter { it.customerId == c.id || it.customerName.equals(c.name, ignoreCase = true) }
+                val totalGiven = custTxList.filter { it.type == com.example.mawa.data.local.entity.TransactionType.SALE_BAKI }.sumOf { it.amount }
+                val totalPaid = custTxList.filter { it.type == com.example.mawa.data.local.entity.TransactionType.BAKI_COLLECTION }.sumOf { it.amount }
+                val netDue = (c.openingBalance + totalGiven - totalPaid).coerceAtLeast(0.0)
+
                 val cJson = JSONObject().apply {
+                    put("id", c.id.toString())
+                    put("customerName", c.name)
                     put("name", c.name)
                     put("phone", c.phone)
                     put("address", c.address)
+                    put("details", c.address)
                     put("openingBalance", c.openingBalance)
+                    put("amount", netDue)
                     put("note", c.note)
                     put("createdAt", c.createdAt)
+                    put("updatedAt", c.createdAt)
+
+                    val innerTxArr = JSONArray()
+                    custTxList.forEach { ctx ->
+                        val txO = JSONObject()
+                        txO.put("id", ctx.id)
+                        txO.put("type", ctx.type.name)
+                        txO.put("amount", ctx.amount)
+                        txO.put("note", ctx.note)
+                        txO.put("date", SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(ctx.timestamp)))
+                        txO.put("time", SimpleDateFormat("hh:mm a", Locale.US).format(Date(ctx.timestamp)))
+                        txO.put("updatedAt", ctx.timestamp)
+                        innerTxArr.put(txO)
+                    }
+                    put("transactions", innerTxArr)
                 }
                 recordsArray.put(JSONObject().apply {
                     put("user_id", userId)
-                    put("domain", "BUSINESS")
-                    put("entity_type", "BAKI_CUSTOMER")
-                    put("entity_id", "customer_${c.id}")
+                    put("domain", "business")
+                    put("entity_type", "BAKI")
+                    put("entity_id", "baki_${c.id}")
                     put("data", cJson)
+                    put("updated_at", nowIso)
                 })
             }
 
-            // Transactions (BAKI_TX, EXPENSE, SALE)
+            // 4. Fordi (FORDI)
+            backupData.fordiItems.groupBy { SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(it.createdAt)) }.forEach { (fDate, items) ->
+                val fJson = JSONObject().apply {
+                    put("id", "fordi_$fDate")
+                    put("date", fDate)
+                    put("updatedAt", items.firstOrNull()?.createdAt ?: System.currentTimeMillis())
+                    put("postedToAccounting", items.all { it.isPurchased })
+
+                    val itemsArr = JSONArray()
+                    items.forEach { f ->
+                        val fo = JSONObject()
+                        fo.put("id", f.id)
+                        fo.put("productName", f.productName)
+                        fo.put("plannedQuantity", f.plannedQuantity)
+                        fo.put("unit", f.unit)
+                        fo.put("purchaseRate", f.purchaseRate)
+                        fo.put("sellingRate", f.sellingRate)
+                        fo.put("isChecked", f.isPurchased)
+                        fo.put("isPurchased", f.isPurchased)
+                        fo.put("actualQuantity", f.actualQuantity)
+                        fo.put("actualPurchaseRate", f.actualRate)
+                        fo.put("actualTotal", f.actualTotal)
+                        itemsArr.put(fo)
+                    }
+                    put("items", itemsArr)
+                }
+                recordsArray.put(JSONObject().apply {
+                    put("user_id", userId)
+                    put("domain", "business")
+                    put("entity_type", "FORDI")
+                    put("entity_id", "fordi_$fDate")
+                    put("data", fJson)
+                    put("updated_at", nowIso)
+                })
+            }
+
+            // 5. Daily Cash (DAILY_CASH)
+            backupData.dailyCashRecords.forEach { dc ->
+                val dcJson = JSONObject().apply {
+                    put("dateKey", dc.dateKey)
+                    put("dateMillis", dc.dateMillis)
+                    put("sabekCash", dc.sabekCash)
+                    put("closingCash", dc.closingCash)
+                    put("isClosed", dc.isClosed)
+                    put("updatedAt", dc.updatedAt)
+                }
+                recordsArray.put(JSONObject().apply {
+                    put("user_id", userId)
+                    put("domain", "business")
+                    put("entity_type", "DAILY_CASH")
+                    put("entity_id", "daily_cash_${dc.dateKey}")
+                    put("data", dcJson)
+                    put("updated_at", nowIso)
+                })
+            }
+
+            // 6. Transactions (EXPENSE, SALE, BAKI_TX)
             backupData.transactions.forEach { t ->
                 val tJson = JSONObject().apply {
+                    put("id", t.id.toString())
                     put("type", t.type.name)
                     put("amount", t.amount)
                     put("timestamp", t.timestamp)
                     put("customerId", t.customerId)
                     put("customerName", t.customerName)
+                    put("productName", t.productName)
                     put("note", t.note)
                     put("category", t.category)
+                    put("date", SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(t.timestamp)))
+                    put("time", SimpleDateFormat("hh:mm a", Locale.US).format(Date(t.timestamp)))
+                    put("updatedAt", t.timestamp)
                 }
                 val entityType = when (t.type) {
                     com.example.mawa.data.local.entity.TransactionType.SALE_BAKI,
@@ -279,47 +377,33 @@ class SupabaseDbManager(
                 }
                 recordsArray.put(JSONObject().apply {
                     put("user_id", userId)
-                    put("domain", "BUSINESS")
+                    put("domain", "business")
                     put("entity_type", entityType)
                     put("entity_id", "tx_${t.id}")
                     put("data", tJson)
+                    put("updated_at", nowIso)
                 })
             }
 
-            // Fordi items (FORDI)
-            backupData.fordiItems.forEach { f ->
-                val fJson = JSONObject().apply {
-                    put("productName", f.productName)
-                    put("plannedQuantity", f.plannedQuantity)
-                    put("unit", f.unit)
-                    put("purchaseRate", f.purchaseRate)
-                    put("isPurchased", f.isPurchased)
-                    put("actualTotal", f.actualTotal)
-                }
-                recordsArray.put(JSONObject().apply {
-                    put("user_id", userId)
-                    put("domain", "BUSINESS")
-                    put("entity_type", "FORDI")
-                    put("entity_id", "fordi_${f.id}")
-                    put("data", fJson)
-                })
-            }
-
-            // Personal transactions
+            // 7. Personal transactions (PERSONAL_TX)
             backupData.personalTransactions.forEach { pt ->
                 val ptJson = JSONObject().apply {
+                    put("id", pt.id)
                     put("type", pt.type.name)
                     put("amount", pt.amount)
                     put("title", pt.title)
                     put("category", pt.category)
+                    put("note", pt.note)
                     put("timestamp", pt.timestamp)
+                    put("updatedAt", pt.timestamp)
                 }
                 recordsArray.put(JSONObject().apply {
                     put("user_id", userId)
-                    put("domain", "PERSONAL")
+                    put("domain", "personal")
                     put("entity_type", "PERSONAL_TX")
                     put("entity_id", "ptx_${pt.id}")
                     put("data", ptJson)
+                    put("updated_at", nowIso)
                 })
             }
 
@@ -329,7 +413,7 @@ class SupabaseDbManager(
 
             val requestBuilder = Request.Builder()
                 .url("${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}")
-                .addHeader("Prefer", "return=minimal")
+                .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
                 .post(recordsArray.toString().toRequestBody(jsonMediaType))
 
             getAuthHeaders().forEach { (k, v) -> requestBuilder.addHeader(k, v) }
@@ -367,7 +451,7 @@ class SupabaseDbManager(
         }
 
         try {
-            val url = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?user_id=eq.$userId&order=id.asc"
+            val url = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?user_id=eq.$userId&order=updated_at.asc,id.asc"
             val requestBuilder = Request.Builder()
                 .url(url)
                 .get()
@@ -384,71 +468,147 @@ class SupabaseDbManager(
                     val transactions = mutableListOf<com.example.mawa.data.local.entity.TransactionEntity>()
                     val fordiItems = mutableListOf<com.example.mawa.data.local.entity.FordiItemEntity>()
                     val products = mutableListOf<com.example.mawa.data.local.entity.ProductEntity>()
+                    val dailyCashList = mutableListOf<com.example.mawa.data.local.entity.DailyCashEntity>()
                     var shopSettings: com.example.mawa.data.local.entity.ShopSettingsEntity? = null
                     val personalTx = mutableListOf<com.example.mawa.data.local.entity.PersonalTransactionEntity>()
 
                     for (i in 0 until arr.length()) {
                         val obj = arr.getJSONObject(i)
-                        val entityType = obj.optString("entity_type", "")
+                        val entityType = obj.optString("entity_type", "").uppercase(Locale.US)
                         val dataObj = if (obj.has("data")) {
                             val d = obj.get("data")
                             if (d is JSONObject) d else JSONObject(d.toString())
                         } else JSONObject()
 
                         when (entityType) {
-                            "BAKI_CUSTOMER" -> {
+                            "DAILY_CASH" -> {
+                                val dKey = dataObj.optString("dateKey", "")
+                                if (dKey.isNotBlank()) {
+                                    dailyCashList.add(com.example.mawa.data.local.entity.DailyCashEntity(
+                                        dateKey = dKey,
+                                        dateMillis = dataObj.optLong("dateMillis", System.currentTimeMillis()),
+                                        sabekCash = dataObj.optDouble("sabekCash", 0.0),
+                                        closingCash = dataObj.optDouble("closingCash", 0.0),
+                                        isClosed = dataObj.optBoolean("isClosed", false),
+                                        updatedAt = dataObj.optLong("updatedAt", System.currentTimeMillis())
+                                    ))
+                                }
+                            }
+                            "BAKI", "BAKI_CUSTOMER", "CUSTOMER" -> {
+                                val custName = dataObj.optString("customerName", dataObj.optString("name", "গ্রাহক")).trim()
+                                val phone = dataObj.optString("phone", dataObj.optString("mobile", "")).trim()
+                                val address = dataObj.optString("details", dataObj.optString("address", "")).trim()
+                                val openBal = dataObj.optDouble("openingBalance", dataObj.optDouble("amount", 0.0))
+                                val createdAt = dataObj.optLong("createdAt", dataObj.optLong("updatedAt", System.currentTimeMillis()))
+                                
+                                val innerTxArr = dataObj.optJSONArray("transactions")
+                                var hasSpecificTx = false
+                                if (innerTxArr != null && innerTxArr.length() > 0) {
+                                    for (j in 0 until innerTxArr.length()) {
+                                        val txObj = innerTxArr.optJSONObject(j) ?: continue
+                                        val txAmt = txObj.optDouble("amount", 0.0)
+                                        if (txAmt <= 0) continue
+                                        hasSpecificTx = true
+                                        val typeStr = txObj.optString("type", "SALE_BAKI")
+                                        val txType = if (typeStr.contains("JOMA") || typeStr.contains("COLLECTION") || typeStr.contains("PAYMENT") || typeStr.contains("RECEIVED")) {
+                                            com.example.mawa.data.local.entity.TransactionType.BAKI_COLLECTION
+                                        } else {
+                                            com.example.mawa.data.local.entity.TransactionType.SALE_BAKI
+                                        }
+                                        val note = txObj.optString("note", if (txType == com.example.mawa.data.local.entity.TransactionType.SALE_BAKI) "বাকি বিক্রি" else "বাকি আদায়")
+                                        val ts = txObj.optLong("updatedAt", txObj.optLong("timestamp", System.currentTimeMillis()))
+                                        transactions.add(
+                                            com.example.mawa.data.local.entity.TransactionEntity(
+                                                type = txType,
+                                                amount = txAmt,
+                                                customerName = custName,
+                                                note = note,
+                                                category = "বাকি",
+                                                timestamp = ts
+                                            )
+                                        )
+                                    }
+                                }
+
                                 customers.add(com.example.mawa.data.local.entity.CustomerEntity(
-                                    name = dataObj.optString("name", "গ্রাহক"),
-                                    phone = dataObj.optString("phone", ""),
-                                    address = dataObj.optString("address", ""),
-                                    openingBalance = dataObj.optDouble("openingBalance", 0.0),
+                                    name = custName,
+                                    phone = phone,
+                                    address = address,
+                                    openingBalance = if (!hasSpecificTx) openBal else 0.0,
                                     note = dataObj.optString("note", ""),
-                                    createdAt = dataObj.optLong("createdAt", System.currentTimeMillis())
+                                    createdAt = createdAt
                                 ))
                             }
-                            "BAKI_TX", "EXPENSE", "SALE" -> {
-                                val typeStr = dataObj.optString("type", "EXPENSE_SHOP")
+                            "BAKI_TX", "EXPENSE", "EXPENSE_SHOP", "EXPENSE_HOME", "PURCHASE", "SALE" -> {
+                                val typeStr = dataObj.optString("type", entityType)
                                 val txType = try {
                                     com.example.mawa.data.local.entity.TransactionType.valueOf(typeStr)
                                 } catch (e: Exception) {
                                     when (entityType) {
                                         "BAKI_TX" -> com.example.mawa.data.local.entity.TransactionType.SALE_BAKI
-                                        "EXPENSE" -> com.example.mawa.data.local.entity.TransactionType.EXPENSE_SHOP
+                                        "EXPENSE_HOME" -> com.example.mawa.data.local.entity.TransactionType.EXPENSE_HOME
+                                        "PURCHASE" -> com.example.mawa.data.local.entity.TransactionType.PURCHASE_DIRECT
+                                        "EXPENSE", "EXPENSE_SHOP" -> com.example.mawa.data.local.entity.TransactionType.EXPENSE_SHOP
                                         else -> com.example.mawa.data.local.entity.TransactionType.SALE_CASH
                                     }
                                 }
                                 transactions.add(com.example.mawa.data.local.entity.TransactionEntity(
                                     type = txType,
-                                    amount = dataObj.optDouble("amount", 0.0),
-                                    timestamp = dataObj.optLong("timestamp", System.currentTimeMillis()),
+                                    amount = dataObj.optDouble("amount", dataObj.optDouble("taka", 0.0)),
+                                    timestamp = dataObj.optLong("timestamp", dataObj.optLong("updatedAt", System.currentTimeMillis())),
                                     customerId = if (dataObj.has("customerId") && !dataObj.isNull("customerId")) dataObj.optLong("customerId") else null,
                                     customerName = dataObj.optString("customerName", null),
-                                    note = dataObj.optString("note", ""),
+                                    productName = dataObj.optString("productName", null),
+                                    note = dataObj.optString("note", dataObj.optString("name", "")),
                                     category = dataObj.optString("category", "")
                                 ))
                             }
                             "FORDI" -> {
-                                fordiItems.add(com.example.mawa.data.local.entity.FordiItemEntity(
-                                    productName = dataObj.optString("productName", ""),
-                                    plannedQuantity = dataObj.optDouble("plannedQuantity", 1.0),
-                                    unit = dataObj.optString("unit", "কেজি"),
-                                    purchaseRate = dataObj.optDouble("purchaseRate", 0.0),
-                                    isPurchased = dataObj.optBoolean("isPurchased", false),
-                                    actualTotal = dataObj.optDouble("actualTotal", 0.0)
-                                ))
+                                val itemsArr = dataObj.optJSONArray("items")
+                                if (itemsArr != null && itemsArr.length() > 0) {
+                                    for (j in 0 until itemsArr.length()) {
+                                        val fi = itemsArr.optJSONObject(j) ?: continue
+                                        val pName = fi.optString("productName", fi.optString("name", "পণ্য")).trim()
+                                        if (pName.isBlank()) continue
+                                        fordiItems.add(com.example.mawa.data.local.entity.FordiItemEntity(
+                                            productName = pName,
+                                            plannedQuantity = fi.optDouble("plannedQuantity", fi.optDouble("quantity", 1.0)),
+                                            unit = fi.optString("unit", "কেজি"),
+                                            purchaseRate = fi.optDouble("purchaseRate", 0.0),
+                                            sellingRate = fi.optDouble("sellingRate", 0.0),
+                                            isPurchased = fi.optBoolean("isChecked", fi.optBoolean("isPurchased", false)),
+                                            actualQuantity = fi.optDouble("actualQuantity", 0.0),
+                                            actualRate = fi.optDouble("actualPurchaseRate", 0.0),
+                                            actualTotal = fi.optDouble("actualTotal", 0.0),
+                                            createdAt = dataObj.optLong("updatedAt", System.currentTimeMillis())
+                                        ))
+                                    }
+                                } else {
+                                    fordiItems.add(com.example.mawa.data.local.entity.FordiItemEntity(
+                                        productName = dataObj.optString("productName", ""),
+                                        plannedQuantity = dataObj.optDouble("plannedQuantity", 1.0),
+                                        unit = dataObj.optString("unit", "কেজি"),
+                                        purchaseRate = dataObj.optDouble("purchaseRate", 0.0),
+                                        isPurchased = dataObj.optBoolean("isPurchased", false),
+                                        actualTotal = dataObj.optDouble("actualTotal", 0.0)
+                                    ))
+                                }
                             }
                             "PRODUCT" -> {
+                                val pPrice = dataObj.optDouble("lastPurchasePrice", dataObj.optDouble("defaultPurchasePrice", 0.0))
+                                val sPrice = dataObj.optDouble("sellingPrice", dataObj.optDouble("defaultSellingPrice", 0.0))
                                 products.add(com.example.mawa.data.local.entity.ProductEntity(
                                     name = dataObj.optString("name", ""),
-                                    banglaName = dataObj.optString("banglaName", ""),
-                                    category = dataObj.optString("category", ""),
+                                    banglaName = dataObj.optString("banglaName", dataObj.optString("name", "")),
+                                    category = dataObj.optString("category", "মুদি"),
                                     stockQuantity = dataObj.optDouble("stockQuantity", 0.0),
                                     unit = dataObj.optString("unit", "কেজি"),
-                                    defaultPurchasePrice = dataObj.optDouble("defaultPurchasePrice", 0.0),
-                                    defaultSellingPrice = dataObj.optDouble("defaultSellingPrice", 0.0)
+                                    defaultPurchasePrice = pPrice,
+                                    defaultSellingPrice = sPrice,
+                                    createdAt = dataObj.optLong("createdAt", dataObj.optLong("updatedAt", System.currentTimeMillis()))
                                 ))
                             }
-                            "SETTINGS" -> {
+                            "SETTINGS", "SHOP_SETTINGS" -> {
                                 shopSettings = com.example.mawa.data.local.entity.ShopSettingsEntity(
                                     shopName = dataObj.optString("shopName", "আমার দোকান"),
                                     ownerName = dataObj.optString("ownerName", ""),
@@ -457,7 +617,7 @@ class SupabaseDbManager(
                                     appMode = dataObj.optString("appMode", "PRO")
                                 )
                             }
-                            "PERSONAL_TX" -> {
+                            "PERSONAL_TX", "PERSONAL" -> {
                                 val pTypeStr = dataObj.optString("type", "EXPENSE")
                                 val pType = try {
                                     com.example.mawa.data.local.entity.PersonalTransactionType.valueOf(pTypeStr)
@@ -469,7 +629,7 @@ class SupabaseDbManager(
                                     amount = dataObj.optDouble("amount", 0.0),
                                     title = dataObj.optString("title", ""),
                                     category = dataObj.optString("category", ""),
-                                    timestamp = dataObj.optLong("timestamp", System.currentTimeMillis())
+                                    timestamp = dataObj.optLong("timestamp", dataObj.optLong("updatedAt", System.currentTimeMillis()))
                                 ))
                             }
                         }
@@ -477,11 +637,12 @@ class SupabaseDbManager(
 
                     val backupData = FullBackupData(
                         shopSettings = shopSettings,
-                        customers = customers,
-                        transactions = transactions,
+                        customers = customers.distinctBy { it.name.trim().lowercase() },
+                        transactions = transactions.distinctBy { "${it.timestamp}_${it.amount}_${it.type}_${it.customerName}_${it.note}" },
                         fordiItems = fordiItems,
-                        products = products,
-                        personalTransactions = personalTx
+                        products = products.distinctBy { it.name.trim().lowercase() },
+                        personalTransactions = personalTx,
+                        dailyCashRecords = dailyCashList
                     )
                     return@withContext CloudOperationResult.Success(backupData)
                 } else {

@@ -36,6 +36,8 @@ import androidx.compose.material.icons.filled.AutoGraph
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Cloud
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Menu
@@ -56,6 +58,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -127,6 +130,7 @@ fun HomeScreen(
     onOpenFordi: () -> Unit,
     onOpenReports: () -> Unit,
     onOpenDrawer: () -> Unit,
+    onOpenSupabaseCloud: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val selectedHomeDateMillis by viewModel.selectedHomeDateMillis.collectAsStateWithLifecycle()
@@ -134,6 +138,8 @@ fun HomeScreen(
     val settings by viewModel.shopSettings.collectAsStateWithLifecycle()
     val displayTransactions by viewModel.selectedDateTransactions.collectAsStateWithLifecycle()
     val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
+    val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val isCloudSyncing by viewModel.isCloudSyncing.collectAsStateWithLifecycle()
 
     var showDatePickerDialog by remember { mutableStateOf(false) }
     var showDenominationSheet by remember { mutableStateOf(false) }
@@ -383,6 +389,40 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // Supabase Cloud Sync Quick Button
+                            IconButton(
+                                onClick = {
+                                    if (currentUser != null) {
+                                        viewModel.syncAndRestoreFromCloud()
+                                    } else {
+                                        onOpenSupabaseCloud()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (currentUser != null) Color(0xFF10B981).copy(alpha = 0.15f)
+                                        else MaterialTheme.colorScheme.surfaceVariant
+                                    )
+                                    .testTag("header_cloud_sync_btn")
+                            ) {
+                                if (isCloudSyncing) {
+                                    CircularProgressIndicator(
+                                        color = Color(0xFF10B981),
+                                        strokeWidth = 2.dp,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = if (currentUser != null) Icons.Default.CloudDone else Icons.Default.Cloud,
+                                        contentDescription = "সুপাবেজ ক্লাউড সিঙ্ক",
+                                        tint = if (currentUser != null) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+
                             // Quick Calculator Button in Top Header
                             IconButton(
                                 onClick = { showCalculatorSheet = true },

@@ -605,29 +605,55 @@ private fun ChartLegendBadge(color: Color, label: String) {
     }
 }
 
+enum class DonutChartMode(val label: String) {
+    PURCHASES("📦 মাল ক্রয় ও কোম্পানি"),
+    SALES("🏷️ বিক্রিত পণ্যসমূহ")
+}
+
 /**
- * Interactive Donut/Pie Chart showing Company / Supplier / Product Purchase shares.
- * Tapping any company or slice allows drilling down into the exact transaction history ("কখন কোনদিন কি নিছি").
+ * Interactive Donut/Pie Chart showing Company / Supplier / Product Purchase and Sales shares.
+ * Tapping any product, company or slice allows drilling down into the exact transaction history ("কখন কোনদিন কি নিছি / বেচসি").
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun InteractiveCompanyPurchaseDonutChart(
     purchases: List<TransactionEntity>,
+    allTransactions: List<TransactionEntity> = emptyList(),
     modifier: Modifier = Modifier
 ) {
     var selectedCompanyForDrillDown by remember { mutableStateOf<CompanyPurchaseShare?>(null) }
     var selectedCenterShare by remember { mutableStateOf<CompanyPurchaseShare?>(null) }
+    var chartMode by remember { mutableStateOf(DonutChartMode.PURCHASES) }
+    var showAllList by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf("") }
 
-    // Aggregate purchases by company/supplier/product name
-    val companyShares = remember(purchases) {
-        if (purchases.isEmpty()) emptyList()
+    val salesTransactions = remember(allTransactions, purchases) {
+        if (allTransactions.isNotEmpty()) {
+            allTransactions.filter { it.type == TransactionType.SALE_CASH || it.type == TransactionType.SALE_BAKI }
+        } else {
+            emptyList()
+        }
+    }
+
+    val activeTransactions = remember(chartMode, purchases, salesTransactions) {
+        if (chartMode == DonutChartMode.PURCHASES) {
+            purchases
+        } else {
+            salesTransactions
+        }
+    }
+
+    // Aggregate transactions by company/supplier/product name
+    val allShares = remember(activeTransactions, chartMode) {
+        if (activeTransactions.isEmpty()) emptyList()
         else {
-            val totalPurchaseAmount = purchases.sumOf { it.amount }.coerceAtLeast(1.0)
-            val grouped = purchases.groupBy { tx ->
+            val totalAmount = activeTransactions.sumOf { it.amount }.coerceAtLeast(1.0)
+            val grouped = activeTransactions.groupBy { tx ->
                 when {
                     !tx.productName.isNullOrBlank() -> tx.productName
                     !tx.category.isNullOrBlank() -> tx.category
-                    else -> "সাধারণ ক্রয়"
+                    chartMode == DonutChartMode.PURCHASES -> "সাধারণ ক্রয়"
+                    else -> "সাধারণ বিক্রি"
                 }
             }
 
@@ -635,7 +661,7 @@ fun InteractiveCompanyPurchaseDonutChart(
                 val amount = txList.sumOf { it.amount }
                 val qty = txList.sumOf { it.quantity }
                 val unit = txList.firstOrNull { it.unit.isNotBlank() }?.unit ?: "কেজি"
-                val pct = ((amount / totalPurchaseAmount) * 100).toFloat()
+                val pct = ((amount / totalAmount) * 100).toFloat()
                 val color = CHART_COLORS[index % CHART_COLORS.size]
 
                 CompanyPurchaseShare(
@@ -651,9 +677,14 @@ fun InteractiveCompanyPurchaseDonutChart(
         }
     }
 
-    val topCompany = companyShares.firstOrNull()
-    val totalPurchaseSum = remember(purchases) { purchases.sumOf { it.amount } }
-    val activeCenterShare = selectedCenterShare ?: topCompany
+    val filteredShares = remember(allShares, searchQuery) {
+        if (searchQuery.isBlank()) allShares
+        else allShares.filter { it.companyName.contains(searchQuery.trim(), ignoreCase = true) }
+    }
+
+    val topShare = allShares.firstOrNull()
+    val totalSum = remember(activeTransactions) { activeTransactions.sumOf { it.amount } }
+    val activeCenterShare = selectedCenterShare ?: topShare
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -681,13 +712,13 @@ fun InteractiveCompanyPurchaseDonutChart(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "কোম্পানি ও পণ্যভিত্তিক ক্রয় (বৃত্ত চার্ট)",
+                            text = if (chartMode == DonutChartMode.PURCHASES) "কোম্পানি ও পণ্যভিত্তিক ক্রয় (বৃত্ত চার্ট)" else "পণ্যভিত্তিক বিক্রি বিশ্লেষণ (বৃত্ত চার্ট)",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "কোন কোম্পানি থেকে কত অংশ নিয়েছেন (ক্লিক করে ইতিহাস দেখুন)",
+                            text = "প্রতিটি পণ্যে ক্লিক করে সম্পূর্ণ লেনদেন ইতিহাস দেখুন",
                             style = MaterialTheme.typography.bodySmall,
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -696,29 +727,71 @@ fun InteractiveCompanyPurchaseDonutChart(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            if (companyShares.isEmpty()) {
+            // Mode Selector (মাল ক্রয় vs পণ্য বিক্রি)
+            if (salesTransactions.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DonutChartMode.values().forEach { mode ->
+                        val isSelected = chartMode == mode
+                        Surface(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    chartMode = mode
+                                    selectedCenterShare = null
+                                    searchQuery = ""
+                                },
+                            color = if (isSelected) MawaPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                            border = if (isSelected) BorderStroke(1.5.dp, MawaPrimary) else null,
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = mode.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MawaPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .padding(vertical = 8.dp)
+                                    .fillMaxWidth(),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+
+            if (allShares.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(160.dp),
+                        .height(140.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "এই সময়ে কোনো মাল ক্রয়ের রেকর্ড নেই",
+                        text = if (chartMode == DonutChartMode.PURCHASES) "এই সময়ে কোনো মাল ক্রয়ের রেকর্ড নেই" else "এই সময়ে কোনো পণ্য বিক্রির রেকর্ড নেই",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.outline
                     )
                 }
             } else {
-                // Highlight Banner for the highest company purchase
-                if (topCompany != null) {
+                // Highlight Banner for the highest share
+                if (topShare != null) {
                     Surface(
-                        color = topCompany.color.copy(alpha = 0.12f),
+                        color = topShare.color.copy(alpha = 0.12f),
                         shape = RoundedCornerShape(10.dp),
-                        border = BorderStroke(1.dp, topCompany.color.copy(alpha = 0.3f)),
-                        modifier = Modifier.fillMaxWidth()
+                        border = BorderStroke(1.dp, topShare.color.copy(alpha = 0.3f)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedCenterShare = topShare
+                                selectedCompanyForDrillDown = topShare
+                            }
                     ) {
                         Row(
                             modifier = Modifier
@@ -732,28 +805,28 @@ fun InteractiveCompanyPurchaseDonutChart(
                                     modifier = Modifier
                                         .size(10.dp)
                                         .clip(CircleShape)
-                                        .background(topCompany.color)
+                                        .background(topShare.color)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "শীর্ষ ক্রয়: ${topCompany.companyName}",
+                                    text = "শীর্ষ: ${topShare.companyName}",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
                             Text(
-                                text = "${BengaliUtils.formatTaka(topCompany.totalAmount)} (${BengaliUtils.toBanglaDigits(String.format(Locale.US, "%.1f", topCompany.percentage))}%)",
+                                text = "${BengaliUtils.formatTaka(topShare.totalAmount)} (${BengaliUtils.toBanglaDigits(String.format(Locale.US, "%.1f", topShare.percentage))}%)",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = topCompany.color
+                                color = topShare.color
                             )
                         }
                     }
                     Spacer(modifier = Modifier.height(14.dp))
                 }
 
-                // Donut Chart Canvas & Legend
+                // Donut Chart Canvas & Breakdown
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
@@ -770,7 +843,7 @@ fun InteractiveCompanyPurchaseDonutChart(
                             val strokeWidth = 26.dp.toPx()
                             val arcSize = size.width - strokeWidth
 
-                            companyShares.forEach { share ->
+                            allShares.forEach { share ->
                                 val sweep = (share.percentage / 100f) * 360f
                                 drawArc(
                                     color = share.color,
@@ -791,7 +864,7 @@ fun InteractiveCompanyPurchaseDonutChart(
                             modifier = Modifier.padding(horizontal = 6.dp)
                         ) {
                             Text(
-                                text = activeCenterShare?.companyName ?: "মোট ক্রয়",
+                                text = activeCenterShare?.companyName ?: "মোট",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
@@ -801,7 +874,7 @@ fun InteractiveCompanyPurchaseDonutChart(
                                 textAlign = TextAlign.Center
                             )
                             Text(
-                                text = activeCenterShare?.let { BengaliUtils.formatTaka(it.totalAmount) } ?: BengaliUtils.formatTaka(totalPurchaseSum),
+                                text = activeCenterShare?.let { BengaliUtils.formatTaka(it.totalAmount) } ?: BengaliUtils.formatTaka(totalSum),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface,
@@ -821,12 +894,14 @@ fun InteractiveCompanyPurchaseDonutChart(
 
                     Spacer(modifier = Modifier.width(12.dp))
 
-                    // Company List Breakdown with Click Action
+                    // Initial 4 Products / Companies List Breakdown
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        companyShares.take(4).forEach { share ->
+                        val displayList = if (showAllList) filteredShares else filteredShares.take(4)
+
+                        displayList.forEach { share ->
                             val isCenterSelected = activeCenterShare == share
                             Surface(
                                 modifier = Modifier
@@ -886,13 +961,118 @@ fun InteractiveCompanyPurchaseDonutChart(
                             }
                         }
 
-                        if (companyShares.size > 4) {
-                            Text(
-                                text = "＋ আরও ${BengaliUtils.toBanglaDigits((companyShares.size - 4).toString())}টি কোম্পানি/পণ্য রয়েছে",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(start = 4.dp)
-                            )
+                        // Toggle Show All Button if more than 4 items
+                        if (allShares.size > 4) {
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .clickable { showAllList = !showAllList },
+                                color = MawaPrimary.copy(alpha = 0.08f),
+                                shape = RoundedCornerShape(6.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp, horizontal = 6.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (showAllList) "▲ সংক্ষেপ করুন" else "▼ সকল পণ্য ও কোম্পানি দেখুন (${BengaliUtils.toBanglaDigits(allShares.size.toString())}টি)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MawaPrimary,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // If expanded "showAllList" is active and there are items, show a search / full scrollable list if user opened it
+                if (showAllList && allShares.size > 4) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "সকল তালিকা (${BengaliUtils.toBanglaDigits(allShares.size.toString())}টি) — যেকোনোটিতে ক্লিক করে বিস্তারিত চালান দেখুন:",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // Grid of all products
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        filteredShares.drop(4).forEach { share ->
+                            val isCenterSelected = activeCenterShare == share
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable {
+                                        selectedCenterShare = share
+                                        selectedCompanyForDrillDown = share
+                                    },
+                                color = if (isCenterSelected) share.color.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                                border = if (isCenterSelected) BorderStroke(1.dp, share.color) else null
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(share.color)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(
+                                                text = share.companyName,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            if (share.totalQuantity > 0) {
+                                                Text(
+                                                    text = "মোট: ${BengaliUtils.formatQuantity(share.totalQuantity, share.unit)} (${BengaliUtils.toBanglaDigits(share.transactions.size.toString())} বার)",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontSize = 9.sp,
+                                                    color = MaterialTheme.colorScheme.outline
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = BengaliUtils.formatTaka(share.totalAmount),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = share.color
+                                        )
+                                        Text(
+                                            text = "${BengaliUtils.toBanglaDigits(String.format(Locale.US, "%.1f", share.percentage))}%",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 9.sp,
+                                            color = MaterialTheme.colorScheme.outline
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -900,7 +1080,7 @@ fun InteractiveCompanyPurchaseDonutChart(
         }
     }
 
-    // Drill-Down Bottom Sheet: Detailed history of what was taken on which day from the selected company
+    // Drill-Down Bottom Sheet: Detailed history of what was taken on which day from the selected company or product
     selectedCompanyForDrillDown?.let { companyShare ->
         CompanyPurchaseHistorySheet(
             companyShare = companyShare,

@@ -62,6 +62,12 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     // Supabase Cloud Integration
     val supabaseAuthManager = SupabaseAuthManager(application)
     val supabaseDbManager = SupabaseDbManager(supabaseAuthManager)
+    val mawaSyncManager = com.example.mawa.data.remote.supabase.MawaSyncManager(
+        application,
+        repository,
+        supabaseAuthManager,
+        supabaseDbManager
+    )
 
     val currentUser: StateFlow<SupabaseUser?> = supabaseAuthManager.currentUser
     val isAuthLoading: StateFlow<Boolean> = supabaseAuthManager.isLoading
@@ -80,6 +86,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             currentUser.collect { user ->
                 if (user != null) {
                     loadCloudBackups()
+                    autoLoadLatestCloudDataIfEmpty()
                 } else {
                     _cloudBackups.value = emptyList()
                 }
@@ -854,16 +861,21 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val _lastCloudSyncTime = MutableStateFlow<String?>(null)
+    val lastCloudSyncTime: StateFlow<String?> = _lastCloudSyncTime.asStateFlow()
+
     // --- Supabase Cloud Operations ---
 
     fun loginWithSupabase(email: String, pass: String, onResult: (Boolean, String) -> Unit) {
         viewModelScope.launch {
             when (val res = supabaseAuthManager.signIn(email, pass)) {
                 is SupabaseAuthResult.Success -> {
-                    _feedbackMessage.emit(res.message)
+                    _feedbackMessage.emit("লগইন সফল! ক্লাউড ডাটা সিঙ্ক করা হচ্ছে...")
                     loadCloudBackups()
-                    autoLoadLatestCloudDataIfEmpty()
-                    onResult(true, res.message)
+                    // Immediately sync & restore all Supabase data so it shows up in place
+                    syncAndRestoreFromCloud { success, msg ->
+                        onResult(true, if (success) "লগইন ও সিঙ্ক সফল! $msg" else res.message)
+                    }
                 }
                 is SupabaseAuthResult.Error -> {
                     _feedbackMessage.emit(res.message)
@@ -888,60 +900,35 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun syncAndRestoreFromCloud(onResult: (Boolean, String) -> Unit = { _, _ -> }) {
-        viewModelScope.launch {
-            if (!supabaseAuthManager.isLoggedIn()) {
-                onResult(false, "ক্লাউড সিঙ্কের জন্য আগে লগইন করুন")
-                return@launch
-            }
-            _isCloudSyncing.value = true
-            // Try fetching from user_backups first
-            when (val res = supabaseDbManager.fetchCloudBackups()) {
-                is CloudOperationResult.Success -> {
-                    _cloudBackups.value = res.data
-                    if (res.data.isNotEmpty()) {
-                        val latestBackup = res.data.first()
-                        if (latestBackup.dataJson.isNotBlank()) {
-                            try {
-                                val backupData = com.example.mawa.util.DataBackupRestoreManager.parseFromJsonString(latestBackup.dataJson)
-                                repository.restoreFullBackup(backupData, overwriteExisting = true)
-                                _isCloudSyncing.value = false
-                                val msg = "সুপাবেজ ক্লাউড ব্যাকআপ '${latestBackup.backupName}' লোড হয়েছে!"
-                                _feedbackMessage.emit(msg)
-                                onResult(true, msg)
-                                return@launch
-                            } catch (e: Exception) {
-                                Log.e("MawaVM", "Error parsing cloud backup", e)
-                            }
-                        }
-                    }
+        if (!supabaseAuthManager.isLoggedIn()) {
+            onResult(false, "ক্লাউড সিঙ্কের জন্য আগে লগইন করুন")
+            return
+        }
+        _isCloudSyncing.value = true
+        mawaSyncManager.triggerSync(object : com.example.mawa.data.remote.supabase.MawaSyncManager.SyncCallback {
+            override fun onSuccess(message: String) {
+                _isCloudSyncing.value = false
+                val timeNow = java.text.SimpleDateFormat("dd/MM/yyyy hh:mm a", java.util.Locale.US).format(java.util.Date())
+                _lastCloudSyncTime.value = timeNow
+                viewModelScope.launch {
+                    loadCloudBackups()
+                    _feedbackMessage.emit(message)
                 }
-                else -> {}
+                onResult(true, message)
             }
 
-            // If user_backups was empty, try incremental records table
-            when (val incRes = supabaseDbManager.fetchAllIncrementalRecords()) {
-                is CloudOperationResult.Success -> {
-                    val incData = incRes.data
-                    if (incData.customers.isNotEmpty() || incData.transactions.isNotEmpty() || incData.fordiItems.isNotEmpty() || incData.products.isNotEmpty()) {
-                        repository.restoreFullBackup(incData, overwriteExisting = true)
-                        _isCloudSyncing.value = false
-                        val msg = "সুপাবেজ ক্লাউড রেকর্ডস সফলভাবে লোড হয়েছে!"
-                        _feedbackMessage.emit(msg)
-                        onResult(true, msg)
-                    } else {
-                        _isCloudSyncing.value = false
-                        val msg = "সুপাবেজে কোনো ডাটা পাওয়া যায়নি"
-                        _feedbackMessage.emit(msg)
-                        onResult(false, msg)
-                    }
+            override fun onError(error: String) {
+                _isCloudSyncing.value = false
+                viewModelScope.launch {
+                    _feedbackMessage.emit(error)
                 }
-                is CloudOperationResult.Error -> {
-                    _isCloudSyncing.value = false
-                    _feedbackMessage.emit(incRes.message)
-                    onResult(false, incRes.message)
-                }
+                onResult(false, error)
             }
-        }
+        })
+    }
+
+    fun triggerCloudSync(onResult: (Boolean, String) -> Unit = { _, _ -> }) {
+        syncAndRestoreFromCloud(onResult)
     }
 
     fun saveDailySabekCash(dateKey: String, dateMillis: Long, sabekAmount: Double) {

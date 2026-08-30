@@ -71,6 +71,10 @@ class SupabaseAuthManager(private val context: Context) {
         return _currentUser.value?.id
     }
 
+    fun getUserEmail(): String? {
+        return _currentUser.value?.email
+    }
+
     fun isLoggedIn(): Boolean {
         return _currentUser.value != null
     }

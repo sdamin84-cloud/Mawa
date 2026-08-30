@@ -695,10 +695,13 @@ fun ReportsScreen(
                 InteractiveTrendChart(transactions = transactions)
             }
 
-            // 5. Interactive Company / Supplier Purchase Donut Chart (বৃত্ত চার্ট ও ক্লিক করলে কখন কোনদিন কি নিছি ইতিহাস)
+            // 5. Interactive Company / Supplier / Product Purchase & Sales Donut Chart (সকল পণ্য ও কোম্পানি ক্লিক করে ইতিহাস দেখা)
             item {
                 Spacer(modifier = Modifier.height(10.dp))
-                InteractiveCompanyPurchaseDonutChart(purchases = purchaseTransactions)
+                InteractiveCompanyPurchaseDonutChart(
+                    purchases = purchaseTransactions,
+                    allTransactions = transactions
+                )
             }
 
             // 6. Complete Financial Summary Breakdown (Detailed Clean Rows)
@@ -765,7 +768,7 @@ fun ReportsScreen(
                 }
             }
 
-            // 7. Accounting Formula Reference & Notes
+            // 7. Accounting Formula Reference & Notes (লাভ-ক্ষতি ও খতিয়ান নীতিমালা)
             item {
                 Surface(
                     modifier = Modifier
@@ -778,20 +781,30 @@ fun ReportsScreen(
                             .fillMaxWidth()
                             .padding(16.dp)
                     ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.TrendingUp,
+                                contentDescription = null,
+                                tint = FinancialPositive,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "লাভ-ক্ষতি যেভাবে হিসাব করা হয়",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(10.dp))
                         Text(
-                            text = "হিসাবের নিয়ম ও নীতি",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "• মোট বিক্রি = নগদ বিক্রি + বাকি বিক্রি (বাকি আদায় বিক্রি নয়)।\n" +
-                                    "• ব্যবসায়িক লাভ = মোট বিক্রি − মাল ক্রয় − দোকানের খরচ।\n" +
-                                    "• বাড়ির জন্য খরচ ব্যবসায়ের ক্ষতি নয়, এটি লাভ থেকে ব্যক্তিগত উত্তোলন।\n" +
-                                    "• হাতে থাকা ক্যাশ = সাবেক + নগদ বিক্রি + বাকি আদায় − মাল ক্রয় − সকল খরচ।",
+                            text = "১. মোট বিক্রি = নগদ বিক্রি + বাকি বিক্রি (বাকি আদায় মূল বিক্রির হিসাব নয়, এটি পূর্বের দেনা পরিশোধ)।\n\n" +
+                                    "২. শতকরা লাভ (%) = মোট বিক্রি × মুনাফার হার (যেমন: ১৫% ধরে ১,০০,০০০ টাকার বিক্রিতে ১৫,০০০ টাকা ব্যবসায়িক লাভ)।\n\n" +
+                                    "৩. প্রকৃত নিট লাভ = মোট বিক্রি − মাল কেনা (ফর্দ+সরাসরি) − দোকানের পরিচালনা খরচ।\n\n" +
+                                    "৪. বাড়ির খরচ = এটি ব্যবসার ক্ষতি নয়, ব্যবসায়ের অর্জিত লাভ থেকে মালিকের ব্যক্তিগত উত্তোলন।\n\n" +
+                                    "৫. ক্যাশবক্সের ক্যাশ = সাবেক ক্যাশ + আজকের নগদ বিক্রি + বাকি আদায় − মাল ক্রয় − সকল খরচ।",
                             style = MaterialTheme.typography.bodySmall,
-                            lineHeight = 20.sp,
+                            lineHeight = 22.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

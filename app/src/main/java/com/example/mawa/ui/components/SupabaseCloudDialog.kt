@@ -95,6 +95,7 @@ fun SupabaseCloudDialog(
     val isAuthLoading by viewModel.isAuthLoading.collectAsState()
     val isSyncing by viewModel.isCloudSyncing.collectAsState()
     val cloudBackups by viewModel.cloudBackups.collectAsState()
+    val lastSyncTime by viewModel.lastCloudSyncTime.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(if (currentUser != null) 0 else 0) }
 
@@ -148,9 +149,9 @@ fun SupabaseCloudDialog(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "সুপাবেজে সম্পূর্ণ নিরাপদ ব্যাকআপ ও পুনরুদ্ধার",
+                                text = if (lastSyncTime != null) "সর্বশেষ সিঙ্ক: $lastSyncTime" else "সুপাবেজে সম্পূর্ণ নিরাপদ ব্যাকআপ ও পুনরুদ্ধার",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (lastSyncTime != null) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -298,6 +299,12 @@ fun SupabaseCloudDialog(
                         SupabaseBackupRestoreSection(
                             cloudBackups = cloudBackups,
                             isSyncing = isSyncing,
+                            lastSyncTime = lastSyncTime,
+                            onFetchAndRestore = {
+                                viewModel.syncAndRestoreFromCloud { success, msg ->
+                                    actionStatusMessage = msg
+                                }
+                            },
                             onUploadBackup = { customName ->
                                 viewModel.uploadBackupToSupabase(customName) { success, msg ->
                                     actionStatusMessage = msg
@@ -311,6 +318,11 @@ fun SupabaseCloudDialog(
                         SupabaseTableSyncSection(
                             currentUser = currentUser!!,
                             isSyncing = isSyncing,
+                            onFetchAndSync = {
+                                viewModel.syncAndRestoreFromCloud { success, msg ->
+                                    actionStatusMessage = msg
+                                }
+                            },
                             onSyncAll = {
                                 viewModel.syncAllLocalRecordsToSupabase { success, msg ->
                                     actionStatusMessage = msg
@@ -543,6 +555,8 @@ fun SupabaseAuthSection(
 fun SupabaseBackupRestoreSection(
     cloudBackups: List<CloudBackupItem>,
     isSyncing: Boolean,
+    lastSyncTime: String? = null,
+    onFetchAndRestore: () -> Unit,
     onUploadBackup: (name: String) -> Unit,
     onRefreshBackups: () -> Unit,
     onRestoreClick: (CloudBackupItem) -> Unit,
@@ -558,6 +572,54 @@ fun SupabaseBackupRestoreSection(
             .fillMaxWidth()
             .padding(top = 4.dp)
     ) {
+        // Quick Live Fetch & Sync from Supabase Card
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.12f)),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "📥 সুপাবেজ থেকে ডাটা এপে আনুন",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            color = Color(0xFF047857)
+                        )
+                        Text(
+                            text = "সুপাবেজে থাকা সবশেষ ব্যাকআপ ও রেকর্ডগুলো নামিয়ে অ্যাপের সকল খতিয়ান আপডেট করুন",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Button(
+                        onClick = onFetchAndRestore,
+                        enabled = !isSyncing,
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF047857))
+                    ) {
+                        if (isSyncing) {
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                        } else {
+                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("ডাটা আনুন")
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
         // Cloud Backup Upload action card
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -572,7 +634,7 @@ fun SupabaseBackupRestoreSection(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "ক্লাউডে সম্পূর্ণ ব্যাকআপ রাখুন",
+                            text = "📤 ক্লাউডে সম্পূর্ণ ব্যাকআপ রাখুন",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                             color = Color(0xFF047857)
@@ -754,6 +816,7 @@ fun SupabaseBackupRestoreSection(
 fun SupabaseTableSyncSection(
     currentUser: com.example.mawa.data.remote.supabase.SupabaseUser,
     isSyncing: Boolean,
+    onFetchAndSync: () -> Unit = {},
     onSyncAll: () -> Unit
 ) {
     Column(
@@ -761,6 +824,90 @@ fun SupabaseTableSyncSection(
             .fillMaxWidth()
             .padding(top = 8.dp)
     ) {
+        // Direct record fetch & sync
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.12f)),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text(
+                    text = "📥 ক্লাউড থেকে ডাটা নামিয়ে এপে আনুন",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = Color(0xFF047857)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "সুপাবেজের mawa_cloud_records টেবিল থেকে আপনার সকল রেকর্ড নামিয়ে অ্যাপের ডাটাবেজে আপডেট করুন।",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = onFetchAndSync,
+                    enabled = !isSyncing,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF047857))
+                ) {
+                    if (isSyncing) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("ডাটা আনা হচ্ছে...")
+                    } else {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("সুপাবেজ থেকে ডাটা নামিয়ে নিন")
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Direct record push
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF3ECF8E).copy(alpha = 0.1f)),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Column(modifier = Modifier.padding(14.dp)) {
+                Text(
+                    text = "📤 সরাসরি রেকর্ড পুশ (mawa_cloud_records)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = Color(0xFF047857)
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "আপনার ফোনের সকল লেনদেন, কাস্টমার, ফর্দ ও খরচের আইটেম সরাসরি সুপাবেজের mawa_cloud_records টেবিলে আপলোড করুন।",
+                    fontSize = 12.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Button(
+                    onClick = onSyncAll,
+                    enabled = !isSyncing,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                ) {
+                    if (isSyncing) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("ক্লাউডে আপলোড হচ্ছে...")
+                    } else {
+                        Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("ফোনের সব ডাটা সুপাবেজে পাঠান")
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
         // Table info cards
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -794,48 +941,6 @@ fun SupabaseTableSyncSection(
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.primary
                 )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // Direct record sync
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF3ECF8E).copy(alpha = 0.1f)),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Column(modifier = Modifier.padding(14.dp)) {
-                Text(
-                    text = "সরাসরি রেকর্ড সিঙ্ক (mawa_cloud_records)",
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
-                    color = Color(0xFF047857)
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "আপনার সকল লেনদেন, কাস্টমার, ফর্দ ও খরচের আইটেম সরাসরি সুপাবেজের mawa_cloud_records টেবিলে পৃথক রো হিসেবে পুশ করা হবে।",
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Button(
-                    onClick = onSyncAll,
-                    enabled = !isSyncing,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
-                ) {
-                    if (isSyncing) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("ক্লাউডে সিঙ্ক হচ্ছে...")
-                    } else {
-                        Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("এখনই সম্পূর্ণ ডাটা সিঙ্ক করুন")
-                    }
-                }
             }
         }
     }

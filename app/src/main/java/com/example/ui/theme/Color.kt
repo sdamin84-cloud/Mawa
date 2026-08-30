@@ -1,5 +1,6 @@
 package com.example.ui.theme
 
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 // Elegant Dark Palette (Design System)
@@ -66,19 +67,107 @@ val MawaOnSurfaceVariant = MawaOnSurfaceVariantDark
 val MawaOutline = MawaOutlineDark
 val MawaOutlineVariant = MawaOutlineVariantDark
 
-// Financial Semantic Tokens
-val FinancialPositive = Color(0xFF81C784) // Emerald green (Joma / Profit / Inflow)
-val FinancialPositiveContainer = Color(0xFF1E3A2F)
-val FinancialPositiveOnContainer = Color(0xFFA8E6CF)
+// Financial Semantic Tokens for Dark Mode
+val FinancialPositiveDark = Color(0xFF81C784)
+val FinancialPositiveContainerDark = Color(0xFF1E3A2F)
+val FinancialPositiveOnContainerDark = Color(0xFFA8E6CF)
 
-val FinancialNegative = Color(0xFFFFB4AB) // Soft glowing coral (Baki / Expense / Outflow)
-val FinancialNegativeContainer = Color(0xFF5C1D1D)
-val FinancialNegativeOnContainer = Color(0xFFFFDAD6)
+val FinancialNegativeDark = Color(0xFFFFB4AB)
+val FinancialNegativeContainerDark = Color(0xFF5C1D1D)
+val FinancialNegativeOnContainerDark = Color(0xFFFFDAD6)
 
-val FinancialWarning = Color(0xFFFFD8E4) // Rose / amber for personal withdrawals
-val FinancialWarningContainer = Color(0xFF633B48)
-val FinancialWarningOnContainer = Color(0xFFFFD8E4)
+val FinancialWarningDark = Color(0xFFFFD8E4)
+val FinancialWarningContainerDark = Color(0xFF633B48)
+val FinancialWarningOnContainerDark = Color(0xFFFFD8E4)
 
-val FinancialNeutral = Color(0xFFCAC4D0) // Muted lavender-gray
+val FinancialNeutralDark = Color(0xFFCAC4D0)
+
+// Financial Semantic Tokens for Light Mode (High Contrast & Crisp)
+val FinancialPositiveLight = Color(0xFF1B5E20)
+val FinancialPositiveContainerLight = Color(0xFFE8F5E9)
+val FinancialPositiveOnContainerLight = Color(0xFF00210B)
+
+val FinancialNegativeLight = Color(0xFFBA1A1A)
+val FinancialNegativeContainerLight = Color(0xFFFFDAD6)
+val FinancialNegativeOnContainerLight = Color(0xFF410002)
+
+val FinancialWarningLight = Color(0xFFC2185B)
+val FinancialWarningContainerLight = Color(0xFFFCE4EC)
+val FinancialWarningOnContainerLight = Color(0xFF3E001D)
+
+val FinancialNeutralLight = Color(0xFF49454F)
+
+// Data holder for dynamic theme-aware financial colors
+data class FinancialColors(
+    val positive: Color,
+    val positiveContainer: Color,
+    val positiveOnContainer: Color,
+    val negative: Color,
+    val negativeContainer: Color,
+    val negativeOnContainer: Color,
+    val warning: Color,
+    val warningContainer: Color,
+    val warningOnContainer: Color,
+    val neutral: Color
+)
+
+val DarkFinancialColors = FinancialColors(
+    positive = FinancialPositiveDark,
+    positiveContainer = FinancialPositiveContainerDark,
+    positiveOnContainer = FinancialPositiveOnContainerDark,
+    negative = FinancialNegativeDark,
+    negativeContainer = FinancialNegativeContainerDark,
+    negativeOnContainer = FinancialNegativeOnContainerDark,
+    warning = FinancialWarningDark,
+    warningContainer = FinancialWarningContainerDark,
+    warningOnContainer = FinancialWarningOnContainerDark,
+    neutral = FinancialNeutralDark
+)
+
+val LightFinancialColors = FinancialColors(
+    positive = FinancialPositiveLight,
+    positiveContainer = FinancialPositiveContainerLight,
+    positiveOnContainer = FinancialPositiveOnContainerLight,
+    negative = FinancialNegativeLight,
+    negativeContainer = FinancialNegativeContainerLight,
+    negativeOnContainer = FinancialNegativeOnContainerLight,
+    warning = FinancialWarningLight,
+    warningContainer = FinancialWarningContainerLight,
+    warningOnContainer = FinancialWarningOnContainerLight,
+    neutral = FinancialNeutralLight
+)
+
+val LocalFinancialColors = androidx.compose.runtime.staticCompositionLocalOf { LightFinancialColors }
+
+// Dynamic accessors that adapt automatically to Light or Dark mode
+val FinancialPositive: Color
+    @Composable get() = LocalFinancialColors.current.positive
+
+val FinancialPositiveContainer: Color
+    @Composable get() = LocalFinancialColors.current.positiveContainer
+
+val FinancialPositiveOnContainer: Color
+    @Composable get() = LocalFinancialColors.current.positiveOnContainer
+
+val FinancialNegative: Color
+    @Composable get() = LocalFinancialColors.current.negative
+
+val FinancialNegativeContainer: Color
+    @Composable get() = LocalFinancialColors.current.negativeContainer
+
+val FinancialNegativeOnContainer: Color
+    @Composable get() = LocalFinancialColors.current.negativeOnContainer
+
+val FinancialWarning: Color
+    @Composable get() = LocalFinancialColors.current.warning
+
+val FinancialWarningContainer: Color
+    @Composable get() = LocalFinancialColors.current.warningContainer
+
+val FinancialWarningOnContainer: Color
+    @Composable get() = LocalFinancialColors.current.warningOnContainer
+
+val FinancialNeutral: Color
+    @Composable get() = LocalFinancialColors.current.neutral
 
 

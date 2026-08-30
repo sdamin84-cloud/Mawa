@@ -47,6 +47,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.text.KeyboardActions
@@ -331,9 +336,17 @@ fun QuickExpenseDrawer(
                     successNotice = null
                 },
                 label = "কত টাকা?",
-                imeAction = ImeAction.Next,
-                onNext = { descriptionFocusRequester.requestFocus() },
-                onDone = { descriptionFocusRequester.requestFocus() },
+                imeAction = if (description.isNotBlank()) ImeAction.Done else ImeAction.Next,
+                onNext = {
+                    if (description.isNotBlank()) {
+                        performSaveExpense()
+                    } else {
+                        descriptionFocusRequester.requestFocus()
+                    }
+                },
+                onDone = {
+                    performSaveExpense()
+                },
                 quickAmounts = listOf(20, 50, 100, 200, 500, 1000),
                 testTag = "expense_amount_input"
             )
@@ -487,6 +500,15 @@ fun QuickExpenseDrawer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .focusRequester(descriptionFocusRequester)
+                    .onKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyUp && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                            performSaveExpense()
+                            focusManager.clearFocus()
+                            true
+                        } else {
+                            false
+                        }
+                    }
                     .testTag("expense_description_input"),
                 label = { Text("কী জন্য? (বিবরণ / পণ্যের নাম বা বারকোড)") },
                 placeholder = {

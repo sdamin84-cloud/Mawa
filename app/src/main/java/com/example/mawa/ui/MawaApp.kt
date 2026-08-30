@@ -243,6 +243,9 @@ fun MawaApp(
                                     onOpenReports = { currentTab = MawaTab.REPORTS },
                                     onOpenDrawer = {
                                         coroutineScope.launch { drawerState.open() }
+                                    },
+                                    onOpenSupabaseCloud = {
+                                        showSupabaseCloudDialog = true
                                     }
                                 )
                             }
@@ -268,6 +271,9 @@ fun MawaApp(
                                     onOpenReports = { currentTab = MawaTab.REPORTS },
                                     onOpenDrawer = {
                                         coroutineScope.launch { drawerState.open() }
+                                    },
+                                    onOpenSupabaseCloud = {
+                                        showSupabaseCloudDialog = true
                                     }
                                 )
                             }
