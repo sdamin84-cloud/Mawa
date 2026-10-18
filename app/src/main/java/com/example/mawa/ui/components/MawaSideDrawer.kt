@@ -28,17 +28,22 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Dashboard
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PointOfSale
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Store
@@ -56,6 +61,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
+import com.example.mawa.util.AppLockManager
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -89,10 +96,14 @@ fun MawaSideDrawer(
     onOpenBackupRestore: () -> Unit = {},
     onOpenSupabaseCloud: () -> Unit = {},
     onNavigateAuth: () -> Unit = {},
+    onOpenPaymentQr: () -> Unit = {},
+    onOpenSecuritySettings: () -> Unit = {},
+    onLockApp: () -> Unit = {},
     onOpenModePreference: () -> Unit,
     onOpenAccountingGuide: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val settings by viewModel.shopSettings.collectAsStateWithLifecycle()
     val appMode by viewModel.currentAppMode.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
@@ -178,19 +189,54 @@ fun MawaSideDrawer(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    Text(
-                        text = settings?.shopName ?: "মাওয়া জেনারেল স্টোর",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            val shopDisplayName = settings?.shopName?.takeIf { it.isNotBlank() && it != "মাওয়া ডিজিটাল খাতা" } ?: "আমার দোকান"
+                            Text(
+                                text = shopDisplayName,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            if (!settings?.ownerName.isNullOrBlank()) {
+                                Text(
+                                    text = "মালিক: ${settings?.ownerName}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
 
-                    if (!settings?.ownerName.isNullOrBlank()) {
-                        Text(
-                            text = "মালিক: ${settings?.ownerName}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Surface(
+                            onClick = onOpenSettings,
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
+                            modifier = Modifier.testTag("drawer_edit_profile_btn")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Edit,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Text(
+                                    text = "দোকান প্রোফাইল",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
                     }
 
                     if (!settings?.phone.isNullOrBlank()) {
@@ -260,33 +306,13 @@ fun MawaSideDrawer(
             )
 
             DrawerNavMenuItem(
-                icon = Icons.Default.Person,
+                icon = Icons.Default.CloudSync,
                 iconTint = Color(0xFF10B981),
                 iconBg = Color(0xFF3ECF8E).copy(alpha = 0.18f),
-                title = if (currentUser != null) "ক্লাউড একাউন্ট ও প্রোফাইল 👤" else "সুপাবেজ লগইন ও একাউন্ট 🔐",
-                subtitle = if (currentUser != null) "লগইন: ${currentUser?.displayName?.ifBlank { currentUser?.email }}" else "লগইন, নতুন একাউন্ট ও পাসওয়ার্ড রিসেট",
-                onClick = onNavigateAuth,
-                testTag = "drawer_supabase_auth"
-            )
-
-            DrawerNavMenuItem(
-                icon = Icons.Default.Sync,
-                iconTint = Color(0xFF10B981),
-                iconBg = Color(0xFF3ECF8E).copy(alpha = 0.18f),
-                title = "সুপাবেজ ক্লাউড সিঙ্ক ☁️",
-                subtitle = "অনলাইন ব্যাকআপ, রিস্টোর ও ক্লাউড ডাটাবেজ",
-                onClick = onOpenSupabaseCloud,
-                testTag = "drawer_supabase_cloud"
-            )
-
-            DrawerNavMenuItem(
-                icon = Icons.Default.Backup,
-                iconTint = Color(0xFF00796B),
-                iconBg = Color(0xFFE0F2F1),
-                title = "ডাটা ব্যাকআপ ও রিস্টোর",
-                subtitle = "JSON, CSV ও মেমো ছবি (PNG) সেভ ও রিস্টোর",
+                title = "ক্লাউড সিঙ্ক ও ডাটা ব্যাকআপ হাব ☁️",
+                subtitle = if (currentUser != null) "লগইন: ${currentUser?.displayName?.ifBlank { currentUser?.email }} · সিঙ্ক, রিস্টোর ও লোকাল JSON" else "সুপাবেজ লগইন, ক্লাউড সিঙ্ক, মোবাইলে JSON সেভ ও রিস্টোর",
                 onClick = onOpenBackupRestore,
-                testTag = "drawer_backup_restore"
+                testTag = "drawer_backup_cloud_hub"
             )
 
             DrawerNavMenuItem(
@@ -322,6 +348,41 @@ fun MawaSideDrawer(
                 onClick = { showThemeDialog = true },
                 testTag = "drawer_theme_toggle"
             )
+
+            DrawerNavMenuItem(
+                icon = Icons.Default.QrCode2,
+                iconTint = Color(0xFFE2136E),
+                iconBg = Color(0xFFFCE7F3),
+                title = "ডিজিটাল পেমেন্ট QR ও একাউন্ট",
+                subtitle = "bKash, Nagad নম্বর ও গ্রাহক স্ক্যান কিউআর",
+                onClick = onOpenPaymentQr,
+                testTag = "drawer_payment_qr"
+            )
+
+            DrawerNavMenuItem(
+                icon = Icons.Default.Security,
+                iconTint = Color(0xFF0D9488),
+                iconBg = Color(0xFFCCFBF1),
+                title = "অ্যাপ নিরাপত্তা ও ৪ সংখ্যার পিন",
+                subtitle = if (AppLockManager.isLockEnabled(context)) "পিন সক্রিয় রয়েছে · নিরাপত্তা সেটিংস" else "ক্যাশ ও খাতার সুরক্ষায় গোপন পিন সেট করুন",
+                onClick = onOpenSecuritySettings,
+                testTag = "drawer_security_settings"
+            )
+
+            if (AppLockManager.isLockEnabled(context)) {
+                DrawerNavMenuItem(
+                    icon = Icons.Default.Lock,
+                    iconTint = FinancialPositive,
+                    iconBg = FinancialPositiveContainer,
+                    title = "এখনই অ্যাপ লক করুন",
+                    subtitle = "দোকানের ক্যাশ ও খাতা তাৎক্ষণিক লক করুন",
+                    onClick = {
+                        AppLockManager.lockNow()
+                        onLockApp()
+                    },
+                    testTag = "drawer_lock_now"
+                )
+            }
 
             DrawerNavMenuItem(
                 icon = Icons.Default.Settings,

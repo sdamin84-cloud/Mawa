@@ -598,6 +598,9 @@ fun SalesScreen(
         DigitalReceiptDialog(
             shopName = shopName,
             shopPhone = shopPhone,
+            bkashNumber = shopSettings?.bkashNumber ?: "",
+            nagadNumber = shopSettings?.nagadNumber ?: "",
+            bankDetails = shopSettings?.bankDetails ?: "",
             customerName = lastSaleCustomerName.ifBlank { "সম্মানিত ক্রেতা" },
             customerPhone = lastSaleCustomerPhone,
             items = invoiceItems,

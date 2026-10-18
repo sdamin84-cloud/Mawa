@@ -74,14 +74,18 @@ fun BakiReminderDialog(
     customerWithBalance: CustomerWithBalance,
     shopName: String,
     shopPhone: String,
+    bkashNumber: String = "",
+    nagadNumber: String = "",
+    bankDetails: String = "",
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val defaultPayNum = bkashNumber.ifBlank { nagadNumber.ifBlank { shopPhone } }
 
     val prefs = remember { context.getSharedPreferences("mawa_reminder_prefs", Context.MODE_PRIVATE) }
     var paymentNumber by remember {
-        mutableStateOf(prefs.getString("saved_payment_number", shopPhone) ?: shopPhone)
+        mutableStateOf(prefs.getString("saved_payment_number", defaultPayNum) ?: defaultPayNum)
     }
 
     var selectedTone by remember { mutableStateOf(ReminderTone.POLITE) }

@@ -39,6 +39,9 @@ interface FordiDao {
     @Query("SELECT * FROM fordi_items ORDER BY isPurchased ASC, id DESC")
     fun getAllFordiItems(): Flow<List<FordiItemEntity>>
 
+    @Query("SELECT * FROM fordi_items")
+    suspend fun getAllFordiItemsDirect(): List<FordiItemEntity>
+
     @Query("SELECT * FROM fordi_items WHERE isPurchased = 0 ORDER BY id DESC")
     fun getPendingFordiItems(): Flow<List<FordiItemEntity>>
 
@@ -47,4 +50,10 @@ interface FordiDao {
 
     @Query("SELECT COUNT(*) FROM fordi_items")
     suspend fun getFordiItemCount(): Int
+
+    @Query("UPDATE fordi_items SET productName = :newName WHERE LOWER(TRIM(productName)) = LOWER(TRIM(:oldName))")
+    suspend fun updateFordiProductName(oldName: String, newName: String)
+
+    @Query("UPDATE fordi_items SET companyName = :newName WHERE LOWER(TRIM(companyName)) = LOWER(TRIM(:oldName))")
+    suspend fun updateFordiCompanyName(oldName: String, newName: String)
 }

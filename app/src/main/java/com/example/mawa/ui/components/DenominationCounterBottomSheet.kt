@@ -1,5 +1,7 @@
 package com.example.mawa.ui.components
 
+import android.content.Context
+import android.content.Intent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +28,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Remove
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -52,35 +55,62 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.mawa.data.local.entity.CashTallyEntity
 import com.example.mawa.util.BengaliUtils
 import com.example.ui.theme.FinancialNegative
 import com.example.ui.theme.FinancialPositive
 import com.example.ui.theme.FinancialPositiveContainer
 import com.example.ui.theme.FinancialWarning
 import com.example.ui.theme.MawaPrimary
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Reusable Denomination Counter Bottom Sheet
  * Allows quick note counting (1000, 500, 200, 100, 50, 20, 10, 5, 2, 1)
- * and optional comparison with system balance, plus one-tap auto-apply to cash in hand.
+ * and optional comparison with system balance, plus one-tap auto-apply to cash in hand
+ * and persistent saving so you know exactly how many of each note there were.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DenominationCounterBottomSheet(
     systemBalance: Double? = null,
+    dateKey: String? = null,
+    dateMillis: Long? = null,
+    initialTally: CashTallyEntity? = null,
+    shopName: String = "মাওয়া স্টোর",
+    onSaveTally: ((CashTallyEntity) -> Unit)? = null,
     onDismiss: () -> Unit,
     onApplyCountedTotal: (Double) -> Unit
 ) {
+    val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     val denominations = listOf(1000, 500, 200, 100, 50, 20, 10, 5, 2, 1)
-    val noteCounts = remember { mutableStateMapOf<Int, String>() }
+    val noteCounts = remember(initialTally) {
+        mutableStateMapOf<Int, String>().apply {
+            if (initialTally != null) {
+                if (initialTally.count1000 > 0) put(1000, initialTally.count1000.toString())
+                if (initialTally.count500 > 0) put(500, initialTally.count500.toString())
+                if (initialTally.count200 > 0) put(200, initialTally.count200.toString())
+                if (initialTally.count100 > 0) put(100, initialTally.count100.toString())
+                if (initialTally.count50 > 0) put(50, initialTally.count50.toString())
+                if (initialTally.count20 > 0) put(20, initialTally.count20.toString())
+                if (initialTally.count10 > 0) put(10, initialTally.count10.toString())
+                if (initialTally.count5 > 0) put(5, initialTally.count5.toString())
+                if (initialTally.count2 > 0) put(2, initialTally.count2.toString())
+                if (initialTally.count1 > 0) put(1, initialTally.count1.toString())
+            }
+        }
+    }
 
     val physicalCashCalculated = denominations.sumOf { denom ->
         val count = noteCounts[denom]?.toIntOrNull() ?: 0
@@ -92,6 +122,31 @@ fun DenominationCounterBottomSheet(
     }
 
     val difference = if (systemBalance != null) physicalCashCalculated - systemBalance else null
+
+    fun buildCurrentTallyEntity(): CashTallyEntity {
+        val finalDateMillis = dateMillis ?: System.currentTimeMillis()
+        val finalDateKey = dateKey ?: SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(finalDateMillis))
+        return CashTallyEntity(
+            id = initialTally?.id ?: 0L,
+            dateKey = finalDateKey,
+            dateMillis = finalDateMillis,
+            count1000 = noteCounts[1000]?.toIntOrNull() ?: 0,
+            count500 = noteCounts[500]?.toIntOrNull() ?: 0,
+            count200 = noteCounts[200]?.toIntOrNull() ?: 0,
+            count100 = noteCounts[100]?.toIntOrNull() ?: 0,
+            count50 = noteCounts[50]?.toIntOrNull() ?: 0,
+            count20 = noteCounts[20]?.toIntOrNull() ?: 0,
+            count10 = noteCounts[10]?.toIntOrNull() ?: 0,
+            count5 = noteCounts[5]?.toIntOrNull() ?: 0,
+            count2 = noteCounts[2]?.toIntOrNull() ?: 0,
+            count1 = noteCounts[1]?.toIntOrNull() ?: 0,
+            totalAmount = physicalCashCalculated,
+            systemBalance = systemBalance ?: 0.0,
+            difference = difference ?: 0.0,
+            note = "নোট গণনা",
+            timestamp = System.currentTimeMillis()
+        )
+    }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -134,22 +189,43 @@ fun DenominationCounterBottomSheet(
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "ড্রয়ারের নোট গুনে ক্যাশ মেলান",
+                            text = "কোন নোট কতটি আছে গুনে সেভ করুন",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
 
-                IconButton(
-                    onClick = onDismiss,
-                    modifier = Modifier.testTag("btn_close_denomination")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Close,
-                        contentDescription = "বন্ধ করুন",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (physicalCashCalculated > 0) {
+                        IconButton(
+                            onClick = {
+                                val currentTally = buildCurrentTallyEntity()
+                                shareTallyViaIntent(context, currentTally, shopName)
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Share,
+                                contentDescription = "শেয়ার",
+                                tint = MawaPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier
+                            .size(36.dp)
+                            .testTag("btn_close_denomination")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "বন্ধ করুন",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
 
@@ -368,7 +444,7 @@ fun DenominationCounterBottomSheet(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Action Buttons: [ রিসেট ] and [ ক্যাশে বসান / সম্পন্ন ]
+            // Action Buttons: [ রিসেট ] and [ সেভ ও ক্যাশে বসান ]
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -391,6 +467,8 @@ fun DenominationCounterBottomSheet(
 
                 Button(
                     onClick = {
+                        val currentTally = buildCurrentTallyEntity()
+                        onSaveTally?.invoke(currentTally)
                         onApplyCountedTotal(physicalCashCalculated)
                         onDismiss()
                     },
@@ -408,11 +486,48 @@ fun DenominationCounterBottomSheet(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "হাতে ক্যাশ হিসেবে বসান",
+                        text = "সেভ ও ক্যাশে বসান",
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
         }
     }
+}
+
+fun shareTallyViaIntent(context: Context, tally: CashTallyEntity, shopName: String) {
+    val dateStr = SimpleDateFormat("dd MMMM yyyy", Locale("bn", "BD")).format(Date(tally.dateMillis))
+    val timeStr = SimpleDateFormat("hh:mm a", Locale.US).format(Date(tally.timestamp))
+    val sb = StringBuilder()
+    sb.append("📋 *$shopName - ক্যাশবক্স নোটের হিসাব*\n")
+    sb.append("📅 তারিখ: $dateStr ($timeStr)\n")
+    if (tally.note.isNotBlank() && tally.note != "নোট গণনা") sb.append("📝 বিবরণ: ${tally.note}\n")
+    sb.append("---------------------------------\n")
+    val breakdown = tally.getDenominationsBreakdown()
+    if (breakdown.isEmpty()) {
+        sb.append("কোনো নির্দিষ্ট নোট এন্ট্রি করা হয়নি\n")
+    } else {
+        breakdown.forEach { (denom, count) ->
+            val total = denom * count
+            sb.append("৳ ${BengaliUtils.toBengaliDigits(denom.toString())} × ${BengaliUtils.toBengaliDigits(count.toString())} = ৳ ${BengaliUtils.formatTaka(total.toDouble())}\n")
+        }
+    }
+    sb.append("---------------------------------\n")
+    sb.append("🔢 মোট নোটের সংখ্যা: ${BengaliUtils.toBengaliDigits(tally.totalNotesCount().toString())} টি\n")
+    sb.append("💰 গণনাকৃত মোট ক্যাশ: ${BengaliUtils.formatTaka(tally.totalAmount)}\n")
+    if (tally.systemBalance > 0) {
+        sb.append("📊 হিসাব অনুযায়ী ক্যাশ: ${BengaliUtils.formatTaka(tally.systemBalance)}\n")
+        val diff = tally.difference
+        val diffText = if (diff == 0.0) "✓ পুরোপুরি মিলেছে" else if (diff > 0) "+${BengaliUtils.formatTaka(diff)} বেশি" else "−${BengaliUtils.formatTaka(Math.abs(diff))} কম"
+        sb.append("⚖️ ক্যাশ মিল: $diffText\n")
+    }
+    sb.append("---------------------------------\n")
+    sb.append("মাওয়া স্মার্ট খাতা অ্যাপ")
+
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        putExtra(Intent.EXTRA_TEXT, sb.toString())
+        type = "text/plain"
+    }
+    val shareIntent = Intent.createChooser(sendIntent, "নোট গণনার হিসাব শেয়ার করুন")
+    context.startActivity(shareIntent)
 }

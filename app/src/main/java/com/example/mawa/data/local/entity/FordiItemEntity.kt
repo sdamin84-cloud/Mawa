@@ -17,6 +17,9 @@ data class FordiItemEntity(
     val actualQuantity: Double = 0.0,
     val actualRate: Double = 0.0,
     val actualTotal: Double = 0.0,
+    val companyName: String = "",
+    val orderDay: String = "",
+    val deliveryDay: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val purchaseDate: Long? = null
 )

@@ -29,5 +29,7 @@ data class TransactionEntity(
     val rate: Double = 0.0,
     val category: String = "",
     val note: String = "",
+    val paymentStatus: String = "PAID", // "PAID", "DUE_PAYMENT", "PARTIAL"
+    val promisedPaymentDate: Long = 0L,  // বিকালের বা নির্দিষ্ট প্রতিশ্রুত তারিখ
     val timestamp: Long = System.currentTimeMillis()
 )

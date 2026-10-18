@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,8 +16,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BrightnessAuto
@@ -27,12 +30,17 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Print
+import androidx.compose.material.icons.filled.QrCode2
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Sync
+import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -44,6 +52,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -56,8 +65,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import com.example.mawa.ui.components.AppSecuritySettingsDialog
+import com.example.mawa.ui.components.BluetoothThermalPrinterDialog
+import com.example.mawa.ui.components.PaymentQrDialog
+import com.example.mawa.util.AppLockManager
+import com.example.mawa.util.CashChimePlayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -69,6 +84,7 @@ import com.example.mawa.ui.viewmodel.MawaViewModel
 import com.example.mawa.util.BengaliUtils
 import com.example.ui.theme.FinancialNegative
 import com.example.ui.theme.FinancialPositive
+import com.example.ui.theme.FinancialPositiveContainer
 import com.example.ui.theme.FinancialWarning
 import com.example.ui.theme.FinancialWarningContainer
 import com.example.ui.theme.MawaPrimary
@@ -83,15 +99,22 @@ fun MoreScreen(
     onOpenHomeExpense: () -> Unit = {},
     onOpenSupabaseCloud: () -> Unit = {},
     onOpenBackupRestore: () -> Unit = {},
+    onLockApp: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val settings by viewModel.shopSettings.collectAsStateWithLifecycle()
     val accountingSummary by viewModel.accountingSummary.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val isCashSoundEnabled by viewModel.isCashSoundEnabled.collectAsStateWithLifecycle()
+    val isDailyBackupReminderEnabled by viewModel.isDailyBackupReminderEnabled.collectAsStateWithLifecycle()
     var showSettingsDialog by remember { mutableStateOf(false) }
     var showAccountingGuideDialog by remember { mutableStateOf(false) }
     var showThemeDialog by remember { mutableStateOf(false) }
+    var showPrinterDialog by remember { mutableStateOf(false) }
+    var showPaymentQrDialog by remember { mutableStateOf(false) }
+    var showSecurityDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -135,13 +158,14 @@ fun MoreScreen(
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Column {
+                                val shopDisplayName = settings?.shopName?.takeIf { it.isNotBlank() && it != "মাওয়া ডিজিটাল খাতা" } ?: "আমার দোকান"
                                 Text(
-                                    text = settings?.shopName ?: "মাওয়া জেনারেল স্টোর",
+                                    text = shopDisplayName,
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "সাবেক ক্যাশ: ${BengaliUtils.formatTaka(settings?.openingBalance ?: 0.0)}",
+                                    text = "MAWA অ্যাপে দোকান প্রোফাইল · সাবেক: ${BengaliUtils.formatTaka(settings?.openingBalance ?: 0.0)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -150,13 +174,15 @@ fun MoreScreen(
 
                         Button(
                             onClick = { showSettingsDialog = true },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-                            shape = RoundedCornerShape(8.dp)
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.testTag("btn_edit_shop_profile_more")
                         ) {
                             Text(
-                                text = "পরিবর্তন",
+                                text = "দোকান প্রোফাইল",
                                 style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurface
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer
                             )
                         }
                     }
@@ -328,11 +354,56 @@ fun MoreScreen(
                         )
 
                         MoreMenuItem(
+                            icon = Icons.Default.QrCode2,
+                            iconTint = Color(0xFFE2136E),
+                            iconBg = Color(0xFFFCE7F3),
+                            title = "ডিজিটাল পেমেন্ট QR ও একাউন্ট",
+                            subtitle = "bKash, Nagad নম্বর ও গ্রাহক স্ক্যান কিউআর কোড",
+                            onClick = { showPaymentQrDialog = true },
+                            testTag = "menu_payment_qr"
+                        )
+
+                        MoreMenuItem(
+                            icon = Icons.Default.Security,
+                            iconTint = Color(0xFF0D9488),
+                            iconBg = Color(0xFFCCFBF1),
+                            title = "অ্যাপ নিরাপত্তা ও ৪ সংখ্যার পিন",
+                            subtitle = if (AppLockManager.isLockEnabled(context)) "পিন সক্রিয় রয়েছে · পরিবর্তন বা নিরাপত্তা সেটিংস" else "দোকানের ক্যাশ ও বাকি সুরক্ষায় পিন দিন",
+                            onClick = { showSecurityDialog = true },
+                            testTag = "menu_security_settings"
+                        )
+
+                        if (AppLockManager.isLockEnabled(context)) {
+                            MoreMenuItem(
+                                icon = Icons.Default.Lock,
+                                iconTint = FinancialPositive,
+                                iconBg = FinancialPositiveContainer,
+                                title = "এখনই অ্যাপ লক করুন",
+                                subtitle = "দোকানের ক্যাশ ও খাতা তাৎক্ষণিক লক করুন",
+                                onClick = {
+                                    AppLockManager.lockNow()
+                                    onLockApp()
+                                },
+                                testTag = "menu_lock_now"
+                            )
+                        }
+
+                        MoreMenuItem(
+                            icon = Icons.Default.Print,
+                            iconTint = Color(0xFF0D9488),
+                            iconBg = Color(0xFFCCFBF1),
+                            title = "ব্লুটুথ থার্মাল প্রিন্টার (POS)",
+                            subtitle = "৫৮ মিমি / ৮০ মিমি পিওএস প্রিন্টার পেয়ার ও টেস্ট প্রিন্ট",
+                            onClick = { showPrinterDialog = true },
+                            testTag = "menu_thermal_printer"
+                        )
+
+                        MoreMenuItem(
                             icon = Icons.Default.Settings,
                             iconTint = MaterialTheme.colorScheme.onSurface,
                             iconBg = MaterialTheme.colorScheme.surfaceVariant,
                             title = "সাবেক ক্যাশ ও সেটিংস",
-                            subtitle = "দোকানের নাম ও প্রারম্ভিক ক্যাশ ব্যালেন্স সেট করুন",
+                            subtitle = "দোকানের নাম, সাউন্ড, রিমাইন্ডার ও ক্যাশ সেট করুন",
                             onClick = { showSettingsDialog = true },
                             testTag = "menu_settings"
                         )
@@ -385,6 +456,8 @@ fun MoreScreen(
         ShopSettingsDialog(
             currentSettings = settings,
             currentThemeMode = themeMode,
+            isCashSoundEnabled = isCashSoundEnabled,
+            isDailyBackupReminderEnabled = isDailyBackupReminderEnabled,
             onDismiss = { showSettingsDialog = false },
             onSave = { updated ->
                 viewModel.updateSettings(updated)
@@ -392,7 +465,26 @@ fun MoreScreen(
             },
             onThemeChanged = { newTheme ->
                 viewModel.setThemeMode(newTheme)
+            },
+            onCashSoundChanged = { enabled ->
+                viewModel.setCashSoundEnabled(enabled)
+            },
+            onDailyBackupReminderChanged = { enabled ->
+                viewModel.setDailyBackupReminderEnabled(enabled)
+            },
+            onOpenPrinterSettings = {
+                showSettingsDialog = false
+                showPrinterDialog = true
             }
+        )
+    }
+
+    // Bluetooth Thermal POS Printer Dialog
+    if (showPrinterDialog) {
+        BluetoothThermalPrinterDialog(
+            shopName = settings?.shopName?.ifBlank { "মাওয়া ডিজিটাল খাতা" } ?: "মাওয়া ডিজিটাল খাতা",
+            shopPhone = settings?.phone ?: "",
+            onDismiss = { showPrinterDialog = false }
         )
     }
 
@@ -410,6 +502,31 @@ fun MoreScreen(
     // Accounting Guide Dialog
     if (showAccountingGuideDialog) {
         AccountingGuideDialog(onDismiss = { showAccountingGuideDialog = false })
+    }
+
+    // Digital Payment QR Hub Dialog
+    if (showPaymentQrDialog) {
+        PaymentQrDialog(
+            settings = settings,
+            onDismiss = { showPaymentQrDialog = false },
+            onEditShopProfile = {
+                showPaymentQrDialog = false
+                showSettingsDialog = true
+            }
+        )
+    }
+
+    // App Security PIN Lock Dialog
+    if (showSecurityDialog) {
+        AppSecuritySettingsDialog(
+            shopPhone = settings?.phone ?: "",
+            onDismiss = { showSecurityDialog = false },
+            onLockNow = {
+                showSecurityDialog = false
+                AppLockManager.lockNow()
+                onLockApp()
+            }
+        )
     }
 }
 
@@ -490,32 +607,57 @@ fun MoreMenuItem(
 fun ShopSettingsDialog(
     currentSettings: ShopSettingsEntity?,
     currentThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    isCashSoundEnabled: Boolean = true,
+    isDailyBackupReminderEnabled: Boolean = true,
     onDismiss: () -> Unit,
     onSave: (ShopSettingsEntity) -> Unit,
-    onThemeChanged: (AppThemeMode) -> Unit = {}
+    onThemeChanged: (AppThemeMode) -> Unit = {},
+    onCashSoundChanged: (Boolean) -> Unit = {},
+    onDailyBackupReminderChanged: (Boolean) -> Unit = {},
+    onOpenPrinterSettings: () -> Unit = {}
 ) {
+    val context = LocalContext.current
     var shopName by remember { mutableStateOf(currentSettings?.shopName ?: "মাওয়া জেনারেল স্টোর") }
     var ownerName by remember { mutableStateOf(currentSettings?.ownerName ?: "") }
     var phone by remember { mutableStateOf(currentSettings?.phone ?: "") }
+    var bkashNumber by remember { mutableStateOf(currentSettings?.bkashNumber ?: "") }
+    var nagadNumber by remember { mutableStateOf(currentSettings?.nagadNumber ?: "") }
+    var bankDetails by remember { mutableStateOf(currentSettings?.bankDetails ?: "") }
     var openingCash by remember { mutableStateOf((currentSettings?.openingBalance ?: 0.0).toString()) }
     var selectedTheme by remember { mutableStateOf(currentThemeMode) }
+    var cashSound by remember { mutableStateOf(isCashSoundEnabled) }
+    var backupReminder by remember { mutableStateOf(isDailyBackupReminderEnabled) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Icon(
-                    imageVector = Icons.Default.Settings,
+                    imageVector = Icons.Default.Store,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(26.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(text = "দোকানের সেটিংস", fontWeight = FontWeight.Bold)
+                Column {
+                    Text(text = "দোকান প্রোফাইল ও সেটিংস", fontWeight = FontWeight.Bold)
+                    Text(
+                        text = "MAWA অ্যাপে আপনার নিজস্ব দোকানের পরিচিতি",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                }
             }
         },
         text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
                 // Theme Toggle Section
                 Text(
                     text = "অ্যাপ থিম (Theme)",
@@ -613,6 +755,34 @@ fun ShopSettingsDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = bkashNumber,
+                    onValueChange = { bkashNumber = it },
+                    label = { Text("বিকাশ নম্বর (Personal / Merchant)") },
+                    placeholder = { Text("যেমন: ০১৭১২-৩৪৫৬৭৮") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = nagadNumber,
+                    onValueChange = { nagadNumber = it },
+                    label = { Text("নগদ নম্বর (Personal / Merchant)") },
+                    placeholder = { Text("যেমন: ০১৮১২-৩৪৫৬৭৮") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = bankDetails,
+                    onValueChange = { bankDetails = it },
+                    label = { Text("ব্যাংক একাউন্ট বিবরণ (ঐচ্ছিক)") },
+                    placeholder = { Text("যেমন: ইসলামী ব্যাংক, গুলশান শাখা, A/C: ২০৫০...") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
                 OutlinedTextField(
                     value = openingCash,
                     onValueChange = { if (it.isEmpty() || it.matches(Regex("^\\d*\\.?\\d*$"))) openingCash = it },
@@ -621,6 +791,99 @@ fun ShopSettingsDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Hardware & Sound Features
+                Text(
+                    text = "সাউন্ড ও হার্ডওয়্যার সেটিংস",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Cash Chime Toggle Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.VolumeUp, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("ক্যাশ রেজিস্টার সাউন্ড", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        }
+                        Text("বেচা-বিক্রি ও জমার সময় মিষ্টি ঘণ্টার আওয়াজ", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(
+                            onClick = { CashChimePlayer.playCashChime(context) },
+                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 2.dp)
+                        ) {
+                            Text("শুনুন", fontSize = 11.sp)
+                        }
+                        Switch(
+                            checked = cashSound,
+                            onCheckedChange = {
+                                cashSound = it
+                                onCashSoundChanged(it)
+                            },
+                            modifier = Modifier.testTag("switch_cash_sound")
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Daily Backup Reminder Toggle Row
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f))
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Security, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("দৈনিক ব্যাকআপ সতর্কতা", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                        }
+                        Text("রাতে দোকান বন্ধের আগে ডাটা সেভ রিমাইন্ডার", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                    }
+                    Switch(
+                        checked = backupReminder,
+                        onCheckedChange = {
+                            backupReminder = it
+                            onDailyBackupReminderChanged(it)
+                        },
+                        modifier = Modifier.testTag("switch_backup_reminder")
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                // Bluetooth POS Printer Setup Button
+                Button(
+                    onClick = onOpenPrinterSettings,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D9488)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("থার্মাল প্রিন্টার পেয়ার ও টেস্ট (POS)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                }
             }
         },
         confirmButton = {
@@ -628,6 +891,13 @@ fun ShopSettingsDialog(
                 onClick = {
                     if (shopName.isNotBlank()) {
                         val cash = openingCash.toDoubleOrNull() ?: 0.0
+                        val qrPayload = com.example.mawa.util.QrCodeGenerator.buildPaymentQrPayload(
+                            shopName = shopName.trim(),
+                            phone = phone.trim(),
+                            bkashNumber = bkashNumber.trim(),
+                            nagadNumber = nagadNumber.trim(),
+                            bankDetails = bankDetails.trim()
+                        )
                         onThemeChanged(selectedTheme)
                         onSave(
                             ShopSettingsEntity(
@@ -635,6 +905,10 @@ fun ShopSettingsDialog(
                                 shopName = shopName.trim(),
                                 ownerName = ownerName.trim(),
                                 phone = phone.trim(),
+                                bkashNumber = bkashNumber.trim(),
+                                nagadNumber = nagadNumber.trim(),
+                                bankDetails = bankDetails.trim(),
+                                qrCodeData = qrPayload,
                                 openingBalance = cash,
                                 appMode = currentSettings?.appMode ?: "BOTH",
                                 isModeConfigured = currentSettings?.isModeConfigured ?: true

@@ -20,6 +20,10 @@ object BengaliUtils {
         "", "রবিবার", "সোমবার", "মঙ্গলবার", "বুধবার", "বৃহস্পতিবার", "শুক্রবার", "শনিবার"
     )
 
+    val banglaWeekdaysOrdered = listOf(
+        "শনিবার", "রবিবার", "সোমবার", "মঙ্গলবার", "বুধবার", "বৃহস্পতিবার", "শুক্রবার"
+    )
+
     fun toBanglaDigits(input: String): String {
         val sb = StringBuilder()
         for (ch in input) {
@@ -31,6 +35,10 @@ object BengaliUtils {
             }
         }
         return sb.toString()
+    }
+
+    fun toBanglaDigits(number: Int): String {
+        return toBanglaDigits(number.toLong())
     }
 
     fun toBanglaDigits(number: Long): String {
@@ -90,6 +98,13 @@ object BengaliUtils {
         val weekday = banglaWeekdays[cal.get(Calendar.DAY_OF_WEEK)]
 
         return "$day $month · $weekday"
+    }
+
+    fun getBengaliDayOfWeek(timeMillis: Long = System.currentTimeMillis()): String {
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = timeMillis
+        val dayIndex = cal.get(Calendar.DAY_OF_WEEK)
+        return if (dayIndex in banglaWeekdays.indices) banglaWeekdays[dayIndex] else ""
     }
 
     fun formatTransactionTime(timeMillis: Long): String {

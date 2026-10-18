@@ -12,6 +12,10 @@ data class ShopSettingsEntity(
     val openingBalance: Double = 0.0, // সাবেক ক্যাশ (Opening physical cash in hand)
     val currencySymbol: String = "৳",
     val phone: String = "",
+    val bkashNumber: String = "",
+    val nagadNumber: String = "",
+    val bankDetails: String = "",
+    val qrCodeData: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val appMode: String = "BOTH",
     val isModeConfigured: Boolean = false

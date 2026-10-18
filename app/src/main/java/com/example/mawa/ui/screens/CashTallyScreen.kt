@@ -29,11 +29,17 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Payments
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
+import com.example.mawa.data.local.entity.CashTallyEntity
+import com.example.mawa.ui.components.DenominationCounterBottomSheet
+import com.example.mawa.ui.components.shareTallyViaIntent
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -118,6 +124,12 @@ fun CashTallyScreen(
     val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
     val shopSettings by viewModel.shopSettings.collectAsStateWithLifecycle()
     val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
+
+    val currentDateKey = remember(selectedDateMillis) {
+        SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(selectedDateMillis))
+    }
+    val dayTallies by viewModel.getCashTalliesForDateFlow(currentDateKey).collectAsStateWithLifecycle(initialValue = emptyList<CashTallyEntity>())
+    var editingTally by remember { mutableStateOf<CashTallyEntity?>(null) }
 
     val startOfDay = remember(selectedDateMillis) { MawaRepository.getStartOfDayMillis(selectedDateMillis) }
     val endOfDay = remember(selectedDateMillis) { MawaRepository.getEndOfDayMillis(selectedDateMillis) }
@@ -441,6 +453,46 @@ fun CashTallyScreen(
                     }
                 }
 
+                // Saved Note Entries for this day
+                if (dayTallies.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "সংরক্ষিত নোট এন্ট্রি (${BengaliUtils.toBengaliDigits(dayTallies.size.toString())} টি):",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = "নোটের বিবরণসহ",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MawaPrimary
+                            )
+                        }
+                    }
+
+                    items(dayTallies, key = { it.id }) { tally ->
+                        SavedNoteBreakdownCard(
+                            tally = tally,
+                            shopName = shopName,
+                            onEdit = {
+                                editingTally = tally
+                                showCashReconciliationSheet = true
+                            },
+                            onDelete = {
+                                viewModel.deleteCashTally(tally.id)
+                            }
+                        )
+                    }
+                }
+
                 item {
                     Spacer(modifier = Modifier.height(20.dp))
                 }
@@ -535,6 +587,34 @@ fun CashTallyScreen(
                     }
                 }
 
+                // Also display saved note tallies in Tab 2
+                if (dayTallies.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            text = "সংরক্ষিত নোটের হিসাব (${BengaliUtils.toBengaliDigits(dayTallies.size.toString())} টি):",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                        )
+                    }
+
+                    items(dayTallies, key = { it.id }) { tally ->
+                        SavedNoteBreakdownCard(
+                            tally = tally,
+                            shopName = shopName,
+                            onEdit = {
+                                editingTally = tally
+                                showCashReconciliationSheet = true
+                            },
+                            onDelete = {
+                                viewModel.deleteCashTally(tally.id)
+                            }
+                        )
+                    }
+                }
+
                 item {
                     Spacer(modifier = Modifier.height(20.dp))
                 }
@@ -614,7 +694,10 @@ fun CashTallyScreen(
 
                 // Big Button: [ ক্যাশবক্স মিলাই ]
                 Button(
-                    onClick = { showCashReconciliationSheet = true },
+                    onClick = {
+                        editingTally = dayTallies.firstOrNull()
+                        showCashReconciliationSheet = true
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
@@ -630,7 +713,7 @@ fun CashTallyScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "ক্যাশবক্স মিলাই (নোট গণনা)",
+                        text = if (dayTallies.isNotEmpty()) "ক্যাশবক্স মিলাই (নোট আপডেট/গণনা)" else "ক্যাশবক্স মিলাই (নোট গণনা)",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = Color.White
@@ -642,9 +725,22 @@ fun CashTallyScreen(
 
     // Modal Sheet for Cash Denomination Reconciliation
     if (showCashReconciliationSheet) {
-        CashReconciliationSheet(
+        DenominationCounterBottomSheet(
             systemBalance = cashboxBalance,
-            onDismiss = { showCashReconciliationSheet = false }
+            dateKey = currentDateKey,
+            dateMillis = selectedDateMillis,
+            initialTally = editingTally ?: dayTallies.firstOrNull(),
+            shopName = shopName,
+            onSaveTally = { tally ->
+                viewModel.saveCashTally(tally, updateClosingCash = true)
+            },
+            onDismiss = {
+                showCashReconciliationSheet = false
+                editingTally = null
+            },
+            onApplyCountedTotal = { counted ->
+                viewModel.saveDailyClosingCash(currentDateKey, selectedDateMillis, counted, isClosed = true)
+            }
         )
     }
 }
@@ -708,151 +804,217 @@ private fun TallyRowItem(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CashReconciliationSheet(
-    systemBalance: Double,
-    onDismiss: () -> Unit
+private fun SavedNoteBreakdownCard(
+    tally: CashTallyEntity,
+    shopName: String,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-
-    val denominations = listOf(1000, 500, 200, 100, 50, 20, 10, 5, 2, 1)
-    val noteCounts = remember { mutableStateMapOf<Int, String>() }
-
-    val physicalCashCalculated = denominations.sumOf { denom ->
-        val count = noteCounts[denom]?.toIntOrNull() ?: 0
-        denom * count.toDouble()
-    }
-
-    val difference = physicalCashCalculated - systemBalance
-
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = MaterialTheme.colorScheme.surface,
-        dragHandle = null
+    val context = LocalContext.current
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp)
+            .testTag("saved_tally_card_${tally.id}"),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.35f)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp)
-        ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            // Header: Icon, Time, Total, Actions
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(MawaPrimary.copy(alpha = 0.12f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Payments,
+                            contentDescription = null,
+                            tint = MawaPrimary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        val timeStr = remember(tally.timestamp) {
+                            SimpleDateFormat("hh:mm a", Locale.US).format(Date(tally.timestamp))
+                        }
+                        Text(
+                            text = "সংরক্ষিত নোট এন্ট্রি ($timeStr)",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "মোট নোট: ${BengaliUtils.toBengaliDigits(tally.totalNotesCount().toString())} টি",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { shareTallyViaIntent(context, tally, shopName) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "শেয়ার",
+                            tint = MawaPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onEdit,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = "এডিট",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                    IconButton(
+                        onClick = onDelete,
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "মুছুন",
+                            tint = FinancialNegative,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Total Amount Banner
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "গণনাকৃত মোট ক্যাশ:",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = BengaliUtils.formatTaka(tally.totalAmount),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = MawaPrimary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Banknote breakdown: exact count of each note!
             Text(
-                text = "ক্যাশবক্স মিলানো (ফিজিক্যাল ক্যাশ গণনা)",
-                style = MaterialTheme.typography.titleLarge,
+                text = "কোন নোট কতটি ছিল:",
+                style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = "ক্যাশবক্সের টাকা গুনে নোটের সংখ্যা লিখুন",
-                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Spacer(modifier = Modifier.height(6.dp))
 
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Comparison Summary Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(text = "হিসাব অনুযায়ী ক্যাশ:", style = MaterialTheme.typography.bodyMedium)
-                        Text(text = BengaliUtils.formatTaka(systemBalance), fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(text = "গণনাকৃত মোট ক্যাশ:", style = MaterialTheme.typography.bodyMedium)
-                        Text(text = BengaliUtils.formatTaka(physicalCashCalculated), fontWeight = FontWeight.Bold, color = MawaPrimary)
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    HorizontalDivider(thickness = 0.5.dp)
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(text = "পার্থক্য (ক্যাশ মিল):", fontWeight = FontWeight.Bold)
-                        Text(
-                            text = if (difference == 0.0) "✓ পুরোপুরি মিলেছে"
-                            else if (difference > 0) "+${BengaliUtils.formatTaka(difference)} বেশি"
-                            else "−${BengaliUtils.formatTaka(Math.abs(difference))} কম",
-                            fontWeight = FontWeight.Bold,
-                            color = if (difference == 0.0) FinancialPositive else if (difference > 0) FinancialWarning else FinancialNegative
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Note denomination rows
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(280.dp)
-            ) {
-                items(denominations) { denom ->
-                    val countStr = noteCounts[denom] ?: ""
-                    val count = countStr.toIntOrNull() ?: 0
-                    val rowTotal = denom * count
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = "৳ $denom ×",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.width(80.dp)
-                        )
-
-                        OutlinedTextField(
-                            value = countStr,
-                            onValueChange = { noteCounts[denom] = it.filter { ch -> ch.isDigit() } },
-                            placeholder = { Text("০") },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true,
-                            modifier = Modifier
-                                .width(100.dp)
-                                .height(48.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        )
-
-                        Text(
-                            text = "= ${BengaliUtils.formatTaka(rowTotal.toDouble())}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            textAlign = TextAlign.End,
-                            modifier = Modifier.weight(1f)
-                        )
+            val breakdown = tally.getDenominationsBreakdown()
+            if (breakdown.isEmpty()) {
+                Text(
+                    text = "কোনো নির্দিষ্ট নোটের সংখ্যা উল্লেখ নেই",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    breakdown.chunked(2).forEach { rowPair ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            rowPair.forEach { (denom, count) ->
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                    border = BorderStroke(0.5.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "৳ ${BengaliUtils.toBengaliDigits(denom.toString())} × ${BengaliUtils.toBengaliDigits(count.toString())}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "= ৳ ${BengaliUtils.formatTaka((denom * count).toDouble())}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MawaPrimary
+                                        )
+                                    }
+                                }
+                            }
+                            if (rowPair.size == 1) {
+                                Spacer(modifier = Modifier.weight(1f))
+                            }
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp),
-                shape = RoundedCornerShape(10.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = MawaPrimary)
-            ) {
-                Text("সম্পন্ন হয়েছে", fontWeight = FontWeight.Bold)
+            // Difference status if systemBalance > 0
+            if (tally.systemBalance > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "হিসাবের সাথে পার্থক্য:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    val diff = tally.difference
+                    val diffText = if (diff == 0.0) "✓ পুরোপুরি মিলেছে"
+                    else if (diff > 0) "+${BengaliUtils.formatTaka(diff)} বেশি"
+                    else "−${BengaliUtils.formatTaka(Math.abs(diff))} কম"
+                    val diffColor = if (diff == 0.0) FinancialPositive else if (diff > 0) FinancialWarning else FinancialNegative
+                    Text(
+                        text = diffText,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = diffColor
+                    )
+                }
             }
         }
     }

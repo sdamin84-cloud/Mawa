@@ -211,6 +211,10 @@ class SupabaseDbManager(
                     put("shopName", s.shopName)
                     put("ownerName", s.ownerName)
                     put("phone", s.phone)
+                    put("bkashNumber", s.bkashNumber)
+                    put("nagadNumber", s.nagadNumber)
+                    put("bankDetails", s.bankDetails)
+                    put("qrCodeData", s.qrCodeData)
                     put("openingBalance", s.openingBalance)
                     put("appMode", s.appMode)
                 }
@@ -613,6 +617,10 @@ class SupabaseDbManager(
                                     shopName = dataObj.optString("shopName", "আমার দোকান"),
                                     ownerName = dataObj.optString("ownerName", ""),
                                     phone = dataObj.optString("phone", ""),
+                                    bkashNumber = dataObj.optString("bkashNumber", ""),
+                                    nagadNumber = dataObj.optString("nagadNumber", ""),
+                                    bankDetails = dataObj.optString("bankDetails", ""),
+                                    qrCodeData = dataObj.optString("qrCodeData", ""),
                                     openingBalance = dataObj.optDouble("openingBalance", 0.0),
                                     appMode = dataObj.optString("appMode", "PRO")
                                 )
@@ -663,10 +671,11 @@ class SupabaseDbManager(
         val id = obj.optLong("id", 0L)
         val uId = obj.optString("user_id", "")
         val name = obj.optString("backup_name", "অজানা ব্যাকআপ")
-        val dataStr = if (obj.has("data")) {
-            val d = obj.get("data")
-            d.toString()
-        } else ""
+        val dataStr = when {
+            obj.has("backup_data") && !obj.isNull("backup_data") -> obj.get("backup_data").toString()
+            obj.has("data") && !obj.isNull("data") -> obj.get("data").toString()
+            else -> ""
+        }
         val updatedAt = obj.optString("updated_at", "")
         return CloudBackupItem(
             id = id,

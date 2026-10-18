@@ -3,99 +3,102 @@ package com.example.ui.theme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// Elegant Dark Palette (Design System)
-val MawaPrimaryDark = Color(0xFFD0BCFF)
-val MawaOnPrimaryDark = Color(0xFF381E72)
-val MawaPrimaryContainerDark = Color(0xFF4F378B)
-val MawaOnPrimaryContainerDark = Color(0xFFEADDFF)
-val MawaPillDark = Color(0xFF21005D)
+// Soothing, Eye-Friendly Modern Financial Palette (Emerald & Midnight Slate)
+// Designed for anti-glare comfort, harmonious contrast, and consistent retail identity.
 
-val MawaSecondaryDark = Color(0xFFCCC2DC)
-val MawaOnSecondaryDark = Color(0xFF332D41)
-val MawaSecondaryContainerDark = Color(0xFF4A4458)
-val MawaOnSecondaryContainerDark = Color(0xFFE8DEF8)
+// Dark Palette (Restful, Deep Midnight Slate, No blinding neon)
+val MawaPrimaryDark = Color(0xFF34D399) // Soothing Mint / Emerald 400
+val MawaOnPrimaryDark = Color(0xFF064E3B)
+val MawaPrimaryContainerDark = Color(0xFF064E3B)
+val MawaOnPrimaryContainerDark = Color(0xFFA7F3D0)
+val MawaPillDark = Color(0xFF0F392B)
 
-val MawaBackgroundDark = Color(0xFF141218)
-val MawaOnBackgroundDark = Color(0xFFE6E1E5)
-val MawaSurfaceDark = Color(0xFF211F26)
-val MawaOnSurfaceDark = Color(0xFFE6E1E5)
-val MawaSurfaceVariantDark = Color(0xFF49454F)
-val MawaOnSurfaceVariantDark = Color(0xFFCAC4D0)
+val MawaSecondaryDark = Color(0xFF2DD4BF) // Gentle Teal 400
+val MawaOnSecondaryDark = Color(0xFF134E4A)
+val MawaSecondaryContainerDark = Color(0xFF134E4A)
+val MawaOnSecondaryContainerDark = Color(0xFFCCFBF1)
 
-val MawaOutlineDark = Color(0xFF938F99)
-val MawaOutlineVariantDark = Color(0xFF49454F)
+val MawaBackgroundDark = Color(0xFF0F172A) // Slate 900 (Soft, comfortable dark background)
+val MawaOnBackgroundDark = Color(0xFFF8FAFC)
+val MawaSurfaceDark = Color(0xFF1E293B) // Slate 800 (Refined card surface)
+val MawaOnSurfaceDark = Color(0xFFF8FAFC)
+val MawaSurfaceVariantDark = Color(0xFF334155) // Slate 700
+val MawaOnSurfaceVariantDark = Color(0xFF94A3B8) // Slate 400
 
-// Elegant Light Palette
-val MawaPrimaryLight = Color(0xFF6750A4)
+val MawaOutlineDark = Color(0xFF475569) // Slate 600
+val MawaOutlineVariantDark = Color(0xFF334155) // Slate 700
+
+// Light Palette (Calming, Clean, Anti-glare Paper Warmth)
+val MawaPrimaryLight = Color(0xFF047857) // Deep Emerald 700 (Prestigious, Trustworthy)
 val MawaOnPrimaryLight = Color(0xFFFFFFFF)
-val MawaPrimaryContainerLight = Color(0xFFEADDFF)
-val MawaOnPrimaryContainerLight = Color(0xFF21005D)
+val MawaPrimaryContainerLight = Color(0xFFECFDF5) // Very Soft Mint (Comfortable for long eyes usage)
+val MawaOnPrimaryContainerLight = Color(0xFF064E3B)
 
-val MawaSecondaryLight = Color(0xFF625B71)
+val MawaSecondaryLight = Color(0xFF0F766E) // Deep Teal 700
 val MawaOnSecondaryLight = Color(0xFFFFFFFF)
-val MawaSecondaryContainerLight = Color(0xFFE8DEF8)
-val MawaOnSecondaryContainerLight = Color(0xFF1D192B)
+val MawaSecondaryContainerLight = Color(0xFFCCFBF1)
+val MawaOnSecondaryContainerLight = Color(0xFF115E59)
 
-val MawaBackgroundLight = Color(0xFFF8F9FE)
-val MawaOnBackgroundLight = Color(0xFF1C1B1F)
+val MawaBackgroundLight = Color(0xFFF8FAFC) // Soft Paper Slate 50 (Prevents eye fatigue)
+val MawaOnBackgroundLight = Color(0xFF0F172A) // Crisp Slate 900
 val MawaSurfaceLight = Color(0xFFFFFFFF)
-val MawaOnSurfaceLight = Color(0xFF1C1B1F)
-val MawaSurfaceVariantLight = Color(0xFFF0ECF4)
-val MawaOnSurfaceVariantLight = Color(0xFF49454F)
+val MawaOnSurfaceLight = Color(0xFF0F172A)
+val MawaSurfaceVariantLight = Color(0xFFF1F5F9) // Slate 100
+val MawaOnSurfaceVariantLight = Color(0xFF64748B) // Slate 500
 
-val MawaOutlineLight = Color(0xFF79747E)
-val MawaOutlineVariantLight = Color(0xFFCAC4D0)
+val MawaOutlineLight = Color(0xFFCBD5E1) // Slate 300
+val MawaOutlineVariantLight = Color(0xFFE2E8F0) // Slate 200
 
 // Aliases for compatibility
-val MawaPrimary = MawaPrimaryDark
-val MawaOnPrimary = MawaOnPrimaryDark
-val MawaPrimaryContainer = MawaPrimaryContainerDark
-val MawaOnPrimaryContainer = MawaOnPrimaryContainerDark
+val MawaPrimary = MawaPrimaryLight
+val MawaOnPrimary = MawaOnPrimaryLight
+val MawaPrimaryContainer = MawaPrimaryContainerLight
+val MawaOnPrimaryContainer = MawaOnPrimaryContainerLight
 
-val MawaSecondary = MawaSecondaryDark
-val MawaOnSecondary = MawaOnSecondaryDark
-val MawaSecondaryContainer = MawaSecondaryContainerDark
-val MawaOnSecondaryContainer = MawaOnSecondaryContainerDark
+val MawaSecondary = MawaSecondaryLight
+val MawaOnSecondary = MawaOnSecondaryLight
+val MawaSecondaryContainer = MawaSecondaryContainerLight
+val MawaOnSecondaryContainer = MawaOnSecondaryContainerLight
 
-val MawaBackground = MawaBackgroundDark
-val MawaOnBackground = MawaOnBackgroundDark
-val MawaSurface = MawaSurfaceDark
-val MawaOnSurface = MawaOnSurfaceDark
-val MawaSurfaceVariant = MawaSurfaceVariantDark
-val MawaOnSurfaceVariant = MawaOnSurfaceVariantDark
+val MawaBackground = MawaBackgroundLight
+val MawaOnBackground = MawaOnBackgroundLight
+val MawaSurface = MawaSurfaceLight
+val MawaOnSurface = MawaOnSurfaceLight
+val MawaSurfaceVariant = MawaSurfaceVariantLight
+val MawaOnSurfaceVariant = MawaOnSurfaceVariantLight
 
-val MawaOutline = MawaOutlineDark
-val MawaOutlineVariant = MawaOutlineVariantDark
+val MawaOutline = MawaOutlineLight
+val MawaOutlineVariant = MawaOutlineVariantLight
 
-// Financial Semantic Tokens for Dark Mode
-val FinancialPositiveDark = Color(0xFF81C784)
-val FinancialPositiveContainerDark = Color(0xFF1E3A2F)
-val FinancialPositiveOnContainerDark = Color(0xFFA8E6CF)
+// Financial Semantic Tokens for Dark Mode (Restful, non-blinding)
+val FinancialPositiveDark = Color(0xFF34D399) // Mint / Emerald 400
+val FinancialPositiveContainerDark = Color(0xFF064E3B)
+val FinancialPositiveOnContainerDark = Color(0xFFA7F3D0)
 
-val FinancialNegativeDark = Color(0xFFFFB4AB)
-val FinancialNegativeContainerDark = Color(0xFF5C1D1D)
-val FinancialNegativeOnContainerDark = Color(0xFFFFDAD6)
+val FinancialNegativeDark = Color(0xFFFB7185) // Rose 400 (Soft, comfortable)
+val FinancialNegativeContainerDark = Color(0xFF4C0519)
+val FinancialNegativeOnContainerDark = Color(0xFFFFE4E6)
 
-val FinancialWarningDark = Color(0xFFFFD8E4)
-val FinancialWarningContainerDark = Color(0xFF633B48)
-val FinancialWarningOnContainerDark = Color(0xFFFFD8E4)
+val FinancialWarningDark = Color(0xFFFBBF24) // Amber 400 (Warm, clear)
+val FinancialWarningContainerDark = Color(0xFF451A03)
+val FinancialWarningOnContainerDark = Color(0xFFFEF3C7)
 
-val FinancialNeutralDark = Color(0xFFCAC4D0)
+val FinancialNeutralDark = Color(0xFF94A3B8)
 
-// Financial Semantic Tokens for Light Mode (High Contrast & Crisp)
-val FinancialPositiveLight = Color(0xFF1B5E20)
-val FinancialPositiveContainerLight = Color(0xFFE8F5E9)
-val FinancialPositiveOnContainerLight = Color(0xFF00210B)
+// Financial Semantic Tokens for Light Mode (Crisp, gentle, harmonious)
+val FinancialPositiveLight = Color(0xFF059669) // Emerald 600
+val FinancialPositiveContainerLight = Color(0xFFECFDF5)
+val FinancialPositiveOnContainerLight = Color(0xFF064E3B)
 
-val FinancialNegativeLight = Color(0xFFBA1A1A)
-val FinancialNegativeContainerLight = Color(0xFFFFDAD6)
-val FinancialNegativeOnContainerLight = Color(0xFF410002)
+val FinancialNegativeLight = Color(0xFFE11D48) // Rose 600 (Eye-friendly, not neon red)
+val FinancialNegativeContainerLight = Color(0xFFFFF1F2)
+val FinancialNegativeOnContainerLight = Color(0xFF881337)
 
-val FinancialWarningLight = Color(0xFFC2185B)
-val FinancialWarningContainerLight = Color(0xFFFCE4EC)
-val FinancialWarningOnContainerLight = Color(0xFF3E001D)
+val FinancialWarningLight = Color(0xFFD97706) // Amber 600
+val FinancialWarningContainerLight = Color(0xFFFEF3C7)
+val FinancialWarningOnContainerLight = Color(0xFF78350F)
 
-val FinancialNeutralLight = Color(0xFF49454F)
+val FinancialNeutralLight = Color(0xFF64748B)
 
 // Data holder for dynamic theme-aware financial colors
 data class FinancialColors(

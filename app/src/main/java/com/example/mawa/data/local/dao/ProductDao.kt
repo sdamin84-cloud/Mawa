@@ -36,6 +36,9 @@ interface ProductDao {
     @Query("SELECT * FROM products ORDER BY name ASC")
     fun getAllProducts(): Flow<List<ProductEntity>>
 
+    @Query("SELECT * FROM products")
+    suspend fun getAllProductsDirect(): List<ProductEntity>
+
     @Query("SELECT * FROM products WHERE id = :id")
     fun getProductById(id: Long): Flow<ProductEntity?>
 
@@ -53,4 +56,7 @@ interface ProductDao {
 
     @Query("SELECT COUNT(*) FROM products")
     suspend fun getProductCount(): Int
+
+    @Query("UPDATE products SET name = :newName, banglaName = :newName WHERE LOWER(TRIM(name)) = LOWER(TRIM(:oldName)) OR LOWER(TRIM(banglaName)) = LOWER(TRIM(:oldName))")
+    suspend fun updateProductName(oldName: String, newName: String)
 }

@@ -8,13 +8,16 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.mawa.data.local.dao.CashTallyDao
 import com.example.mawa.data.local.dao.CustomerDao
 import com.example.mawa.data.local.dao.DailyCashDao
 import com.example.mawa.data.local.dao.FordiDao
 import com.example.mawa.data.local.dao.PersonalTransactionDao
 import com.example.mawa.data.local.dao.ProductDao
 import com.example.mawa.data.local.dao.ShopSettingsDao
+import com.example.mawa.data.local.dao.SupplierCompanyDao
 import com.example.mawa.data.local.dao.TransactionDao
+import com.example.mawa.data.local.entity.CashTallyEntity
 import com.example.mawa.data.local.entity.CustomerEntity
 import com.example.mawa.data.local.entity.DailyCashEntity
 import com.example.mawa.data.local.entity.FordiItemEntity
@@ -22,6 +25,7 @@ import com.example.mawa.data.local.entity.PersonalTransactionEntity
 import com.example.mawa.data.local.entity.PersonalTransactionType
 import com.example.mawa.data.local.entity.ProductEntity
 import com.example.mawa.data.local.entity.ShopSettingsEntity
+import com.example.mawa.data.local.entity.SupplierCompanyEntity
 import com.example.mawa.data.local.entity.TransactionEntity
 import com.example.mawa.data.local.entity.TransactionType
 
@@ -123,6 +127,88 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // 1. Create supplier_companies table
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `supplier_companies` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `companyName` TEXT NOT NULL,
+                `srName` TEXT NOT NULL DEFAULT '',
+                `srPhone` TEXT NOT NULL DEFAULT '',
+                `orderDay` TEXT NOT NULL DEFAULT '',
+                `deliveryDay` TEXT NOT NULL DEFAULT '',
+                `address` TEXT NOT NULL DEFAULT '',
+                `note` TEXT NOT NULL DEFAULT '',
+                `createdAt` INTEGER NOT NULL DEFAULT 0
+            )
+        """.trimIndent())
+
+        // 2. Add paymentStatus & promisedPaymentDate to transactions
+        try {
+            db.execSQL("ALTER TABLE `transactions` ADD COLUMN `paymentStatus` TEXT NOT NULL DEFAULT 'PAID'")
+        } catch (_: Exception) {}
+        try {
+            db.execSQL("ALTER TABLE `transactions` ADD COLUMN `promisedPaymentDate` INTEGER NOT NULL DEFAULT 0")
+        } catch (_: Exception) {}
+
+        // 3. Add companyName, orderDay, deliveryDay to fordi_items
+        try {
+            db.execSQL("ALTER TABLE `fordi_items` ADD COLUMN `companyName` TEXT NOT NULL DEFAULT ''")
+        } catch (_: Exception) {}
+        try {
+            db.execSQL("ALTER TABLE `fordi_items` ADD COLUMN `orderDay` TEXT NOT NULL DEFAULT ''")
+        } catch (_: Exception) {}
+        try {
+            db.execSQL("ALTER TABLE `fordi_items` ADD COLUMN `deliveryDay` TEXT NOT NULL DEFAULT ''")
+        } catch (_: Exception) {}
+    }
+}
+
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `cash_tally_records` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `dateKey` TEXT NOT NULL,
+                `dateMillis` INTEGER NOT NULL,
+                `count1000` INTEGER NOT NULL DEFAULT 0,
+                `count500` INTEGER NOT NULL DEFAULT 0,
+                `count200` INTEGER NOT NULL DEFAULT 0,
+                `count100` INTEGER NOT NULL DEFAULT 0,
+                `count50` INTEGER NOT NULL DEFAULT 0,
+                `count20` INTEGER NOT NULL DEFAULT 0,
+                `count10` INTEGER NOT NULL DEFAULT 0,
+                `count5` INTEGER NOT NULL DEFAULT 0,
+                `count2` INTEGER NOT NULL DEFAULT 0,
+                `count1` INTEGER NOT NULL DEFAULT 0,
+                `totalAmount` REAL NOT NULL DEFAULT 0.0,
+                `systemBalance` REAL NOT NULL DEFAULT 0.0,
+                `difference` REAL NOT NULL DEFAULT 0.0,
+                `note` TEXT NOT NULL DEFAULT '',
+                `timestamp` INTEGER NOT NULL DEFAULT 0
+            )
+        """.trimIndent())
+    }
+}
+
+val MIGRATION_7_8 = object : Migration(7, 8) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        try {
+            db.execSQL("ALTER TABLE `shop_settings` ADD COLUMN `bkashNumber` TEXT NOT NULL DEFAULT ''")
+        } catch (_: Exception) {}
+        try {
+            db.execSQL("ALTER TABLE `shop_settings` ADD COLUMN `nagadNumber` TEXT NOT NULL DEFAULT ''")
+        } catch (_: Exception) {}
+        try {
+            db.execSQL("ALTER TABLE `shop_settings` ADD COLUMN `bankDetails` TEXT NOT NULL DEFAULT ''")
+        } catch (_: Exception) {}
+        try {
+            db.execSQL("ALTER TABLE `shop_settings` ADD COLUMN `qrCodeData` TEXT NOT NULL DEFAULT ''")
+        } catch (_: Exception) {}
+    }
+}
+
 @Database(
     entities = [
         TransactionEntity::class,
@@ -131,9 +217,11 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         FordiItemEntity::class,
         ShopSettingsEntity::class,
         PersonalTransactionEntity::class,
-        DailyCashEntity::class
+        DailyCashEntity::class,
+        SupplierCompanyEntity::class,
+        CashTallyEntity::class
     ],
-    version = 5,
+    version = 8,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -146,6 +234,8 @@ abstract class MawaDatabase : RoomDatabase() {
     abstract fun shopSettingsDao(): ShopSettingsDao
     abstract fun personalTransactionDao(): PersonalTransactionDao
     abstract fun dailyCashDao(): DailyCashDao
+    abstract fun supplierCompanyDao(): SupplierCompanyDao
+    abstract fun cashTallyDao(): CashTallyDao
 
     companion object {
         @Volatile
@@ -158,7 +248,7 @@ abstract class MawaDatabase : RoomDatabase() {
                     MawaDatabase::class.java,
                     "mawa_khata_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     .fallbackToDestructiveMigration(false)
                     .build()
                 INSTANCE = instance

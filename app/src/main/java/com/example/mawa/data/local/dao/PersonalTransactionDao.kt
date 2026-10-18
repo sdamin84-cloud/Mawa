@@ -16,6 +16,9 @@ interface PersonalTransactionDao {
     @Query("SELECT * FROM personal_transactions ORDER BY timestamp DESC")
     fun getAllPersonalTransactions(): Flow<List<PersonalTransactionEntity>>
 
+    @Query("SELECT * FROM personal_transactions")
+    suspend fun getAllPersonalTransactionsDirect(): List<PersonalTransactionEntity>
+
     @Query("SELECT * FROM personal_transactions WHERE timestamp BETWEEN :startTime AND :endTime ORDER BY timestamp DESC")
     fun getPersonalTransactionsBetween(startTime: Long, endTime: Long): Flow<List<PersonalTransactionEntity>>
 

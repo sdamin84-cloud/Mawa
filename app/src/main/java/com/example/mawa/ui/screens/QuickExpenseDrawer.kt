@@ -84,10 +84,12 @@ import java.util.Locale
 
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.runtime.collectAsState
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mawa.data.local.entity.ProductEntity
 import com.example.mawa.ui.components.BarcodeScannerDialog
+import com.example.mawa.util.SmartPredictivePurchaseEngine
 
 enum class QuickExpenseTarget {
     SHOP,      // দোকান পরিচালনা খরচ
@@ -104,6 +106,8 @@ fun QuickExpenseDrawer(
     sheetState: SheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 ) {
     val activeProducts by viewModel.activeProducts.collectAsStateWithLifecycle()
+    val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
+    val allSupplierCompanies by viewModel.allSupplierCompanies.collectAsStateWithLifecycle()
 
     var amount by remember { mutableStateOf("") }
     var description by remember { mutableStateOf("") }
@@ -135,6 +139,15 @@ fun QuickExpenseDrawer(
             isYesterday -> "গতকাল ($formatted)"
             else -> formatted
         }
+    }
+
+    // স্মার্ট পূর্বাভাস: নির্বাচিত তারিখের নিয়মিত কেনাকাটা ও কোম্পানি
+    val drawerPredictions = remember(allTransactions, allSupplierCompanies, selectedTimestamp) {
+        SmartPredictivePurchaseEngine.generatePredictions(
+            transactions = allTransactions,
+            supplierCompanies = allSupplierCompanies,
+            targetDateMillis = selectedTimestamp
+        )
     }
 
     val context = LocalContext.current
@@ -326,6 +339,81 @@ fun QuickExpenseDrawer(
                 }
             }
 
+            // 0. Smart Predictive Suggestions Bar (পূর্বের ডাটা দেখে নিয়মিত পণ্য/কোম্পানির ১-ক্লিক ফিল)
+            if (drawerPredictions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                    border = BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = MawaPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "আজকের নিয়মিত পণ্য/কোম্পানি (১-ক্লিক ইনপুট):",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(drawerPredictions, key = { it.id }) { item ->
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable {
+                                            description = item.name
+                                            if (item.predictedAmount > 0) {
+                                                amount = item.predictedAmount.toInt().toString()
+                                            }
+                                            expenseTarget = if (item.isPurchaseType) QuickExpenseTarget.PURCHASE else QuickExpenseTarget.SHOP
+                                            isManualSelection = true
+                                        },
+                                    color = MaterialTheme.colorScheme.surface,
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.35f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Text(
+                                            text = item.name,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        if (item.predictedAmount > 0) {
+                                            Text(
+                                                text = "৳${BengaliUtils.toBanglaDigits(item.predictedAmount.toInt())}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MawaPrimary
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.height(14.dp))
 
             // 1. Amount input
@@ -462,6 +550,35 @@ fun QuickExpenseDrawer(
                             fontWeight = if (expenseTarget == QuickExpenseTarget.PURCHASE) FontWeight.Bold else FontWeight.Normal,
                             color = if (expenseTarget == QuickExpenseTarget.PURCHASE) FinancialPositive else MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+
+            if (expenseTarget == QuickExpenseTarget.HOME) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    color = FinancialWarningContainer.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, FinancialWarning.copy(alpha = 0.3f))
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Home,
+                            contentDescription = null,
+                            tint = FinancialWarning,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "💡 ব্যক্তিগত/সংসার খরচ: দিন শেষে ক্যাশ মেলালে এটি 'উত্তোলন' হিসেবে আলাদা থাকবে, ক্যাশে কোনো অজ্ঞাত ঘাটতি হবে না।",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.5.sp,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
                     }
                 }

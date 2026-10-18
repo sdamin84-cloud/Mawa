@@ -103,16 +103,18 @@ fun VoiceInputButton(
         label = "pulse"
     )
 
+    val brandPrimary = MaterialTheme.colorScheme.primary
+
     if (isPillStyle) {
         Surface(
             modifier = modifier
                 .clip(RoundedCornerShape(20.dp))
                 .clickable { launchVoiceRecognition() }
                 .testTag(testTag),
-            color = if (isListening) FinancialPositive else MawaPrimary.copy(alpha = 0.12f),
+            color = if (isListening) FinancialPositive else brandPrimary.copy(alpha = 0.12f),
             border = androidx.compose.foundation.BorderStroke(
                 1.dp,
-                if (isListening) FinancialPositive else MawaPrimary.copy(alpha = 0.4f)
+                if (isListening) FinancialPositive else brandPrimary.copy(alpha = 0.35f)
             ),
             shape = RoundedCornerShape(20.dp)
         ) {
@@ -123,7 +125,7 @@ fun VoiceInputButton(
                 Icon(
                     imageVector = Icons.Default.Mic,
                     contentDescription = "ভয়েস দিয়ে লিখুন",
-                    tint = if (isListening) Color.White else MawaPrimary,
+                    tint = if (isListening) Color.White else brandPrimary,
                     modifier = Modifier.size(18.dp).scale(if (isListening) pulseScale else 1.0f)
                 )
                 if (!buttonText.isNullOrBlank()) {
@@ -132,7 +134,7 @@ fun VoiceInputButton(
                         text = if (isListening) "শুনছি..." else buttonText,
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
-                        color = if (isListening) Color.White else MawaPrimary,
+                        color = if (isListening) Color.White else brandPrimary,
                         fontSize = 12.sp
                     )
                 }
@@ -143,7 +145,7 @@ fun VoiceInputButton(
             modifier = modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(if (isListening) FinancialPositive else MawaPrimary.copy(alpha = 0.15f))
+                .background(if (isListening) FinancialPositive else brandPrimary.copy(alpha = 0.12f))
                 .clickable { launchVoiceRecognition() }
                 .testTag(testTag),
             contentAlignment = Alignment.Center
@@ -151,9 +153,9 @@ fun VoiceInputButton(
             Icon(
                 imageVector = Icons.Default.Mic,
                 contentDescription = "ভয়েস দিয়ে লিখুন",
-                tint = if (isListening) Color.White else MawaPrimary,
+                tint = if (isListening) Color.White else brandPrimary,
                 modifier = Modifier
-                    .size(22.dp)
+                    .size(20.dp)
                     .scale(if (isListening) pulseScale else 1.0f)
             )
         }

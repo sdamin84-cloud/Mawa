@@ -1,6 +1,7 @@
 package com.example.mawa.data.repository
 
 import com.example.mawa.data.local.MawaDatabase
+import com.example.mawa.data.local.entity.CashTallyEntity
 import com.example.mawa.data.local.entity.CustomerEntity
 import com.example.mawa.data.local.entity.DailyCashEntity
 import com.example.mawa.data.local.entity.FordiItemEntity
@@ -8,6 +9,7 @@ import com.example.mawa.data.local.entity.PersonalTransactionEntity
 import com.example.mawa.data.local.entity.PersonalTransactionType
 import com.example.mawa.data.local.entity.ProductEntity
 import com.example.mawa.data.local.entity.ShopSettingsEntity
+import com.example.mawa.data.local.entity.SupplierCompanyEntity
 import com.example.mawa.data.local.entity.TransactionEntity
 import com.example.mawa.data.local.entity.TransactionType
 import com.example.mawa.data.model.AccountingSummary
@@ -38,6 +40,8 @@ class MawaRepository(private val database: MawaDatabase) {
     private val settingsDao = database.shopSettingsDao()
     private val personalTransactionDao = database.personalTransactionDao()
     private val dailyCashDao = database.dailyCashDao()
+    private val supplierCompanyDao = database.supplierCompanyDao()
+    private val cashTallyDao = database.cashTallyDao()
 
     val allTransactions: Flow<List<TransactionEntity>> = transactionDao.getAllTransactions()
     val recentTransactions: Flow<List<TransactionEntity>> = transactionDao.getRecentTransactions(30)
@@ -49,6 +53,8 @@ class MawaRepository(private val database: MawaDatabase) {
     val allPurchases: Flow<List<TransactionEntity>> = transactionDao.getAllPurchases()
     val shopSettings: Flow<ShopSettingsEntity?> = settingsDao.getSettings()
     val allDailyCash: Flow<List<DailyCashEntity>> = dailyCashDao.getAllDailyCashFlow()
+    val allSupplierCompanies: Flow<List<SupplierCompanyEntity>> = supplierCompanyDao.getAllCompanies()
+    val allCashTallies: Flow<List<CashTallyEntity>> = cashTallyDao.getAllTalliesFlow()
 
     // Personal Transactions
     val allPersonalTransactions: Flow<List<PersonalTransactionEntity>> = personalTransactionDao.getAllPersonalTransactions()
@@ -148,13 +154,17 @@ class MawaRepository(private val database: MawaDatabase) {
                 TransactionType.PURCHASE_FORDI, TransactionType.PURCHASE_DIRECT -> {
                     if (isTargetDay) {
                         todayPurchases += tx.amount
-                        todayCashChange -= tx.amount
+                        if (tx.paymentStatus != "DUE_PAYMENT") {
+                            todayCashChange -= tx.amount
+                        }
                     }
                 }
                 TransactionType.EXPENSE_SHOP -> {
                     if (isTargetDay) {
                         todayShopExpenses += tx.amount
-                        todayCashChange -= tx.amount
+                        if (tx.paymentStatus != "DUE_PAYMENT") {
+                            todayCashChange -= tx.amount
+                        }
                     }
                 }
                 TransactionType.EXPENSE_HOME -> {
@@ -293,13 +303,42 @@ class MawaRepository(private val database: MawaDatabase) {
         amount: Double,
         description: String,
         isHome: Boolean,
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        paymentStatus: String = "PAID",
+        promisedPaymentDate: Long = 0L
     ): Long = withContext(Dispatchers.IO) {
         val tx = TransactionEntity(
             type = if (isHome) TransactionType.EXPENSE_HOME else TransactionType.EXPENSE_SHOP,
             amount = amount,
             note = description,
+            paymentStatus = paymentStatus,
+            promisedPaymentDate = promisedPaymentDate,
             timestamp = timestamp
+        )
+        transactionDao.insertTransaction(tx)
+    }
+
+    suspend fun recordHomeGoodsWithdrawal(
+        productName: String,
+        productId: Long? = null,
+        quantity: Double,
+        unit: String,
+        rate: Double,
+        isDeductFromCash: Boolean,
+        note: String = ""
+    ): Long = withContext(Dispatchers.IO) {
+        val total = quantity * rate
+        val tx = TransactionEntity(
+            type = TransactionType.EXPENSE_HOME,
+            amount = if (isDeductFromCash) total else 0.0,
+            productId = productId,
+            productName = productName,
+            quantity = quantity,
+            unit = unit,
+            rate = rate,
+            category = if (isDeductFromCash) "সংসার পণ্য (ক্যাশ কর্তন)" else "সংসার পণ্য (ক্যাশ অপরিবর্তিত)",
+            note = note.ifBlank { "$productName ($quantity $unit) বাসার জন্য নেওয়া" },
+            timestamp = System.currentTimeMillis()
         )
         transactionDao.insertTransaction(tx)
     }
@@ -312,7 +351,9 @@ class MawaRepository(private val database: MawaDatabase) {
         rate: Double,
         total: Double,
         note: String = "",
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        paymentStatus: String = "PAID",
+        promisedPaymentDate: Long = 0L
     ): Long = withContext(Dispatchers.IO) {
         val tx = TransactionEntity(
             type = TransactionType.PURCHASE_DIRECT,
@@ -323,6 +364,8 @@ class MawaRepository(private val database: MawaDatabase) {
             unit = unit,
             rate = rate,
             note = note,
+            paymentStatus = paymentStatus,
+            promisedPaymentDate = promisedPaymentDate,
             timestamp = timestamp
         )
         transactionDao.insertTransaction(tx)
@@ -331,7 +374,9 @@ class MawaRepository(private val database: MawaDatabase) {
     suspend fun convertFordiToPurchase(
         fordiItem: FordiItemEntity,
         actualQuantity: Double,
-        actualRate: Double
+        actualRate: Double,
+        paymentStatus: String = "PAID",
+        promisedPaymentDate: Long = 0L
     ) = withContext(Dispatchers.IO) {
         val actualTotal = actualQuantity * actualRate
         val now = System.currentTimeMillis()
@@ -356,10 +401,53 @@ class MawaRepository(private val database: MawaDatabase) {
             quantity = actualQuantity,
             unit = fordiItem.unit,
             rate = actualRate,
-            note = "ফর্দ থেকে ক্রয়: ${fordiItem.productName}",
+            note = if (fordiItem.companyName.isNotBlank()) fordiItem.companyName else "ফর্দ থেকে ক্রয়: ${fordiItem.productName}",
+            paymentStatus = paymentStatus,
+            promisedPaymentDate = promisedPaymentDate,
             timestamp = now
         )
         transactionDao.insertTransaction(tx)
+    }
+
+    suspend fun updateTransactionPaymentStatus(id: Long, status: String) = withContext(Dispatchers.IO) {
+        transactionDao.updatePaymentStatus(id, status)
+    }
+
+    suspend fun saveSupplierCompany(company: SupplierCompanyEntity): Long = withContext(Dispatchers.IO) {
+        supplierCompanyDao.insertOrUpdateCompany(company)
+    }
+
+    suspend fun deleteSupplierCompany(id: Long) = withContext(Dispatchers.IO) {
+        supplierCompanyDao.deleteCompanyById(id)
+    }
+
+    suspend fun getAllSupplierCompaniesDirect(): List<SupplierCompanyEntity> = withContext(Dispatchers.IO) {
+        supplierCompanyDao.getAllCompaniesDirect()
+    }
+
+    suspend fun mergeEntityNames(oldName: String, newName: String) = withContext(Dispatchers.IO) {
+        val cleanOld = oldName.trim()
+        val cleanNew = newName.trim()
+        if (cleanOld.isBlank() || cleanNew.isBlank() || cleanOld.equals(cleanNew, ignoreCase = true)) return@withContext
+
+        // 1. Update transactions expense notes
+        transactionDao.updateExpenseNote(cleanOld, cleanNew)
+
+        // 2. Update transactions product names
+        transactionDao.updateTransactionProductName(cleanOld, cleanNew)
+
+        // 3. Update Fordi items
+        fordiDao.updateFordiProductName(cleanOld, cleanNew)
+        fordiDao.updateFordiCompanyName(cleanOld, cleanNew)
+
+        // 4. Update Product memory
+        productDao.updateProductName(cleanOld, cleanNew)
+
+        // 5. Update Supplier Companies if matched
+        val existingCompany = supplierCompanyDao.getCompanyByName(cleanOld)
+        if (existingCompany != null) {
+            supplierCompanyDao.updateCompany(existingCompany.copy(companyName = cleanNew))
+        }
     }
 
     suspend fun convertMultipleFordiToPurchases(items: List<FordiItemEntity>) = withContext(Dispatchers.IO) {
@@ -396,6 +484,10 @@ class MawaRepository(private val database: MawaDatabase) {
 
     suspend fun clearPendingFordi() = withContext(Dispatchers.IO) {
         fordiDao.clearPendingFordi()
+    }
+
+    suspend fun deleteAllFordiItems() = withContext(Dispatchers.IO) {
+        fordiDao.deleteAllFordiItems()
     }
 
     suspend fun reAddPurchasedItemsToFordi(items: List<FordiItemEntity>) = withContext(Dispatchers.IO) {
@@ -544,6 +636,53 @@ class MawaRepository(private val database: MawaDatabase) {
                 )
             )
         }
+        val existingProducts = productDao.getAllProductsDirect()
+        if (existingProducts.isEmpty()) {
+            val defaultProducts = listOf(
+                ProductEntity(name = "মিনিকেট চাল", banglaName = "মিনিকেট চাল", category = "মুদি", unit = "কেজি", defaultPurchasePrice = 68.0, defaultSellingPrice = 72.0, stockQuantity = 25.0),
+                ProductEntity(name = "নাজিরশাইল চাল", banglaName = "নাজিরশাইল চাল", category = "মুদি", unit = "কেজি", defaultPurchasePrice = 72.0, defaultSellingPrice = 78.0, stockQuantity = 15.0),
+                ProductEntity(name = "সয়াবিন তেল (১ লিটার)", banglaName = "সয়াবিন তেল (রূপচাঁদা)", category = "মুদি", unit = "বোতল", defaultPurchasePrice = 180.0, defaultSellingPrice = 188.0, stockQuantity = 12.0),
+                ProductEntity(name = "সয়াবিন তেল (৫ লিটার)", banglaName = "সয়াবিন তেল (৫ লিটার জার)", category = "মুদি", unit = "বোতল", defaultPurchasePrice = 870.0, defaultSellingPrice = 895.0, stockQuantity = 4.0),
+                ProductEntity(name = "দেশি মসুর ডাল", banglaName = "দেশি মসুর ডাল", category = "মুদি", unit = "কেজি", defaultPurchasePrice = 120.0, defaultSellingPrice = 130.0, stockQuantity = 8.0),
+                ProductEntity(name = "গোল আলু (নতুন)", banglaName = "গোল আলু", category = "কাঁচাবাজার", unit = "কেজি", defaultPurchasePrice = 40.0, defaultSellingPrice = 45.0, stockQuantity = 30.0),
+                ProductEntity(name = "দেশি পেঁয়াজ", banglaName = "দেশি পেঁয়াজ", category = "কাঁচাবাজার", unit = "কেজি", defaultPurchasePrice = 75.0, defaultSellingPrice = 85.0, stockQuantity = 2.0),
+                ProductEntity(name = "রসুন (দেশি)", banglaName = "রসুন", category = "কাঁচাবাজার", unit = "কেজি", defaultPurchasePrice = 200.0, defaultSellingPrice = 220.0, stockQuantity = 5.0),
+                ProductEntity(name = "আদা", banglaName = "আদা", category = "কাঁচাবাজার", unit = "কেজি", defaultPurchasePrice = 220.0, defaultSellingPrice = 240.0, stockQuantity = 0.0),
+                ProductEntity(name = "কাঁচা মরিচ", banglaName = "কাঁচা মরিচ", category = "কাঁচাবাজার", unit = "কেজি", defaultPurchasePrice = 130.0, defaultSellingPrice = 150.0, stockQuantity = 3.0),
+                ProductEntity(name = "সাদা চিনি", banglaName = "চিনি", category = "মুদি", unit = "কেজি", defaultPurchasePrice = 128.0, defaultSellingPrice = 135.0, stockQuantity = 20.0),
+                ProductEntity(name = "আয়োডিনযুক্ত লবণ", banglaName = "লবণ", category = "মুদি", unit = "প্যাকেট", defaultPurchasePrice = 38.0, defaultSellingPrice = 42.0, stockQuantity = 15.0),
+                ProductEntity(name = "ফার্মের লাল ডিম", banglaName = "লাল ডিম", category = "ডিম", unit = "টি", defaultPurchasePrice = 12.0, defaultSellingPrice = 13.5, stockQuantity = 48.0),
+                ProductEntity(name = "তীর আটা (২ কেজি)", banglaName = "তীর আটা প্যাকেট", category = "মুদি", unit = "প্যাকেট", defaultPurchasePrice = 110.0, defaultSellingPrice = 120.0, stockQuantity = 1.0),
+                ProductEntity(name = "ইস্পাহানি মির্জাপুর চা", banglaName = "ইস্পাহানি চা", category = "মুদি", unit = "প্যাকেট", defaultPurchasePrice = 215.0, defaultSellingPrice = 230.0, stockQuantity = 6.0),
+                ProductEntity(name = "মার্কস গুঁড়ো দুধ", banglaName = "মার্কস গুঁড়ো দুধ ৫০০ গ্রাম", category = "মুদি", unit = "প্যাকেট", defaultPurchasePrice = 420.0, defaultSellingPrice = 440.0, stockQuantity = 0.0)
+            )
+            defaultProducts.forEach { productDao.insertProduct(it) }
+        }
+    }
+
+    suspend fun seedStandardProductsIfEmpty() = withContext(Dispatchers.IO) {
+        val existingProducts = productDao.getAllProductsDirect()
+        if (existingProducts.isEmpty()) {
+            val defaultProducts = listOf(
+                ProductEntity(name = "মিনিকেট চাল", banglaName = "মিনিকেট চাল", category = "মুদি", unit = "কেজি", defaultPurchasePrice = 68.0, defaultSellingPrice = 72.0, stockQuantity = 25.0),
+                ProductEntity(name = "নাজিরশাইল চাল", banglaName = "নাজিরশাইল চাল", category = "মুদি", unit = "কেজি", defaultPurchasePrice = 72.0, defaultSellingPrice = 78.0, stockQuantity = 15.0),
+                ProductEntity(name = "সয়াবিন তেল (১ লিটার)", banglaName = "সয়াবিন তেল (রূপচাঁদা)", category = "মুদি", unit = "বোতল", defaultPurchasePrice = 180.0, defaultSellingPrice = 188.0, stockQuantity = 12.0),
+                ProductEntity(name = "সয়াবিন তেল (৫ লিটার)", banglaName = "সয়াবিন তেল (৫ লিটার জার)", category = "মুদি", unit = "বোতল", defaultPurchasePrice = 870.0, defaultSellingPrice = 895.0, stockQuantity = 4.0),
+                ProductEntity(name = "দেশি মসুর ডাল", banglaName = "দেশি মসুর ডাল", category = "মুদি", unit = "কেজি", defaultPurchasePrice = 120.0, defaultSellingPrice = 130.0, stockQuantity = 8.0),
+                ProductEntity(name = "গোল আলু (নতুন)", banglaName = "গোল আলু", category = "কাঁচাবাজার", unit = "কেজি", defaultPurchasePrice = 40.0, defaultSellingPrice = 45.0, stockQuantity = 30.0),
+                ProductEntity(name = "দেশি পেঁয়াজ", banglaName = "দেশি পেঁয়াজ", category = "কাঁচাবাজার", unit = "কেজি", defaultPurchasePrice = 75.0, defaultSellingPrice = 85.0, stockQuantity = 2.0),
+                ProductEntity(name = "রসুন (দেশি)", banglaName = "রসুন", category = "কাঁচাবাজার", unit = "কেজি", defaultPurchasePrice = 200.0, defaultSellingPrice = 220.0, stockQuantity = 5.0),
+                ProductEntity(name = "আদা", banglaName = "আদা", category = "কাঁচাবাজার", unit = "কেজি", defaultPurchasePrice = 220.0, defaultSellingPrice = 240.0, stockQuantity = 0.0),
+                ProductEntity(name = "কাঁচা মরিচ", banglaName = "কাঁচা মরিচ", category = "কাঁচাবাজার", unit = "কেজি", defaultPurchasePrice = 130.0, defaultSellingPrice = 150.0, stockQuantity = 3.0),
+                ProductEntity(name = "সাদা চিনি", banglaName = "চিনি", category = "মুদি", unit = "কেজি", defaultPurchasePrice = 128.0, defaultSellingPrice = 135.0, stockQuantity = 20.0),
+                ProductEntity(name = "আয়োডিনযুক্ত লবণ", banglaName = "লবণ", category = "মুদি", unit = "প্যাকেট", defaultPurchasePrice = 38.0, defaultSellingPrice = 42.0, stockQuantity = 15.0),
+                ProductEntity(name = "ফার্মের লাল ডিম", banglaName = "লাল ডিম", category = "ডিম", unit = "টি", defaultPurchasePrice = 12.0, defaultSellingPrice = 13.5, stockQuantity = 48.0),
+                ProductEntity(name = "তীর আটা (২ কেজি)", banglaName = "তীর আটা প্যাকেট", category = "মুদি", unit = "প্যাকেট", defaultPurchasePrice = 110.0, defaultSellingPrice = 120.0, stockQuantity = 1.0),
+                ProductEntity(name = "ইস্পাহানি মির্জাপুর চা", banglaName = "ইস্পাহানি চা", category = "মুদি", unit = "প্যাকেট", defaultPurchasePrice = 215.0, defaultSellingPrice = 230.0, stockQuantity = 6.0),
+                ProductEntity(name = "মার্কস গুঁড়ো দুধ", banglaName = "মার্কস গুঁড়ো দুধ ৫০০ গ্রাম", category = "মুদি", unit = "প্যাকেট", defaultPurchasePrice = 420.0, defaultSellingPrice = 440.0, stockQuantity = 0.0)
+            )
+            defaultProducts.forEach { productDao.insertProduct(it) }
+        }
     }
 
     // --- Personal Mode Methods ---
@@ -688,6 +827,8 @@ class MawaRepository(private val database: MawaDatabase) {
         val products = productDao.getAllProducts().first()
         val personalTransactions = personalTransactionDao.getAllPersonalTransactions().first()
         val dailyCashRecords = dailyCashDao.getAllDailyCashDirect()
+        val supplierCompanies = supplierCompanyDao.getAllCompaniesDirect()
+        val cashTallyRecords = cashTallyDao.getAllTalliesDirect()
 
         FullBackupData(
             exportDate = System.currentTimeMillis(),
@@ -697,7 +838,9 @@ class MawaRepository(private val database: MawaDatabase) {
             fordiItems = fordiItems,
             products = products,
             personalTransactions = personalTransactions,
-            dailyCashRecords = dailyCashRecords
+            dailyCashRecords = dailyCashRecords,
+            supplierCompanies = supplierCompanies,
+            cashTallyRecords = cashTallyRecords
         )
     }
 
@@ -709,15 +852,28 @@ class MawaRepository(private val database: MawaDatabase) {
             productDao.deleteAllProducts()
             personalTransactionDao.deleteAll()
             dailyCashDao.deleteAllDailyCash()
+            cashTallyDao.deleteAllTallies()
+            val existingCompanies = supplierCompanyDao.getAllCompaniesDirect()
+            existingCompanies.forEach { supplierCompanyDao.deleteCompany(it) }
         }
 
         data.shopSettings?.let {
             settingsDao.insertOrUpdateSettings(it)
         }
 
+        // Restore Supplier Companies
+        if (data.supplierCompanies.isNotEmpty()) {
+            supplierCompanyDao.insertCompanies(data.supplierCompanies)
+        }
+
         // Restore Daily Cash Records
         if (data.dailyCashRecords.isNotEmpty()) {
             dailyCashDao.insertDailyCashList(data.dailyCashRecords)
+        }
+
+        // Restore Cash Tally Records
+        if (data.cashTallyRecords.isNotEmpty()) {
+            cashTallyDao.insertTallies(data.cashTallyRecords)
         }
 
         // Prepare customers to insert
@@ -781,19 +937,108 @@ class MawaRepository(private val database: MawaDatabase) {
         }
 
         if (finalTransactions.isNotEmpty()) {
-            transactionDao.insertTransactions(finalTransactions)
+            if (overwriteExisting) {
+                transactionDao.insertTransactions(finalTransactions)
+            } else {
+                // Deduplicate transactions against existing DB records
+                val existingTxList = transactionDao.getAllTransactionsDirect()
+                val existingTxIds = existingTxList.map { it.id }.toSet()
+                
+                // Helper to create unique transaction signature
+                fun txSignature(tx: TransactionEntity): String {
+                    val cId = tx.customerId ?: 0L
+                    val pId = tx.productId ?: 0L
+                    val noteTrim = tx.note.trim()
+                    // Discard sub-second drift by rounding to nearest 2 seconds
+                    val timeBucket = tx.timestamp / 2000L
+                    return "${tx.type.name}_${tx.amount}_${timeBucket}_${cId}_${pId}_$noteTrim"
+                }
+
+                val existingSignatures = existingTxList.map { txSignature(it) }.toMutableSet()
+                val txToInsert = mutableListOf<TransactionEntity>()
+
+                for (tx in finalTransactions) {
+                    val sig = txSignature(tx)
+                    val idExists = tx.id > 0 && existingTxIds.contains(tx.id)
+                    if (!idExists && !existingSignatures.contains(sig)) {
+                        txToInsert.add(tx)
+                        existingSignatures.add(sig)
+                    }
+                }
+
+                if (txToInsert.isNotEmpty()) {
+                    transactionDao.insertTransactions(txToInsert)
+                }
+            }
         }
 
+        // Restore Fordi Items with deduplication
         if (data.fordiItems.isNotEmpty()) {
-            fordiDao.insertFordiItems(data.fordiItems)
+            if (overwriteExisting) {
+                fordiDao.insertFordiItems(data.fordiItems)
+            } else {
+                val existingFordi = fordiDao.getAllFordiItemsDirect()
+                val existingFordiIds = existingFordi.map { it.id }.toSet()
+                fun fordiSig(f: FordiItemEntity): String {
+                    val pName = f.productName.trim().lowercase()
+                    val pDate = f.createdAt / 86400000L // same day
+                    return "${pName}_${pDate}_${f.plannedQuantity}_${f.purchaseRate}"
+                }
+                val existingFordiSigs = existingFordi.map { fordiSig(it) }.toMutableSet()
+                val fordiToInsert = data.fordiItems.filter { f ->
+                    val idMatch = f.id > 0 && existingFordiIds.contains(f.id)
+                    val sigMatch = existingFordiSigs.contains(fordiSig(f))
+                    if (!idMatch && !sigMatch) {
+                        existingFordiSigs.add(fordiSig(f))
+                        true
+                    } else false
+                }
+                if (fordiToInsert.isNotEmpty()) {
+                    fordiDao.insertFordiItems(fordiToInsert)
+                }
+            }
         }
 
+        // Restore Products with deduplication
         if (data.products.isNotEmpty()) {
-            productDao.insertProducts(data.products)
+            if (overwriteExisting) {
+                productDao.insertProducts(data.products)
+            } else {
+                val existingProducts = productDao.getAllProductsDirect()
+                val existingProdNames = existingProducts.map { it.name.trim().lowercase() }.toSet()
+                val productsToInsert = data.products.filter { p ->
+                    !existingProdNames.contains(p.name.trim().lowercase())
+                }
+                if (productsToInsert.isNotEmpty()) {
+                    productDao.insertProducts(productsToInsert)
+                }
+            }
         }
 
+        // Restore Personal Transactions with deduplication
         if (data.personalTransactions.isNotEmpty()) {
-            personalTransactionDao.insertAll(data.personalTransactions)
+            if (overwriteExisting) {
+                personalTransactionDao.insertAll(data.personalTransactions)
+            } else {
+                val existingPersonal = personalTransactionDao.getAllPersonalTransactionsDirect()
+                val existingPIds = existingPersonal.map { it.id }.toSet()
+                fun pTxSig(pt: PersonalTransactionEntity): String {
+                    val timeBucket = pt.timestamp / 2000L
+                    return "${pt.type.name}_${pt.amount}_${timeBucket}_${pt.title.trim()}_${pt.category}"
+                }
+                val existingPSigs = existingPersonal.map { pTxSig(it) }.toMutableSet()
+                val pTxToInsert = data.personalTransactions.filter { pt ->
+                    val idMatch = pt.id > 0 && existingPIds.contains(pt.id)
+                    val sigMatch = existingPSigs.contains(pTxSig(pt))
+                    if (!idMatch && !sigMatch) {
+                        existingPSigs.add(pTxSig(pt))
+                        true
+                    } else false
+                }
+                if (pTxToInsert.isNotEmpty()) {
+                    personalTransactionDao.insertAll(pTxToInsert)
+                }
+            }
         }
     }
 
@@ -817,9 +1062,21 @@ class MawaRepository(private val database: MawaDatabase) {
 
     fun getDailyCashFlow(dateKey: String): Flow<DailyCashEntity?> = dailyCashDao.getDailyCashFlow(dateKey)
 
+    // --- Cash Tally Operations (নোট কাউন্ট ও সেভ) ---
+    fun getCashTalliesForDateFlow(dateKey: String): Flow<List<CashTallyEntity>> = cashTallyDao.getTalliesForDateFlow(dateKey)
+    fun getLatestCashTallyForDateFlow(dateKey: String): Flow<CashTallyEntity?> = cashTallyDao.getLatestTallyForDateFlow(dateKey)
+    suspend fun getLatestCashTallyForDate(dateKey: String): CashTallyEntity? = withContext(Dispatchers.IO) { cashTallyDao.getLatestTallyForDate(dateKey) }
+    suspend fun saveCashTally(tally: CashTallyEntity): Long = withContext(Dispatchers.IO) { cashTallyDao.insertTally(tally) }
+    suspend fun deleteCashTally(id: Long) = withContext(Dispatchers.IO) { cashTallyDao.deleteTallyById(id) }
+
     suspend fun importCustomers(customers: List<CustomerEntity>) = withContext(Dispatchers.IO) {
         if (customers.isNotEmpty()) {
-            customerDao.insertCustomers(customers)
+            val existing = customerDao.getAllCustomersDirect()
+            val existingNames = existing.map { it.name.trim().lowercase() }.toSet()
+            val toInsert = customers.filter { !existingNames.contains(it.name.trim().lowercase()) }
+            if (toInsert.isNotEmpty()) {
+                customerDao.insertCustomers(toInsert)
+            }
         }
     }
 

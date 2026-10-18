@@ -6,12 +6,14 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mawa.data.local.MawaDatabase
+import com.example.mawa.data.local.entity.CashTallyEntity
 import com.example.mawa.data.local.entity.CustomerEntity
 import com.example.mawa.data.local.entity.FordiItemEntity
 import com.example.mawa.data.local.entity.PersonalTransactionEntity
 import com.example.mawa.data.local.entity.PersonalTransactionType
 import com.example.mawa.data.local.entity.ProductEntity
 import com.example.mawa.data.local.entity.ShopSettingsEntity
+import com.example.mawa.data.local.entity.SupplierCompanyEntity
 import com.example.mawa.data.local.entity.TransactionEntity
 import com.example.mawa.data.local.entity.TransactionType
 import com.example.mawa.data.model.AccountingSummary
@@ -20,6 +22,7 @@ import com.example.mawa.data.model.AppThemeMode
 import com.example.mawa.data.model.CustomerWithBalance
 import com.example.mawa.data.model.PersonalSummary
 import com.example.mawa.data.model.ProductStats
+import com.example.mawa.data.model.SimilarNameGroup
 import com.example.mawa.data.model.TimeFilter
 import com.example.mawa.data.remote.supabase.CloudBackupItem
 import com.example.mawa.data.remote.supabase.CloudOperationResult
@@ -28,6 +31,10 @@ import com.example.mawa.data.remote.supabase.SupabaseAuthResult
 import com.example.mawa.data.remote.supabase.SupabaseDbManager
 import com.example.mawa.data.remote.supabase.SupabaseUser
 import com.example.mawa.data.repository.MawaRepository
+import com.example.mawa.util.BengaliUtils
+import com.example.mawa.util.CashChimePlayer
+import com.example.mawa.util.SimilarNameDetector
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -50,13 +57,34 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     // Theme Mode Preference
     private val appPrefs = application.getSharedPreferences("mawa_app_prefs", Context.MODE_PRIVATE)
     private val _themeMode = MutableStateFlow(
-        AppThemeMode.fromKey(appPrefs.getString("app_theme_mode", AppThemeMode.SYSTEM.key))
+        AppThemeMode.fromKey(appPrefs.getString("app_theme_mode", AppThemeMode.LIGHT.key))
     )
     val themeMode: StateFlow<AppThemeMode> = _themeMode.asStateFlow()
 
     fun setThemeMode(mode: AppThemeMode) {
         _themeMode.value = mode
         appPrefs.edit().putString("app_theme_mode", mode.key).apply()
+    }
+
+    // Cash Chime Sound & Daily Backup Reminder Preferences
+    private val _isCashSoundEnabled = MutableStateFlow(
+        appPrefs.getBoolean("is_cash_sound_enabled", true)
+    )
+    val isCashSoundEnabled: StateFlow<Boolean> = _isCashSoundEnabled.asStateFlow()
+
+    fun setCashSoundEnabled(enabled: Boolean) {
+        _isCashSoundEnabled.value = enabled
+        appPrefs.edit().putBoolean("is_cash_sound_enabled", enabled).apply()
+    }
+
+    private val _isDailyBackupReminderEnabled = MutableStateFlow(
+        appPrefs.getBoolean("is_backup_reminder_enabled", true)
+    )
+    val isDailyBackupReminderEnabled: StateFlow<Boolean> = _isDailyBackupReminderEnabled.asStateFlow()
+
+    fun setDailyBackupReminderEnabled(enabled: Boolean) {
+        _isDailyBackupReminderEnabled.value = enabled
+        appPrefs.edit().putBoolean("is_backup_reminder_enabled", enabled).apply()
     }
 
     // Supabase Cloud Integration
@@ -86,12 +114,19 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             currentUser.collect { user ->
                 if (user != null) {
                     loadCloudBackups()
-                    autoLoadLatestCloudDataIfEmpty()
+                    // Instant live sync upon session detection
+                    mawaSyncManager.syncImmediatelyOnLogin { _, _ ->
+                        loadCloudBackups()
+                    }
                 } else {
                     _cloudBackups.value = emptyList()
                 }
             }
         }
+    }
+
+    fun notifyDataChanged() {
+        mawaSyncManager.scheduleDebouncedAutoSync()
     }
 
     // Selected Date for Home Screen (allows navigating to past days)
@@ -242,6 +277,52 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = true
         )
 
+    val allSupplierCompanies: StateFlow<List<SupplierCompanyEntity>> = repository.allSupplierCompanies
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val allCashTallies: StateFlow<List<CashTallyEntity>> = repository.allCashTallies
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    val pendingSupplierPayments: StateFlow<List<TransactionEntity>> = repository.allTransactions
+        .map { list ->
+            list.filter {
+                (it.type == TransactionType.EXPENSE_SHOP || it.type == TransactionType.PURCHASE_DIRECT || it.type == TransactionType.PURCHASE_FORDI) &&
+                it.paymentStatus == "DUE_PAYMENT"
+            }.sortedByDescending { it.timestamp }
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    private val _dismissedSimilarClusters = MutableStateFlow<Set<Set<String>>>(emptySet())
+
+    val detectedSimilarNameGroups: StateFlow<List<SimilarNameGroup>> = combine(
+        repository.allTransactions,
+        repository.allFordiItems,
+        repository.allProducts,
+        repository.allSupplierCompanies,
+        _dismissedSimilarClusters
+    ) { txs, fordis, prods, companies, dismissed ->
+        val groups = SimilarNameDetector.findSimilarGroups(txs, fordis, prods, companies)
+        groups.filter { group ->
+            val set = group.variations.toSet()
+            dismissed.none { d -> d == set || d.containsAll(set) }
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
     // Personal Mode Flows
     val allPersonalTransactions: StateFlow<List<PersonalTransactionEntity>> = repository.allPersonalTransactions
         .stateIn(
@@ -311,8 +392,10 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (amount <= 0) return@launch
             repository.recordSale(isCash, amount, customerId, customerName, note, timestamp)
+            CashChimePlayer.playCashChime(getApplication())
             val typeStr = if (isCash) "নগদ বিক্রি" else "বাকি বিক্রি"
             _feedbackMessage.emit("$typeStr সফলভাবে সংরক্ষিত হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -328,7 +411,9 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (amount <= 0) return@launch
             repository.recordBakiEntry(customerId, customerName, amount, note, timestamp)
+            CashChimePlayer.playCashChime(getApplication())
             _feedbackMessage.emit("$customerName-কে বাকি ৳$amount দেওয়া হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -344,7 +429,9 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             if (amount <= 0) return@launch
             repository.recordJomaEntry(customerId, customerName, amount, note, timestamp)
+            CashChimePlayer.playCashChime(getApplication())
             _feedbackMessage.emit("$customerName-এর থেকে জমা ৳$amount পাওয়া গেছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -354,13 +441,44 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         description: String,
         isHome: Boolean,
         timestamp: Long = System.currentTimeMillis(),
+        paymentStatus: String = "PAID",
+        promisedPaymentDate: Long = 0L,
         onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
             if (amount <= 0) return@launch
-            repository.recordExpense(amount, description, isHome, timestamp)
+            repository.recordExpense(amount, description, isHome, timestamp, paymentStatus, promisedPaymentDate)
             val targetStr = if (isHome) "বাড়ির জন্য" else "দোকানের"
-            _feedbackMessage.emit("$targetStr খরচ ৳$amount সংরক্ষিত হয়েছে")
+            val statusNote = if (paymentStatus == "DUE_PAYMENT") " (বিকালে পেমেন্ট বাকি)" else ""
+            _feedbackMessage.emit("$targetStr খরচ ৳$amount সংরক্ষিত হয়েছে$statusNote")
+            notifyDataChanged()
+            onSuccess()
+        }
+    }
+
+    fun recordHomeGoodsWithdrawal(
+        productName: String,
+        productId: Long? = null,
+        quantity: Double,
+        unit: String,
+        rate: Double,
+        isDeductFromCash: Boolean,
+        note: String = "",
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            if (productId != null) {
+                val currentProducts = activeProducts.value
+                val existing = currentProducts.find { it.id == productId }
+                if (existing != null && existing.stockQuantity > 0) {
+                    val newStock = (existing.stockQuantity - quantity).coerceAtLeast(0.0)
+                    repository.updateProduct(existing.copy(stockQuantity = newStock))
+                }
+            }
+            repository.recordHomeGoodsWithdrawal(productName, productId, quantity, unit, rate, isDeductFromCash, note)
+            val cashNote = if (isDeductFromCash) " (ক্যাশ থেকে কর্তিত)" else " (ক্যাশ অপরিবর্তিত)"
+            _feedbackMessage.emit("$productName ($quantity $unit) সংসারের খরচে যুক্ত হয়েছে$cashNote")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -374,13 +492,17 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         total: Double = 0.0,
         note: String = "",
         timestamp: Long = System.currentTimeMillis(),
+        paymentStatus: String = "PAID",
+        promisedPaymentDate: Long = 0L,
         onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
             val finalTotal = if (total > 0) total else (quantity * rate)
             if (finalTotal <= 0) return@launch
-            repository.recordDirectPurchase(productName, productId, quantity, unit, rate, finalTotal, note, timestamp)
-            _feedbackMessage.emit("মাল ক্রয় ৳$finalTotal সংরক্ষিত হয়েছে")
+            repository.recordDirectPurchase(productName, productId, quantity, unit, rate, finalTotal, note, timestamp, paymentStatus, promisedPaymentDate)
+            val statusNote = if (paymentStatus == "DUE_PAYMENT") " (বিকালে পেমেন্ট বাকি)" else ""
+            _feedbackMessage.emit("মাল ক্রয় ৳$finalTotal সংরক্ষিত হয়েছে$statusNote")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -389,13 +511,63 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         item: FordiItemEntity,
         actualQty: Double,
         actualRate: Double,
+        paymentStatus: String = "PAID",
+        promisedPaymentDate: Long = 0L,
         onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
             if (actualQty <= 0 || actualRate <= 0) return@launch
-            repository.convertFordiToPurchase(item, actualQty, actualRate)
+            repository.convertFordiToPurchase(item, actualQty, actualRate, paymentStatus, promisedPaymentDate)
             val total = actualQty * actualRate
-            _feedbackMessage.emit("${item.productName} ক্রয় ৳$total যুক্ত হয়েছে")
+            val statusNote = if (paymentStatus == "DUE_PAYMENT") " (বিকালে পেমেন্ট বাকি)" else ""
+            _feedbackMessage.emit("${item.productName} ক্রয় ৳$total যুক্ত হয়েছে$statusNote")
+            notifyDataChanged()
+            onSuccess()
+        }
+    }
+
+    fun saveSupplierCompany(company: SupplierCompanyEntity, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.saveSupplierCompany(company)
+            _feedbackMessage.emit("${company.companyName} সংরক্ষিত হয়েছে")
+            notifyDataChanged()
+            onSuccess()
+        }
+    }
+
+    fun deleteSupplierCompany(id: Long, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.deleteSupplierCompany(id)
+            _feedbackMessage.emit("কোম্পানি ডিলিট হয়েছে")
+            notifyDataChanged()
+            onSuccess()
+        }
+    }
+
+    fun updateTransactionPaymentStatus(id: Long, status: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.updateTransactionPaymentStatus(id, status)
+            val msg = if (status == "PAID") "পেমেন্ট নগদ পরিশোধ সম্পন্ন হয়েছে" else "পেমেন্ট আপডেট হয়েছে"
+            _feedbackMessage.emit(msg)
+            notifyDataChanged()
+            onSuccess()
+        }
+    }
+
+    fun mergeEntityNames(oldName: String, newName: String, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.mergeEntityNames(oldName, newName)
+            _feedbackMessage.emit("'$oldName' সফলভাবে '$newName' নামে একীভূত করা হয়েছে")
+            notifyDataChanged()
+            onSuccess()
+        }
+    }
+
+    fun markSimilarGroupAsSeparate(group: SimilarNameGroup, onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            _dismissedSimilarClusters.value = _dismissedSimilarClusters.value + setOf(group.variations.toSet())
+            _feedbackMessage.emit("✓ '${group.primaryName}' ও অন্যান্য ভ্যারিয়েশন আলাদা হিসেবে নিশ্চিত করা হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -409,6 +581,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             val totalAmount = items.sumOf { (if (it.actualQuantity > 0) it.actualQuantity else it.plannedQuantity) * (if (it.actualRate > 0) it.actualRate else it.purchaseRate) }
             repository.convertMultipleFordiToPurchases(items)
             _feedbackMessage.emit("${items.size}টি পণ্য সফলভাবে খরচে যুক্ত হয়েছে (মোট ৳${totalAmount.toInt()})")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -420,6 +593,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.updateFordiItem(item)
             _feedbackMessage.emit("${item.productName} আপডেট হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -428,6 +602,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.clearPendingFordi()
             _feedbackMessage.emit("নতুন ফর্দ তৈরি করার জন্য তালিকা পরিষ্কার করা হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -440,6 +615,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             if (items.isEmpty()) return@launch
             repository.reAddPurchasedItemsToFordi(items)
             _feedbackMessage.emit("${items.size}টি পণ্য নতুন ফর্দে যোগ করা হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -457,6 +633,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             if (productName.isBlank() || plannedQty <= 0) return@launch
             repository.addFordiItem(productName, productId, plannedQty, unit, purchaseRate, sellingRate)
             _feedbackMessage.emit("ফর্দে $productName যুক্ত হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -465,6 +642,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.deleteFordiItem(id)
             _feedbackMessage.emit("ফর্দ থেকে সরানো হয়েছে")
+            notifyDataChanged()
         }
     }
 
@@ -472,6 +650,38 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.clearCompletedFordi()
             _feedbackMessage.emit("কেনা ফর্দ তালিকা পরিষ্কার করা হয়েছে")
+            notifyDataChanged()
+        }
+    }
+
+    fun clearAllFordiItems(onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.deleteAllFordiItems()
+            _feedbackMessage.emit("সম্পূর্ণ ফর্দ তালিকা খালি করা হয়েছে")
+            notifyDataChanged()
+            onSuccess()
+        }
+    }
+
+    fun addMultipleFordiTemplateItems(
+        items: List<com.example.mawa.util.FordiTemplateItem>,
+        onSuccess: () -> Unit = {}
+    ) {
+        viewModelScope.launch {
+            if (items.isEmpty()) return@launch
+            val entities = items.map {
+                FordiItemEntity(
+                    productName = it.productName,
+                    plannedQuantity = if (it.plannedQuantity > 0) it.plannedQuantity else 1.0,
+                    unit = it.unit.ifBlank { "টি" },
+                    purchaseRate = it.purchaseRate,
+                    sellingRate = 0.0
+                )
+            }
+            repository.reAddPurchasedItemsToFordi(entities)
+            _feedbackMessage.emit("${items.size}টি আইটেম ফর্দে যোগ হয়েছে")
+            notifyDataChanged()
+            onSuccess()
         }
     }
 
@@ -502,6 +712,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             )
             repository.addCustomer(customer)
             _feedbackMessage.emit("কাস্টমার $name যুক্ত হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -516,6 +727,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             val updated = customer.copy(promisedPaymentDate = promiseDateMillis)
             repository.updateCustomer(updated)
             _feedbackMessage.emit("টাকা দেওয়ার তারিখ নির্ধারিত হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -546,6 +758,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             _feedbackMessage.emit("$customerName-এর খাতা নিষ্পত্তি সম্পন্ন হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -554,6 +767,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.updateCustomer(customer)
             _feedbackMessage.emit("${customer.name} তথ্য আপডেট হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -562,6 +776,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.deleteCustomer(id)
             _feedbackMessage.emit("কাস্টমার মুছে ফেলা হয়েছে")
+            notifyDataChanged()
         }
     }
 
@@ -590,6 +805,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             )
             repository.addProduct(product)
             _feedbackMessage.emit("পণ্য $name যুক্ত হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -598,6 +814,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.updateProduct(product)
             _feedbackMessage.emit("${product.name} আপডেট হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -606,6 +823,16 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.deleteProduct(id)
             _feedbackMessage.emit("পণ্য মুছে ফেলা হয়েছে")
+            notifyDataChanged()
+        }
+    }
+
+    fun seedStandardProductsIfEmpty(onSuccess: () -> Unit = {}) {
+        viewModelScope.launch {
+            repository.seedStandardProductsIfEmpty()
+            _feedbackMessage.emit("স্ট্যান্ডার্ড মুদি ও কাঁচাবাজার স্টক লোড হয়েছে")
+            notifyDataChanged()
+            onSuccess()
         }
     }
 
@@ -613,6 +840,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.updateSettings(settings)
             _feedbackMessage.emit("দোকানের সেটিংস সংরক্ষিত হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -628,6 +856,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             )
             repository.updateSettings(current.copy(openingBalance = amount))
             _feedbackMessage.emit("সাবেক ক্যাশ ৳$amount আপডেট হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -636,6 +865,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.deleteTransaction(id)
             _feedbackMessage.emit("লেনদেন বাতিল করা হয়েছে")
+            notifyDataChanged()
         }
     }
 
@@ -752,6 +982,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
                 PersonalTransactionType.SAVINGS -> "সঞ্চয়"
             }
             _feedbackMessage.emit("$typeStr ৳$amount যুক্ত হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -763,6 +994,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.updatePersonalTransaction(transaction)
             _feedbackMessage.emit("হিসাব আপডেট করা হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -771,6 +1003,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.deletePersonalTransaction(id)
             _feedbackMessage.emit("হিসাব মুছে ফেলা হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -782,6 +1015,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             if (amount <= 0) return@launch
             repository.addQuickBaki(customerId, customerName, amount, note)
             _feedbackMessage.emit("$customerName-এর খতিয়ানে ৳$amount বাকি যোগ হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -791,6 +1025,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             if (amount <= 0) return@launch
             repository.addQuickJoma(customerId, customerName, amount, note)
             _feedbackMessage.emit("$customerName-এর থেকে ৳$amount জমা পাওয়া গেছে")
+            notifyDataChanged()
             onSuccess()
         }
     }
@@ -870,11 +1105,16 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             when (val res = supabaseAuthManager.signIn(email, pass)) {
                 is SupabaseAuthResult.Success -> {
-                    _feedbackMessage.emit("লগইন সফল! ক্লাউড ডাটা সিঙ্ক করা হচ্ছে...")
+                    _feedbackMessage.emit("লগইন সফল! ক্লাউড ডাটা তাৎক্ষণিকভাবে লোড হচ্ছে...")
                     loadCloudBackups()
-                    // Immediately sync & restore all Supabase data so it shows up in place
-                    syncAndRestoreFromCloud { success, msg ->
-                        onResult(true, if (success) "লগইন ও সিঙ্ক সফল! $msg" else res.message)
+                    // Immediately sync & restore all Supabase data so it shows up in place instantly
+                    mawaSyncManager.syncImmediatelyOnLogin { success, msg ->
+                        loadCloudBackups()
+                        val finalMsg = if (success) "লগইন ও লাইভ ডাটা লোড সফল! $msg" else res.message
+                        viewModelScope.launch {
+                            _feedbackMessage.emit(finalMsg)
+                        }
+                        onResult(true, finalMsg)
                     }
                 }
                 is SupabaseAuthResult.Error -> {
@@ -935,6 +1175,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.saveDailySabekCash(dateKey, dateMillis, sabekAmount)
             _feedbackMessage.emit("সাবেক ক্যাশ ৳$sabekAmount সংরক্ষিত হয়েছে")
+            notifyDataChanged()
         }
     }
 
@@ -942,6 +1183,40 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.saveDailyClosingCash(dateKey, dateMillis, closingAmount, isClosed)
             _feedbackMessage.emit("দিনের ক্লোজিং ক্যাশ ৳$closingAmount সংরক্ষিত হয়েছে")
+            notifyDataChanged()
+        }
+    }
+
+    // --- Cash Tally (নোট গণনা ও এন্ট্রি) ---
+    fun getCashTalliesForDateFlow(dateKey: String): Flow<List<CashTallyEntity>> =
+        repository.getCashTalliesForDateFlow(dateKey)
+
+    fun saveCashTally(
+        tally: CashTallyEntity,
+        updateClosingCash: Boolean = true,
+        onComplete: (() -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            repository.saveCashTally(tally)
+            if (updateClosingCash && tally.totalAmount > 0) {
+                repository.saveDailyClosingCash(
+                    dateKey = tally.dateKey,
+                    dateMillis = tally.dateMillis,
+                    closingAmount = tally.totalAmount,
+                    isClosed = true
+                )
+            }
+            _feedbackMessage.emit("নোট গণনার হিসাব (${BengaliUtils.formatTaka(tally.totalAmount)}) সংরক্ষিত হয়েছে")
+            notifyDataChanged()
+            onComplete?.invoke()
+        }
+    }
+
+    fun deleteCashTally(id: Long) {
+        viewModelScope.launch {
+            repository.deleteCashTally(id)
+            _feedbackMessage.emit("নোট গণনার রেকর্ড মুছে ফেলা হয়েছে")
+            notifyDataChanged()
         }
     }
 

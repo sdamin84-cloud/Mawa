@@ -88,7 +88,10 @@ object ReceiptPrintManager {
         paidAmount: Double,
         previousDue: Double = 0.0,
         currentDue: Double = 0.0,
-        note: String = ""
+        note: String = "",
+        bkashNumber: String = "",
+        nagadNumber: String = "",
+        bankDetails: String = ""
     ): String {
         val total = subtotal - discount
         val totalPayable = total + previousDue
@@ -268,6 +271,16 @@ object ReceiptPrintManager {
             </table>
 
             ${if (note.isNotBlank()) "<div style=\"font-size: 11px; color: #64748b; margin-top: 6px;\"><b>নোট:</b> $note</div>" else ""}
+
+            ${if (bkashNumber.isNotBlank() || nagadNumber.isNotBlank() || bankDetails.isNotBlank()) """
+            <div style="margin-top: 14px; padding: 10px; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; font-size: 11px;">
+                <div style="font-weight: bold; color: #0f172a; margin-bottom: 4px;">অনলাইনে টাকা পরিশোধ করুন:</div>
+                ${if (bkashNumber.isNotBlank()) "<div style=\"color: #e2136e;\"><b>bKash (বিকাশ):</b> $bkashNumber</div>" else ""}
+                ${if (nagadNumber.isNotBlank()) "<div style=\"color: #f7941d;\"><b>Nagad (নগদ):</b> $nagadNumber</div>" else ""}
+                ${if (bankDetails.isNotBlank()) "<div style=\"color: #334155;\"><b>ব্যাংক:</b> $bankDetails</div>" else ""}
+                <div style="font-size: 10px; color: #64748b; margin-top: 4px;">টাকা পাঠানোর পর অনুগ্রহ করে মেমো নং <b>$memoNo</b> রেফারেন্সে লিখুন।</div>
+            </div>
+            """ else ""}
 
             <div class="footer">
                 <div>ধন্যবাদ, আবার আসবেন!</div>
@@ -751,7 +764,229 @@ object ReceiptPrintManager {
         sb.appendLine("\n\n")
         return sb.toString()
     }
+
+    /**
+     * Generates a beautifully formatted HTML report for Personal and Household expenses.
+     */
+    fun generateExpenseReportHtml(
+        reportTitle: String,
+        periodLabel: String,
+        generatedDate: String,
+        totalIncome: Double,
+        totalExpense: Double,
+        totalSavings: Double,
+        netBalance: Double,
+        budgetAmount: Double = 0.0,
+        categories: List<Pair<String, Double>> = emptyList(),
+        entries: List<ExpenseReportEntry> = emptyList()
+    ): String {
+        val totalCatAmount = if (totalExpense > 0) totalExpense else categories.sumOf { it.second }
+        val categoryRows = StringBuilder()
+        categories.forEachIndexed { idx, cat ->
+            val percentage = if (totalCatAmount > 0) (cat.second / totalCatAmount * 100).toInt() else 0
+            categoryRows.append("""
+                <tr>
+                    <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 13px;">${BengaliUtils.toBanglaDigits((idx + 1).toLong())}. ${cat.first}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 13px; text-align: center;">${BengaliUtils.toBanglaDigits(percentage.toLong())}%</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #e2e8f0; font-size: 13px; text-align: right; font-weight: bold; color: #dc2626;">${BengaliUtils.formatTaka(cat.second)}</td>
+                </tr>
+            """.trimIndent())
+        }
+
+        val entryRows = StringBuilder()
+        entries.forEachIndexed { idx, e ->
+            val color = when {
+                e.typeName.contains("আয়") -> "#16a34a"
+                e.typeName.contains("সঞ্চয়") -> "#d97706"
+                else -> "#dc2626"
+            }
+            entryRows.append("""
+                <tr>
+                    <td style="padding: 7px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${BengaliUtils.toBanglaDigits((idx + 1).toLong())}</td>
+                    <td style="padding: 7px; border-bottom: 1px solid #e2e8f0; font-size: 12px;">${e.dateFormatted}</td>
+                    <td style="padding: 7px; border-bottom: 1px solid #e2e8f0; font-size: 12px; font-weight: bold;">${e.title}</td>
+                    <td style="padding: 7px; border-bottom: 1px solid #e2e8f0; font-size: 12px; color: #475569;">${e.category}</td>
+                    <td style="padding: 7px; border-bottom: 1px solid #e2e8f0; font-size: 12px; font-weight: bold; color: $color; text-align: right;">${BengaliUtils.formatTaka(e.amount)}</td>
+                </tr>
+            """.trimIndent())
+        }
+
+        return """
+        <!DOCTYPE html>
+        <html lang="bn">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>$reportTitle</title>
+            <style>
+                body {
+                    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                    margin: 0;
+                    padding: 24px;
+                    color: #1e293b;
+                    background-color: #ffffff;
+                }
+                .header-card {
+                    text-align: center;
+                    border-bottom: 2px solid #0284c7;
+                    padding-bottom: 16px;
+                    margin-bottom: 20px;
+                }
+                .title {
+                    font-size: 24px;
+                    font-weight: 800;
+                    color: #0369a1;
+                    margin: 0;
+                }
+                .subtitle {
+                    font-size: 14px;
+                    color: #64748b;
+                    margin-top: 4px;
+                }
+                .grid-summary {
+                    display: grid;
+                    grid-template-columns: repeat(4, 1fr);
+                    gap: 12px;
+                    margin-bottom: 24px;
+                }
+                .card {
+                    background: #f8fafc;
+                    border: 1px solid #e2e8f0;
+                    border-radius: 8px;
+                    padding: 12px;
+                    text-align: center;
+                }
+                .card-title {
+                    font-size: 12px;
+                    color: #64748b;
+                    font-weight: 600;
+                    margin-bottom: 4px;
+                }
+                .card-val {
+                    font-size: 16px;
+                    font-weight: 800;
+                }
+                .green { color: #16a34a; }
+                .red { color: #dc2626; }
+                .amber { color: #d97706; }
+                .blue { color: #0284c7; }
+                table {
+                    width: 100%;
+                    border-collapse: collapse;
+                    margin-top: 10px;
+                }
+                th {
+                    background: #f1f5f9;
+                    padding: 9px;
+                    font-size: 12px;
+                    color: #334155;
+                    text-align: left;
+                    font-weight: 700;
+                    border-bottom: 2px solid #cbd5e1;
+                }
+                .section-header {
+                    font-size: 16px;
+                    font-weight: 700;
+                    color: #0f172a;
+                    margin-top: 20px;
+                    margin-bottom: 8px;
+                    border-left: 4px solid #0284c7;
+                    padding-left: 8px;
+                }
+                .footer {
+                    margin-top: 30px;
+                    text-align: center;
+                    font-size: 11px;
+                    color: #94a3b8;
+                    border-top: 1px solid #e2e8f0;
+                    padding-top: 12px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="header-card">
+                <div class="title">$reportTitle</div>
+                <div class="subtitle">সময়কাল: $periodLabel | প্রস্তুতের সময়: $generatedDate</div>
+            </div>
+
+            <div class="grid-summary">
+                <div class="card">
+                    <div class="card-title">মোট আয়</div>
+                    <div class="card-val green">${BengaliUtils.formatTaka(totalIncome)}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">মোট খরচ</div>
+                    <div class="card-val red">${BengaliUtils.formatTaka(totalExpense)}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">মোট সঞ্চয়</div>
+                    <div class="card-val amber">${BengaliUtils.formatTaka(totalSavings)}</div>
+                </div>
+                <div class="card">
+                    <div class="card-title">নিট অবশিষ্টাংশ</div>
+                    <div class="card-val ${if (netBalance >= 0) "green" else "red"}">${BengaliUtils.formatTaka(netBalance)}</div>
+                </div>
+            </div>
+
+            ${if (budgetAmount > 0) """
+                <div style="background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px; padding: 12px; margin-bottom: 20px; font-size: 13px;">
+                    <strong>মাসিক বাজেট:</strong> ${BengaliUtils.formatTaka(budgetAmount)} | 
+                    <strong>ব্যবহৃত:</strong> ${BengaliUtils.toBanglaDigits((totalExpense / budgetAmount * 100).toInt().toLong())}% |
+                    <strong>অবশিষ্ট বাজেট:</strong> ${BengaliUtils.formatTaka(budgetAmount - totalExpense)}
+                </div>
+            """ else ""}
+
+            ${if (categories.isNotEmpty()) """
+                <div class="section-header">খাত অনুযায়ী খরচের বিভাজন</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>খাত / ক্যাটাগরি</th>
+                            <th style="text-align: center;">অংশীদারিত্ব</th>
+                            <th style="text-align: right;">মোট টাকা</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        $categoryRows
+                    </tbody>
+                </table>
+            """ else ""}
+
+            ${if (entries.isNotEmpty()) """
+                <div class="section-header">লেনদেনের বিস্তারিত বিবরণী</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>নং</th>
+                            <th>তারিখ</th>
+                            <th>বিবরণ</th>
+                            <th>খাত</th>
+                            <th style="text-align: right;">পরিমাণ</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        $entryRows
+                    </tbody>
+                </table>
+            """ else ""}
+
+            <div class="footer">
+                মাওয়া স্মার্ট ডিজিটাল খাতা — ব্যক্তিগত ও পারিবারিক আর্থিক ব্যবস্থাপনা
+            </div>
+        </body>
+        </html>
+        """.trimIndent()
+    }
 }
+
+data class ExpenseReportEntry(
+    val title: String,
+    val category: String,
+    val typeName: String,
+    val amount: Double,
+    val dateFormatted: String,
+    val note: String = ""
+)
 
 data class InvoiceItem(
     val name: String,

@@ -10,6 +10,7 @@ import android.graphics.RectF
 import android.net.Uri
 import android.widget.Toast
 import androidx.core.content.FileProvider
+import com.example.mawa.data.local.entity.CashTallyEntity
 import com.example.mawa.data.local.entity.CustomerEntity
 import com.example.mawa.data.local.entity.DailyCashEntity
 import com.example.mawa.data.local.entity.FordiItemEntity
@@ -17,6 +18,7 @@ import com.example.mawa.data.local.entity.PersonalTransactionEntity
 import com.example.mawa.data.local.entity.PersonalTransactionType
 import com.example.mawa.data.local.entity.ProductEntity
 import com.example.mawa.data.local.entity.ShopSettingsEntity
+import com.example.mawa.data.local.entity.SupplierCompanyEntity
 import com.example.mawa.data.local.entity.TransactionEntity
 import com.example.mawa.data.local.entity.TransactionType
 import com.example.mawa.data.model.CustomerWithBalance
@@ -38,7 +40,9 @@ data class FullBackupData(
     val fordiItems: List<FordiItemEntity> = emptyList(),
     val products: List<ProductEntity> = emptyList(),
     val personalTransactions: List<PersonalTransactionEntity> = emptyList(),
-    val dailyCashRecords: List<DailyCashEntity> = emptyList()
+    val dailyCashRecords: List<DailyCashEntity> = emptyList(),
+    val supplierCompanies: List<SupplierCompanyEntity> = emptyList(),
+    val cashTallyRecords: List<CashTallyEntity> = emptyList()
 )
 
 object DataBackupRestoreManager {
@@ -61,6 +65,10 @@ object DataBackupRestoreManager {
             sObj.put("shopName", s.shopName)
             sObj.put("ownerName", s.ownerName)
             sObj.put("phone", s.phone)
+            sObj.put("bkashNumber", s.bkashNumber)
+            sObj.put("nagadNumber", s.nagadNumber)
+            sObj.put("bankDetails", s.bankDetails)
+            sObj.put("qrCodeData", s.qrCodeData)
             sObj.put("openingBalance", s.openingBalance)
             sObj.put("currencySymbol", s.currencySymbol)
             sObj.put("appMode", s.appMode)
@@ -279,6 +287,49 @@ object DataBackupRestoreManager {
             }
         }
         root.put("dailyCashRecords", dailyCashArr)
+
+        // Supplier Companies
+        val compArr = JSONArray()
+        data.supplierCompanies.forEach { sc ->
+            val obj = JSONObject()
+            obj.put("id", sc.id)
+            obj.put("companyName", sc.companyName)
+            obj.put("srName", sc.srName)
+            obj.put("srPhone", sc.srPhone)
+            obj.put("orderDay", sc.orderDay)
+            obj.put("deliveryDay", sc.deliveryDay)
+            obj.put("address", sc.address)
+            obj.put("note", sc.note)
+            obj.put("createdAt", sc.createdAt)
+            compArr.put(obj)
+        }
+        root.put("supplierCompanies", compArr)
+
+        // Cash Tally Records (Note counting history)
+        val tallyArr = JSONArray()
+        data.cashTallyRecords.forEach { ct ->
+            val obj = JSONObject()
+            obj.put("id", ct.id)
+            obj.put("dateKey", ct.dateKey)
+            obj.put("dateMillis", ct.dateMillis)
+            obj.put("count1000", ct.count1000)
+            obj.put("count500", ct.count500)
+            obj.put("count200", ct.count200)
+            obj.put("count100", ct.count100)
+            obj.put("count50", ct.count50)
+            obj.put("count20", ct.count20)
+            obj.put("count10", ct.count10)
+            obj.put("count5", ct.count5)
+            obj.put("count2", ct.count2)
+            obj.put("count1", ct.count1)
+            obj.put("totalAmount", ct.totalAmount)
+            obj.put("systemBalance", ct.systemBalance)
+            obj.put("difference", ct.difference)
+            obj.put("note", ct.note)
+            obj.put("timestamp", ct.timestamp)
+            tallyArr.put(obj)
+        }
+        root.put("cashTallyRecords", tallyArr)
 
         return root.toString(2)
     }
@@ -529,6 +580,10 @@ object DataBackupRestoreManager {
                 openingBalance = settingsObj.optDouble("openingBalance", settingsObj.optDouble("opening_balance", 0.0)),
                 currencySymbol = settingsObj.optString("currencySymbol", settingsObj.optString("currency_symbol", "৳")),
                 phone = settingsObj.optString("phone", settingsObj.optString("mobile", "")),
+                bkashNumber = settingsObj.optString("bkashNumber", settingsObj.optString("bkash_number", "")),
+                nagadNumber = settingsObj.optString("nagadNumber", settingsObj.optString("nagad_number", "")),
+                bankDetails = settingsObj.optString("bankDetails", settingsObj.optString("bank_details", "")),
+                qrCodeData = settingsObj.optString("qrCodeData", settingsObj.optString("qr_code_data", "")),
                 createdAt = settingsObj.optLong("createdAt", settingsObj.optLong("created_at", System.currentTimeMillis())),
                 appMode = settingsObj.optString("appMode", settingsObj.optString("app_mode", "BOTH")),
                 isModeConfigured = settingsObj.optBoolean("isModeConfigured", settingsObj.optBoolean("is_mode_configured", true))
@@ -971,6 +1026,62 @@ object DataBackupRestoreManager {
             "${it.timestamp}_${it.amount}_${it.type}_${it.customerName}_${it.note}"
         }
 
+        // Supplier Companies
+        val supplierCompanies = mutableListOf<SupplierCompanyEntity>()
+        val compArr = root.optJSONArray("supplierCompanies") ?: root.optJSONArray("companies")
+        if (compArr != null) {
+            for (i in 0 until compArr.length()) {
+                val sc = compArr.optJSONObject(i) ?: continue
+                val name = sc.optString("companyName", sc.optString("name", "")).trim()
+                if (name.isNotBlank()) {
+                    supplierCompanies.add(
+                        SupplierCompanyEntity(
+                            id = sc.optLong("id", 0L),
+                            companyName = name,
+                            srName = sc.optString("srName", sc.optString("sr_name", "")),
+                            srPhone = sc.optString("srPhone", sc.optString("sr_phone", "")),
+                            orderDay = sc.optString("orderDay", sc.optString("order_day", "")),
+                            deliveryDay = sc.optString("deliveryDay", sc.optString("delivery_day", "")),
+                            address = sc.optString("address", ""),
+                            note = sc.optString("note", ""),
+                            createdAt = sc.optLong("createdAt", System.currentTimeMillis())
+                        )
+                    )
+                }
+            }
+        }
+
+        // Cash Tally Records
+        val cashTallyRecords = mutableListOf<CashTallyEntity>()
+        val tallyArr = root.optJSONArray("cashTallyRecords") ?: root.optJSONArray("cashTallies")
+        if (tallyArr != null) {
+            for (i in 0 until tallyArr.length()) {
+                val ct = tallyArr.optJSONObject(i) ?: continue
+                cashTallyRecords.add(
+                    CashTallyEntity(
+                        id = ct.optLong("id", 0L),
+                        dateKey = ct.optString("dateKey", ""),
+                        dateMillis = ct.optLong("dateMillis", System.currentTimeMillis()),
+                        count1000 = ct.optInt("count1000", 0),
+                        count500 = ct.optInt("count500", 0),
+                        count200 = ct.optInt("count200", 0),
+                        count100 = ct.optInt("count100", 0),
+                        count50 = ct.optInt("count50", 0),
+                        count20 = ct.optInt("count20", 0),
+                        count10 = ct.optInt("count10", 0),
+                        count5 = ct.optInt("count5", 0),
+                        count2 = ct.optInt("count2", 0),
+                        count1 = ct.optInt("count1", 0),
+                        totalAmount = ct.optDouble("totalAmount", 0.0),
+                        systemBalance = ct.optDouble("systemBalance", 0.0),
+                        difference = ct.optDouble("difference", 0.0),
+                        note = ct.optString("note", ""),
+                        timestamp = ct.optLong("timestamp", System.currentTimeMillis())
+                    )
+                )
+            }
+        }
+
         return FullBackupData(
             exportDate = exportDate,
             shopSettings = settings,
@@ -979,7 +1090,9 @@ object DataBackupRestoreManager {
             fordiItems = fordiItems,
             products = products.distinctBy { it.name.trim().lowercase() },
             personalTransactions = personalTransactions,
-            dailyCashRecords = dailyCashMap.values.toList()
+            dailyCashRecords = dailyCashMap.values.toList(),
+            supplierCompanies = supplierCompanies.distinctBy { it.companyName.trim().lowercase() },
+            cashTallyRecords = cashTallyRecords
         )
     }
 
@@ -1027,7 +1140,9 @@ object DataBackupRestoreManager {
             unit = t.optString("unit", "টি"),
             rate = t.optDouble("rate", t.optDouble("price", 0.0)),
             category = t.optString("category", "সাধারণ"),
-            note = t.optString("note", t.optString("memo", ""))
+            note = t.optString("note", t.optString("memo", "")),
+            paymentStatus = t.optString("paymentStatus", t.optString("payment_status", "PAID")),
+            promisedPaymentDate = t.optLong("promisedPaymentDate", t.optLong("promised_payment_date", 0L))
         )
     }
 
@@ -1045,6 +1160,9 @@ object DataBackupRestoreManager {
             actualQuantity = f.optDouble("actualQuantity", f.optDouble("actual_quantity", 0.0)),
             actualRate = f.optDouble("actualRate", f.optDouble("actual_rate", 0.0)),
             actualTotal = f.optDouble("actualTotal", f.optDouble("actual_total", 0.0)),
+            companyName = f.optString("companyName", f.optString("company_name", "")),
+            orderDay = f.optString("orderDay", f.optString("order_day", "")),
+            deliveryDay = f.optString("deliveryDay", f.optString("delivery_day", "")),
             createdAt = f.optLong("createdAt", f.optLong("created_at", System.currentTimeMillis())),
             purchaseDate = f.optLong("purchaseDate", f.optLong("purchase_date", 0L)).takeIf { it > 0 }
         )
@@ -1675,6 +1793,19 @@ object DataBackupRestoreManager {
             context.startActivity(chooser)
         } catch (e: Exception) {
             Toast.makeText(context, "ছবি শেয়ার করতে সমস্যা হয়েছে: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    fun writeTextToUri(context: Context, uri: Uri, content: String): Boolean {
+        return try {
+            context.contentResolver.openOutputStream(uri)?.use { outputStream ->
+                outputStream.write(content.toByteArray(Charsets.UTF_8))
+                outputStream.flush()
+            }
+            true
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
         }
     }
 

@@ -63,4 +63,16 @@ interface TransactionDao {
 
     @Query("SELECT COUNT(*) FROM transactions")
     suspend fun getTransactionCount(): Int
+
+    @Query("SELECT * FROM transactions")
+    suspend fun getAllTransactionsDirect(): List<TransactionEntity>
+
+    @Query("UPDATE transactions SET paymentStatus = :status WHERE id = :id")
+    suspend fun updatePaymentStatus(id: Long, status: String)
+
+    @Query("UPDATE transactions SET note = :newName WHERE (type = 'EXPENSE_SHOP' OR type = 'EXPENSE_HOME') AND LOWER(TRIM(note)) = LOWER(TRIM(:oldName))")
+    suspend fun updateExpenseNote(oldName: String, newName: String)
+
+    @Query("UPDATE transactions SET productName = :newName WHERE LOWER(TRIM(productName)) = LOWER(TRIM(:oldName))")
+    suspend fun updateTransactionProductName(oldName: String, newName: String)
 }

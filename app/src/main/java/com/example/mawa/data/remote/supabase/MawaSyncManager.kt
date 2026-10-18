@@ -2,15 +2,18 @@ package com.example.mawa.data.remote.supabase
 
 import android.content.Context
 import android.util.Log
-import com.example.mawa.util.FullBackupData
 import com.example.mawa.data.repository.MawaRepository
 import com.example.mawa.util.DataBackupRestoreManager
+import com.example.mawa.util.FullBackupData
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -19,11 +22,12 @@ import java.util.Locale
 
 /**
  * Cloud Sync Engine for MAWA Accounting System.
- * Connects to Supabase Database (user_backups & mawa_cloud_records)
- * Full offline-first design:
- * - Saves locally first
- * - Queues pending items
- * - Pushes & merges safely with RLS protection and deduplication
+ * Connects to Supabase Database (user_backups & mawa_cloud_records).
+ * Features:
+ * - Instantaneous restore & pull on user login
+ * - Real-time background sync loop for live multi-device updates
+ * - Debounced auto-push on any local data mutation
+ * - Full offline-first fallback
  */
 class MawaSyncManager(
     private val context: Context,
@@ -39,9 +43,101 @@ class MawaSyncManager(
     private val _lastSyncTimestamp = MutableStateFlow<String?>(null)
     val lastSyncTimestamp: StateFlow<String?> = _lastSyncTimestamp.asStateFlow()
 
+    private var debounceSyncJob: Job? = null
+    private var realtimeLoopJob: Job? = null
+
+    init {
+        // Start background real-time sync loop
+        startRealtimeSyncLoop()
+    }
+
     interface SyncCallback {
         fun onSuccess(message: String)
         fun onError(error: String)
+    }
+
+    /**
+     * Start periodic real-time sync polling loop (every 25 seconds if logged in).
+     */
+    fun startRealtimeSyncLoop() {
+        realtimeLoopJob?.cancel()
+        realtimeLoopJob = scope.launch {
+            while (isActive) {
+                delay(25_000L) // 25 seconds interval
+                if (authManager.isLoggedIn() && !_isSyncing.value) {
+                    try {
+                        Log.d("MawaSyncManager", "Realtime poller checking for remote updates...")
+                        pullRemoteSnapshot { _, _ -> }
+                    } catch (e: Exception) {
+                        Log.w("MawaSyncManager", "Realtime poller loop error: ${e.message}")
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Schedules a debounced auto-sync to push local changes to Supabase in real-time.
+     */
+    fun scheduleDebouncedAutoSync(delayMillis: Long = 1500L) {
+        if (!authManager.isLoggedIn()) return
+
+        debounceSyncJob?.cancel()
+        debounceSyncJob = scope.launch {
+            delay(delayMillis)
+            try {
+                if (authManager.isLoggedIn() && !_isSyncing.value) {
+                    Log.d("MawaSyncManager", "Executing debounced auto-sync push to Supabase...")
+                    val localBackup = repository.getFullBackupData()
+                    dbManager.uploadBackupToCloud("MAWA_LIVE_BACKUP", localBackup)
+                    dbManager.syncAllRecordsToCloud(localBackup)
+                    val timeNow = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.US).format(Date())
+                    _lastSyncTimestamp.value = timeNow
+                }
+            } catch (e: Exception) {
+                Log.w("MawaSyncManager", "Debounced auto-sync failed: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Pulls latest remote backup snapshot or records immediately on login.
+     */
+    fun syncImmediatelyOnLogin(onComplete: (Boolean, String) -> Unit) {
+        scope.launch {
+            _isSyncing.value = true
+            try {
+                Log.d("MawaSyncManager", "Performing immediate sync on login...")
+                pullRemoteSnapshot { pullSuccess, pullMsg ->
+                    scope.launch {
+                        try {
+                            val localBackup = repository.getFullBackupData()
+                            // If local has new changes, push them as well
+                            dbManager.uploadBackupToCloud("MAWA_LOGIN_SYNC", localBackup)
+                            dbManager.syncAllRecordsToCloud(localBackup)
+
+                            val timeNow = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.US).format(Date())
+                            _lastSyncTimestamp.value = timeNow
+                            _isSyncing.value = false
+
+                            withContext(Dispatchers.Main) {
+                                onComplete(true, if (pullSuccess) pullMsg else "ক্লাউড সিঙ্ক সক্রিয় হয়েছে")
+                            }
+                        } catch (e: Exception) {
+                            _isSyncing.value = false
+                            withContext(Dispatchers.Main) {
+                                onComplete(pullSuccess, pullMsg)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _isSyncing.value = false
+                withContext(Dispatchers.Main) {
+                    onComplete(false, "সিঙ্ক ত্রুটি: ${e.localizedMessage}")
+                }
+            }
+        }
     }
 
     /**

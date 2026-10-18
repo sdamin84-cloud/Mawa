@@ -37,7 +37,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -52,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.mawa.util.BengaliUtils
+import com.example.mawa.util.CashChimePlayer
 import com.example.mawa.util.DataBackupRestoreManager
 import com.example.mawa.util.InvoiceItem
 import com.example.mawa.util.ReceiptPrintManager
@@ -68,6 +72,9 @@ fun DigitalReceiptDialog(
     shopName: String,
     shopPhone: String,
     shopAddress: String = "",
+    bkashNumber: String = "",
+    nagadNumber: String = "",
+    bankDetails: String = "",
     customerName: String? = null,
     customerPhone: String? = null,
     items: List<InvoiceItem>,
@@ -83,6 +90,11 @@ fun DigitalReceiptDialog(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    var showBluetoothPrintDialog by remember { mutableStateOf(false) }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        CashChimePlayer.playCashChime(context)
+    }
 
     val dateFormatted = remember(timestamp) {
         SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale("bn", "BD")).format(Date(timestamp))
@@ -106,7 +118,10 @@ fun DigitalReceiptDialog(
             paidAmount = paidAmount,
             previousDue = previousDue,
             currentDue = currentDue,
-            note = note
+            note = note,
+            bkashNumber = bkashNumber,
+            nagadNumber = nagadNumber,
+            bankDetails = bankDetails
         )
     }
 
@@ -298,10 +313,97 @@ fun DigitalReceiptDialog(
                                 Text(BengaliUtils.formatTaka(currentDue), fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
                             }
                         }
+
+                        // Payment Gateways & QR Section (If due > 0 or shop configured payment numbers)
+                        val activePayPhone = bkashNumber.ifBlank { nagadNumber.ifBlank { shopPhone } }
+                        if (activePayPhone.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            HorizontalDivider(thickness = 0.5.dp, color = Color(0xFFE2E8F0))
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(Color(0xFFF8FAFC), RoundedCornerShape(8.dp))
+                                    .padding(8.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "অনলাইন পেমেন্ট করুন:",
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0F172A)
+                                    )
+                                    if (bkashNumber.isNotBlank()) {
+                                        Text(
+                                            text = "bKash: $bkashNumber",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFFE2136E)
+                                        )
+                                    }
+                                    if (nagadNumber.isNotBlank()) {
+                                        Text(
+                                            text = "Nagad: $nagadNumber",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFFF7941D)
+                                        )
+                                    }
+                                    if (bankDetails.isNotBlank()) {
+                                        Text(
+                                            text = "ব্যাংক: $bankDetails",
+                                            fontSize = 10.sp,
+                                            color = Color(0xFF475569)
+                                        )
+                                    }
+                                }
+
+                                val qrPayload = com.example.mawa.util.QrCodeGenerator.buildPaymentQrPayload(
+                                    shopName = shopName,
+                                    phone = shopPhone,
+                                    bkashNumber = bkashNumber,
+                                    nagadNumber = nagadNumber,
+                                    bankDetails = bankDetails,
+                                    amount = if (currentDue > 0) currentDue else totalPayable
+                                )
+                                com.example.mawa.util.QrCodeImage(
+                                    qrContent = qrPayload,
+                                    size = 64.dp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "সহযোগিতায়: MAWA ডিজিটাল খাতা",
+                            fontSize = 10.sp,
+                            color = Color(0xFF94A3B8),
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
                     }
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
+
+                // Bluetooth Thermal POS Printer Button
+                Button(
+                    onClick = { showBluetoothPrintDialog = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .testTag("btn_pos_thermal_print"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0D9488)),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Print, contentDescription = null, modifier = Modifier.size(17.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("থার্মাল প্রিন্ট (Bluetooth POS)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Action Buttons: [ 🖨️ প্রিন্ট / PDF ] [ 💬 হোয়াটসঅ্যাপ ] [ 📤 শেয়ার ]
                 Row(
@@ -366,5 +468,20 @@ fun DigitalReceiptDialog(
                 }
             }
         }
+    }
+
+    if (showBluetoothPrintDialog) {
+        BluetoothThermalPrinterDialog(
+            shopName = shopName,
+            shopPhone = shopPhone,
+            memoNo = memoNo,
+            dateFormatted = dateFormatted,
+            customerName = customerName,
+            items = items,
+            totalAmount = subtotal - discount,
+            paidAmount = paidAmount,
+            dueAmount = currentDue,
+            onDismiss = { showBluetoothPrintDialog = false }
+        )
     }
 }

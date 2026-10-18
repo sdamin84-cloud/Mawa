@@ -1,14 +1,34 @@
 package com.example.mawa.ui
 
+import android.content.Context
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.FloatingActionButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
@@ -18,16 +38,32 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mawa.data.model.AppMode
+import com.example.mawa.ui.components.AppLockScreen
+import com.example.mawa.ui.components.AppSecuritySettingsDialog
 import com.example.mawa.ui.components.BackupRestoreDialog
 import com.example.mawa.ui.components.MawaBottomBar
 import com.example.mawa.ui.components.MawaSideDrawer
 import com.example.mawa.ui.components.MawaTab
+import com.example.mawa.ui.components.PaymentQrDialog
+import com.example.mawa.ui.components.SmartRetailCalculatorBottomSheet
 import com.example.mawa.ui.components.SupabaseCloudDialog
 import com.example.mawa.ui.components.UserModePreferenceDialog
+import com.example.mawa.util.AppLockManager
 import com.example.mawa.ui.screens.AccountingGuideDialog
 import com.example.mawa.ui.screens.AuthScreen
 import com.example.mawa.ui.screens.BakiScreen
@@ -44,6 +80,7 @@ import com.example.mawa.ui.screens.ReportsScreen
 import com.example.mawa.ui.screens.SalesScreen
 import com.example.mawa.ui.screens.ShopSettingsDialog
 import com.example.mawa.ui.viewmodel.MawaViewModel
+import com.example.mawa.util.BengaliUtils
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
@@ -74,6 +111,16 @@ fun MawaApp(
     var showModePreferenceDialog by remember { mutableStateOf(false) }
     var showBackupRestoreDialog by remember { mutableStateOf(false) }
     var showSupabaseCloudDialog by remember { mutableStateOf(false) }
+    var showPaymentQrDialog by remember { mutableStateOf(false) }
+    var showSecuritySettingsDialog by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    var isAppLocked by remember {
+        mutableStateOf(AppLockManager.isLockEnabled(context) && !AppLockManager.isUnlockedInSession)
+    }
+    val calcPrefs = remember { context.getSharedPreferences("mawa_calculator_state_prefs", Context.MODE_PRIVATE) }
+    var showCalculatorSheet by remember { 
+        mutableStateOf(calcPrefs.getBoolean("pref_calc_always_on", false)) 
+    }
 
     // Auto-adjust tab if mode changes
     LaunchedEffect(appMode) {
@@ -141,6 +188,18 @@ fun MawaApp(
                 onNavigateAuth = {
                     coroutineScope.launch { drawerState.close() }
                     currentSubScreen = AppSubScreen.AUTH
+                },
+                onOpenPaymentQr = {
+                    coroutineScope.launch { drawerState.close() }
+                    showPaymentQrDialog = true
+                },
+                onOpenSecuritySettings = {
+                    coroutineScope.launch { drawerState.close() }
+                    showSecuritySettingsDialog = true
+                },
+                onLockApp = {
+                    coroutineScope.launch { drawerState.close() }
+                    isAppLocked = true
                 },
                 onOpenModePreference = {
                     coroutineScope.launch { drawerState.close() }
@@ -246,6 +305,9 @@ fun MawaApp(
                                     },
                                     onOpenSupabaseCloud = {
                                         showSupabaseCloudDialog = true
+                                    },
+                                    onLockApp = {
+                                        isAppLocked = true
                                     }
                                 )
                             }
@@ -254,6 +316,9 @@ fun MawaApp(
                                     viewModel = viewModel,
                                     onOpenDrawer = {
                                         coroutineScope.launch { drawerState.open() }
+                                    },
+                                    onOpenProducts = {
+                                        currentSubScreen = AppSubScreen.PRODUCTS
                                     }
                                 )
                             }
@@ -274,6 +339,9 @@ fun MawaApp(
                                     },
                                     onOpenSupabaseCloud = {
                                         showSupabaseCloudDialog = true
+                                    },
+                                    onLockApp = {
+                                        isAppLocked = true
                                     }
                                 )
                             }
@@ -329,8 +397,110 @@ fun MawaApp(
                         }
                     }
                 }
+
+                // Floating Calculator Button (ভাসমান ক্যালকুলেটর বাটন - বর্ণিল ও ডায়নামিক)
+                if (currentSubScreen == AppSubScreen.NONE) {
+                    val calcInteractionSource = remember { MutableInteractionSource() }
+                    val isCalcPressed by calcInteractionSource.collectIsPressedAsState()
+                    val calcScale by animateFloatAsState(
+                        targetValue = if (isCalcPressed) 0.88f else 1.0f,
+                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+                        label = "calc_fab_scale"
+                    )
+
+                    val fabPrimary = MaterialTheme.colorScheme.primary
+                    val fabSecondary = MaterialTheme.colorScheme.secondary
+
+                    Surface(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 16.dp, bottom = 16.dp)
+                            .scale(calcScale)
+                            .shadow(
+                                elevation = if (isCalcPressed) 2.dp else 6.dp,
+                                shape = RoundedCornerShape(18.dp),
+                                spotColor = fabPrimary.copy(alpha = 0.40f),
+                                ambientColor = fabPrimary.copy(alpha = 0.20f)
+                            )
+                            .clip(RoundedCornerShape(18.dp))
+                            .clickable(
+                                interactionSource = calcInteractionSource,
+                                indication = null,
+                                onClick = { showCalculatorSheet = true }
+                            )
+                            .testTag("floating_calculator_fab"),
+                        shape = RoundedCornerShape(18.dp),
+                        color = Color.Transparent
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .background(
+                                    Brush.horizontalGradient(
+                                        listOf(
+                                            fabPrimary,
+                                            fabSecondary
+                                        )
+                                    )
+                                )
+                                .padding(horizontal = 15.dp, vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Calculate,
+                                    contentDescription = "ভাসমান ক্যালকুলেটর",
+                                    tint = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Text(
+                                    text = "হিসাব",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        }
+                    }
+                }
             }
         }
+    }
+
+    // Smart Retail Calculator Modal Bottom Sheet
+    if (showCalculatorSheet) {
+        val allCustomers by viewModel.allCustomers.collectAsStateWithLifecycle()
+        SmartRetailCalculatorBottomSheet(
+            customers = allCustomers,
+            onDismiss = { showCalculatorSheet = false },
+            onAddCashSale = { amount, note ->
+                viewModel.recordSale(isCash = true, amount = amount, note = note)
+            },
+            onAddBakiSale = { custId, amount, note ->
+                val custName = allCustomers.find { it.id == custId }?.name ?: "কাস্টমার"
+                viewModel.recordSale(isCash = false, amount = amount, customerId = custId, customerName = custName, note = note)
+            },
+            onAddExpense = { amount, isShop, note ->
+                viewModel.recordExpense(amount = amount, description = note, isHome = !isShop)
+            },
+            onAddFordiItem = { name, qty, unit, rate ->
+                viewModel.addFordiItem(
+                    productName = name,
+                    plannedQty = qty,
+                    unit = unit,
+                    purchaseRate = rate,
+                    sellingRate = rate * 1.15
+                )
+            },
+            onApplyToCash = { amount ->
+                val selectedMillis = viewModel.selectedHomeDateMillis.value
+                val dateKey = BengaliUtils.formatDateKey(selectedMillis)
+                viewModel.saveDailyClosingCash(dateKey, selectedMillis, amount, isClosed = true)
+            }
+        )
     }
 
     // Modal Quick Expense Drawer (Persists open for consecutive entries)
@@ -394,6 +564,45 @@ fun MawaApp(
         SupabaseCloudDialog(
             viewModel = viewModel,
             onDismiss = { showSupabaseCloudDialog = false }
+        )
+    }
+
+    // Digital Payment QR Code & Counter Collection Dialog
+    if (showPaymentQrDialog) {
+        val settings = viewModel.shopSettings.value
+        PaymentQrDialog(
+            settings = settings,
+            onDismiss = { showPaymentQrDialog = false },
+            onEditShopProfile = {
+                showPaymentQrDialog = false
+                showSettingsDialog = true
+            }
+        )
+    }
+
+    // App Security PIN Lock Settings Dialog
+    if (showSecuritySettingsDialog) {
+        val settings = viewModel.shopSettings.value
+        AppSecuritySettingsDialog(
+            shopPhone = settings?.phone ?: "",
+            onDismiss = { showSecuritySettingsDialog = false },
+            onLockNow = {
+                showSecuritySettingsDialog = false
+                AppLockManager.lockNow()
+                isAppLocked = true
+            }
+        )
+    }
+
+    // Fullscreen App Security PIN Lock Screen
+    if (isAppLocked) {
+        val settings = viewModel.shopSettings.value
+        AppLockScreen(
+            shopName = settings?.shopName,
+            onUnlocked = {
+                isAppLocked = false
+                AppLockManager.setUnlocked()
+            }
         )
     }
 }

@@ -1,10 +1,13 @@
 package com.example.mawa.ui.screens
 
+import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -21,12 +24,21 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CallMerge
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.QrCode
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.TrendingUp
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -52,6 +64,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -90,6 +103,7 @@ fun ProductsScreen(
 ) {
     val allProducts by viewModel.allProducts.collectAsStateWithLifecycle()
     val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     var searchQuery by remember { mutableStateOf("") }
     var selectedProductForDetail by remember { mutableStateOf<ProductEntity?>(null) }
@@ -261,16 +275,34 @@ fun ProductsScreen(
 
             if (filteredProducts.isEmpty()) {
                 item {
-                    MawaEmptyState(
-                        icon = Icons.Default.Inventory,
-                        title = "কোনো পণ্য নেই",
-                        subtitle = "নতুন পণ্য যোগ করে বা বারকোড দিয়ে ক্রয়-বিক্রয় ও ফর্দ তৈরি সহজ করুন",
-                        actionLabel = "পণ্য যোগ করুন",
-                        onActionClick = { 
-                            initialBarcodeForNewProduct = ""
-                            showAddProductDialog = true 
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        MawaEmptyState(
+                            icon = Icons.Default.Inventory,
+                            title = "কোনো পণ্য নেই",
+                            subtitle = "নতুন পণ্য যোগ করে বা বারকোড দিয়ে ক্রয়-বিক্রয় ও ফর্দ তৈরি সহজ করুন",
+                            actionLabel = "পণ্য যোগ করুন",
+                            onActionClick = { 
+                                initialBarcodeForNewProduct = ""
+                                showAddProductDialog = true 
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        OutlinedButton(
+                            onClick = { 
+                                viewModel.seedStandardProductsIfEmpty()
+                                Toast.makeText(context, "প্রয়োজনীয় পণ্য লোড হয়েছে", Toast.LENGTH_SHORT).show()
+                            }
+                        ) {
+                            Icon(imageVector = Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("প্রয়োজনীয় রেডিমেড পণ্য লোড করুন")
                         }
-                    )
+                    }
                 }
             } else {
                 items(filteredProducts, key = { it.id }) { product ->
@@ -309,17 +341,55 @@ fun ProductsScreen(
                                                 color = MawaPrimary.copy(alpha = 0.12f),
                                                 shape = RoundedCornerShape(4.dp)
                                             ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.QrCode,
+                                                        contentDescription = null,
+                                                        tint = MawaPrimary,
+                                                        modifier = Modifier.size(11.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text(
+                                                        text = product.barcode,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MawaPrimary,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        // Stock status badge
+                                        if (product.stockQuantity <= 0) {
+                                            Surface(
+                                                color = FinancialNegative.copy(alpha = 0.12f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
                                                 Text(
-                                                    text = "🏷️ ${product.barcode}",
+                                                    text = "ঘাটতি (০ ${product.unit})",
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    color = MawaPrimary,
+                                                    color = FinancialNegative,
                                                     fontWeight = FontWeight.SemiBold,
                                                     modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                                                 )
                                             }
-                                        }
-                                        if (product.stockQuantity > 0) {
-                                            Spacer(modifier = Modifier.width(6.dp))
+                                        } else if (product.stockQuantity <= 5.0) {
+                                            Surface(
+                                                color = FinancialWarning.copy(alpha = 0.15f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "কম স্টক (${BengaliUtils.formatQuantity(product.stockQuantity, product.unit)})",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = FinancialWarning,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        } else {
                                             Surface(
                                                 color = FinancialPositive.copy(alpha = 0.12f),
                                                 shape = RoundedCornerShape(4.dp)
@@ -336,19 +406,46 @@ fun ProductsScreen(
                                     }
                                 }
 
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(
-                                        text = "${BengaliUtils.toBanglaDigits(product.defaultPurchasePrice.toInt().toString())}৳ → ${BengaliUtils.toBanglaDigits(product.defaultSellingPrice.toInt().toString())}৳",
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MawaPrimary
-                                    )
-                                    Text(
-                                        text = "বিস্তারিত হিসাব →",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = "${BengaliUtils.toBanglaDigits(product.defaultPurchasePrice.toInt().toString())}৳ → ${BengaliUtils.toBanglaDigits(product.defaultSellingPrice.toInt().toString())}৳",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MawaPrimary
+                                        )
+                                        Text(
+                                            text = "বিস্তারিত হিসাব →",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            viewModel.addFordiItem(
+                                                productName = product.name,
+                                                productId = product.id,
+                                                plannedQty = if (product.stockQuantity <= 0) 5.0 else 2.0,
+                                                unit = product.unit.ifBlank { "পিস" },
+                                                purchaseRate = product.defaultPurchasePrice,
+                                                sellingRate = product.defaultSellingPrice
+                                            )
+                                            Toast.makeText(context, "${product.name} ফর্দে যোগ হয়েছে", Toast.LENGTH_SHORT).show()
+                                        },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PlaylistAdd,
+                                            contentDescription = "ফর্দে যোগ করুন",
+                                            tint = FinancialPositive,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
                                 }
                             }
 
@@ -426,6 +523,7 @@ fun ProductDetailScreen(
     viewModel: MawaViewModel,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     var showEditDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -486,20 +584,171 @@ fun ProductDetailScreen(
                                 }
                             }
 
-                            if (product.stockQuantity > 0) {
-                                Column(horizontalAlignment = Alignment.End) {
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "বর্তমান স্টক",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = BengaliUtils.formatQuantity(product.stockQuantity, product.unit),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (product.stockQuantity <= 0) FinancialNegative else FinancialPositive
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Stock & Fordi Connection Card
+            item {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                ) {
+                    Column(modifier = Modifier.padding(14.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = FinancialPositive.copy(alpha = 0.12f),
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Inventory2,
+                                            contentDescription = null,
+                                            tint = FinancialPositive,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
                                     Text(
-                                        text = "বর্তমান স্টক",
+                                        text = "বর্তমান স্টক ও ঘাটতি স্থিতি",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "স্টক কমে গেলে সরাসরি ফর্দে যুক্ত করুন",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                }
+                            }
+
+                            // Stock status pill
+                            if (product.stockQuantity <= 0) {
+                                Surface(
+                                    color = FinancialNegative.copy(alpha = 0.12f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
                                     Text(
-                                        text = BengaliUtils.formatQuantity(product.stockQuantity, product.unit),
-                                        style = MaterialTheme.typography.titleSmall,
+                                        text = "ঘাটতি (০ ${product.unit})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = FinancialNegative,
                                         fontWeight = FontWeight.Bold,
-                                        color = FinancialPositive
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                                     )
                                 }
+                            } else if (product.stockQuantity <= 5.0) {
+                                Surface(
+                                    color = FinancialWarning.copy(alpha = 0.15f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = "কম স্টক (${BengaliUtils.formatQuantity(product.stockQuantity, product.unit)})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = FinancialWarning,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            } else {
+                                Surface(
+                                    color = FinancialPositive.copy(alpha = 0.12f),
+                                    shape = RoundedCornerShape(6.dp)
+                                ) {
+                                    Text(
+                                        text = "পর্যাপ্ত (${BengaliUtils.formatQuantity(product.stockQuantity, product.unit)})",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = FinancialPositive,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Stock quick adjust & Fordi action
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Quick adjust buttons: -1, +1
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = {
+                                        val newQty = (product.stockQuantity - 1.0).coerceAtLeast(0.0)
+                                        viewModel.updateProduct(product.copy(stockQuantity = newQty))
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(imageVector = Icons.Default.Remove, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text("১", style = MaterialTheme.typography.labelSmall)
+                                }
+
+                                OutlinedButton(
+                                    onClick = {
+                                        viewModel.updateProduct(product.copy(stockQuantity = product.stockQuantity + 1.0))
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Icon(imageVector = Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(2.dp))
+                                    Text("১", style = MaterialTheme.typography.labelSmall)
+                                }
+                            }
+
+                            // Add to Fordi button
+                            Button(
+                                onClick = {
+                                    val neededQty = if (product.stockQuantity <= 0) 5.0 else 2.0
+                                    viewModel.addFordiItem(
+                                        productName = product.name,
+                                        productId = product.id,
+                                        plannedQty = neededQty,
+                                        unit = product.unit.ifBlank { "পিস" },
+                                        purchaseRate = product.defaultPurchasePrice,
+                                        sellingRate = product.defaultSellingPrice
+                                    )
+                                    Toast.makeText(context, "${product.name} ফর্দে যুক্ত হয়েছে", Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = FinancialPositive),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.PlaylistAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("বাজার ফর্দে যোগ করুন", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
                             }
                         }
                     }

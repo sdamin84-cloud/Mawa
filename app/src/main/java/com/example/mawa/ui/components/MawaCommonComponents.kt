@@ -1,7 +1,14 @@
 package com.example.mawa.ui.components
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,9 +43,13 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
@@ -163,34 +174,58 @@ fun MawaQuickActionButton(
     modifier: Modifier = Modifier,
     testTag: String = ""
 ) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.88f else 1.0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "btn_scale"
+    )
+
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = modifier
+            .scale(scale)
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp, horizontal = 4.dp)
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .padding(vertical = 4.dp, horizontal = 2.dp)
             .then(if (testTag.isNotEmpty()) Modifier.testTag(testTag) else Modifier)
     ) {
         Box(
             modifier = Modifier
-                .size(46.dp)
+                .size(48.dp)
+                .shadow(
+                    elevation = if (isPressed) 1.dp else 3.5.dp,
+                    shape = CircleShape,
+                    spotColor = contentColor.copy(alpha = 0.45f),
+                    ambientColor = contentColor.copy(alpha = 0.2f)
+                )
                 .clip(CircleShape)
-                .background(containerColor),
+                .background(containerColor)
+                .border(BorderStroke(1.2.dp, contentColor.copy(alpha = 0.35f)), CircleShape),
             contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = contentColor,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(24.dp)
             )
         }
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
+            fontWeight = FontWeight.Bold,
+            color = contentColor,
+            fontSize = 11.5.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )

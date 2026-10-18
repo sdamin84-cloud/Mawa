@@ -1,7 +1,10 @@
 package com.example.mawa.ui.screens
 
+import android.content.Intent
+import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,11 +21,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountBalanceWallet
 import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.Chat
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
@@ -30,10 +39,18 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PointOfSale
+import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
+import com.example.R
+import com.example.mawa.ui.components.BluetoothThermalPrinterDialog
+import com.example.mawa.util.InvoiceItem
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -118,9 +135,12 @@ fun ReportsScreen(
     val transactions by viewModel.filteredTransactionsForReport.collectAsStateWithLifecycle()
     val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
     val shopSettings by viewModel.shopSettings.collectAsStateWithLifecycle()
+    val customersWithBalance by viewModel.customersWithBalance.collectAsStateWithLifecycle()
+    val allSupplierCompanies by viewModel.allSupplierCompanies.collectAsStateWithLifecycle()
 
     var showMemoDialog by remember { mutableStateOf(false) }
     var showDailyClosureDialog by remember { mutableStateOf(false) }
+    var showBluetoothPrinterDialog by remember { mutableStateOf(false) }
     var expandedDayMillis by remember { mutableStateOf<Long?>(null) }
 
     // Group historical transactions by day
@@ -199,6 +219,24 @@ fun ReportsScreen(
     val estimatedBusinessProfit = com.example.mawa.util.ProfitMarginManager.calculateProfit(periodTotalSales, profitMarginPercent)
     val profitRemaining = estimatedBusinessProfit - periodHomeWithdrawals
 
+    val periodCashInflow = periodCashSales + periodBakiCollection
+    val periodTotalOutflow = periodPurchases + periodShopExpenses
+
+    val topDueCustomers = remember(customersWithBalance) {
+        customersWithBalance
+            .filter { it.currentBalance > 0 }
+            .sortedByDescending { it.currentBalance }
+            .take(5)
+    }
+
+    val topSuppliers = remember(purchaseTransactions) {
+        purchaseTransactions
+            .groupBy { it.category.ifBlank { it.note.ifBlank { it.productName ?: "সাধারণ সরবরাহকারী" } } }
+            .map { (name, txs) -> Pair(name, txs.sumOf { it.amount }) }
+            .sortedByDescending { it.second }
+            .take(5)
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -212,6 +250,80 @@ fun ReportsScreen(
         )
 
         LazyColumn(modifier = Modifier.fillMaxSize()) {
+            // 0. Modern 2D Analytics Hero Banner
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .testTag("reports_hero_banner_card"),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(125.dp)
+                    ) {
+                        Image(
+                            painter = painterResource(id = R.drawable.img_analytics_banner),
+                            contentDescription = "রিপোর্ট অ্যানালিটিক্স ব্যানার",
+                            modifier = Modifier.fillMaxSize(),
+                            contentScale = ContentScale.Crop
+                        )
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(
+                                    Brush.verticalGradient(
+                                        colors = listOf(
+                                            Color.Black.copy(alpha = 0.25f),
+                                            Color.Black.copy(alpha = 0.82f)
+                                        )
+                                    )
+                                )
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            Column {
+                                Text(
+                                    text = "স্মার্ট বিজনেস অ্যানালিটিক্স",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    text = "${currentFilter.banglaLabel} · মোট লেনদেন: ${BengaliUtils.toBengaliDigits(transactions.size.toString())}টি",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 11.5.sp,
+                                    color = Color.White.copy(alpha = 0.85f)
+                                )
+                            }
+
+                            Surface(
+                                shape = RoundedCornerShape(20.dp),
+                                color = Color(0xFF0284C7).copy(alpha = 0.9f)
+                            ) {
+                                Text(
+                                    text = "লাইভ রিপোর্ট",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 10.5.sp,
+                                    modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             // 1. Time Filter Selector (Daily, Weekly, Monthly, All-time)
             item {
                 Surface(
@@ -247,6 +359,66 @@ fun ReportsScreen(
                             }
                         }
                     }
+                }
+            }
+
+            // 1.5 Executive KPI Metric Tiles (৪টি শক্তিশালী মেট্রিক কার্ড)
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // KPI 1: Gross Sales
+                    ReportKpiCard(
+                        title = "মোট বিক্রি",
+                        value = BengaliUtils.formatTaka(periodTotalSales),
+                        subtitle = "নগদ: ${BengaliUtils.formatTaka(periodCashSales)}",
+                        icon = Icons.Default.ShoppingCart,
+                        accentColor = Color(0xFF059669),
+                        containerColor = Color(0xFFECFDF5),
+                        modifier = Modifier.weight(1f)
+                    )
+                    // KPI 2: Net Profit
+                    ReportKpiCard(
+                        title = "নিট লাভ",
+                        value = BengaliUtils.formatTaka(estimatedBusinessProfit),
+                        subtitle = "মার্জিন: ${BengaliUtils.toBengaliDigits(if (profitMarginPercent % 1.0 == 0.0) profitMarginPercent.toInt().toString() else profitMarginPercent.toString())}%",
+                        icon = Icons.Default.TrendingUp,
+                        accentColor = FinancialPositive,
+                        containerColor = FinancialPositiveContainer.copy(alpha = 0.5f),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // KPI 3: Cash Inflow
+                    ReportKpiCard(
+                        title = "ক্যাশ আগমন",
+                        value = BengaliUtils.formatTaka(periodCashInflow),
+                        subtitle = "নগদ + বাকি আদায়",
+                        icon = Icons.Default.AccountBalanceWallet,
+                        accentColor = Color(0xFF0284C7),
+                        containerColor = Color(0xFFE0F2FE),
+                        modifier = Modifier.weight(1f)
+                    )
+                    // KPI 4: Total Outflow
+                    ReportKpiCard(
+                        title = "মোট খরচ ও ক্রয়",
+                        value = BengaliUtils.formatTaka(periodTotalOutflow),
+                        subtitle = "মাল ক্রয় + দোকান খরচ",
+                        icon = Icons.Default.TrendingDown,
+                        accentColor = Color(0xFFDC2626),
+                        containerColor = Color(0xFFFEE2E2),
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
 
@@ -317,28 +489,42 @@ fun ReportsScreen(
                 }
             }
 
-            // 3. Export & Share Action Bar (CSV, মেমো ছবি PNG, মেমো ভিউ, ব্যাকআপ)
+            // 3. Export & Share Action Bar (Organized into clean, non-cramped rows)
             item {
-                Surface(
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 1.dp),
-                    color = MaterialTheme.colorScheme.surface
+                        .padding(horizontal = 16.dp, vertical = 6.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surface
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        Text(
+                            text = "রিপোর্ট এক্সপোর্ট ও শেয়ার",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        // Row 1: CSV and PNG Export
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // CSV Download / Export Button
+                            // CSV Button
                             Surface(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .height(42.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .clickable {
                                         val csvContent = ReportExportUtils.generateTransactionsCsv(
                                             transactions = transactions,
@@ -352,14 +538,14 @@ fun ReportsScreen(
                                         Toast.makeText(context, "CSV তৈরি হয়েছে", Toast.LENGTH_SHORT).show()
                                     }
                                     .testTag("btn_export_csv"),
-                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(8.dp)
                             ) {
                                 Row(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp, horizontal = 8.dp),
+                                        .fillMaxSize()
+                                        .padding(horizontal = 10.dp),
                                     horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -367,13 +553,14 @@ fun ReportsScreen(
                                         imageVector = Icons.Default.Download,
                                         contentDescription = null,
                                         tint = MawaPrimary,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "CSV ফাইল",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
@@ -383,7 +570,8 @@ fun ReportsScreen(
                             Surface(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .height(42.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .clickable {
                                         val bitmap = DataBackupRestoreManager.createMonthlyReportMemoBitmap(
                                             shopName = shopName,
@@ -403,14 +591,14 @@ fun ReportsScreen(
                                         )
                                     }
                                     .testTag("btn_export_memo_png"),
-                                color = FinancialPositive.copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, FinancialPositive.copy(alpha = 0.4f)),
-                                shape = RoundedCornerShape(10.dp)
+                                color = FinancialPositive.copy(alpha = 0.10f),
+                                border = BorderStroke(1.dp, FinancialPositive.copy(alpha = 0.35f)),
+                                shape = RoundedCornerShape(8.dp)
                             ) {
                                 Row(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp, horizontal = 8.dp),
+                                        .fillMaxSize()
+                                        .padding(horizontal = 10.dp),
                                     horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -418,33 +606,41 @@ fun ReportsScreen(
                                         imageVector = Icons.Default.Image,
                                         contentDescription = null,
                                         tint = FinancialPositive,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "ছবি (PNG)",
+                                        text = "মেমো ছবি (PNG)",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
                                         color = FinancialPositive
                                     )
                                 }
                             }
+                        }
 
+                        // Row 2: Memo Dialog and PDF Print
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             // Digital Memo Text View Button
                             Surface(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .height(42.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .clickable { showMemoDialog = true }
                                     .testTag("btn_view_memo"),
-                                color = MawaPrimary.copy(alpha = 0.12f),
-                                border = BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.4f)),
-                                shape = RoundedCornerShape(10.dp)
+                                color = MawaPrimary.copy(alpha = 0.10f),
+                                border = BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.35f)),
+                                shape = RoundedCornerShape(8.dp)
                             ) {
                                 Row(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp, horizontal = 8.dp),
+                                        .fillMaxSize()
+                                        .padding(horizontal = 10.dp),
                                     horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -452,13 +648,14 @@ fun ReportsScreen(
                                         imageVector = Icons.Default.ReceiptLong,
                                         contentDescription = null,
                                         tint = MawaPrimary,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "মেমো রসিদ",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
                                         color = MawaPrimary
                                     )
                                 }
@@ -468,7 +665,8 @@ fun ReportsScreen(
                             Surface(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .height(42.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .clickable {
                                         val html = ReceiptPrintManager.generateFinancialReportHtml(
                                             shopName = shopName,
@@ -494,14 +692,14 @@ fun ReportsScreen(
                                         )
                                     }
                                     .testTag("btn_reports_print_pdf"),
-                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f),
+                                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
                                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)),
-                                shape = RoundedCornerShape(10.dp)
+                                shape = RoundedCornerShape(8.dp)
                             ) {
                                 Row(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 8.dp, horizontal = 8.dp),
+                                        .fillMaxSize()
+                                        .padding(horizontal = 10.dp),
                                     horizontalArrangement = Arrangement.Center,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -509,37 +707,57 @@ fun ReportsScreen(
                                         imageVector = Icons.Default.Assessment,
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(17.dp)
                                     )
-                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
                                         text = "PDF প্রিন্ট",
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                 }
                             }
+                        }
 
-                            // Daily Closure / Lock Button
+                        // Row 3: Daily Closure & Cloud/Local Backup Actions
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // Daily Closure Button
                             Surface(
                                 modifier = Modifier
-                                    .clip(RoundedCornerShape(10.dp))
+                                    .weight(1f)
+                                    .height(38.dp)
+                                    .clip(RoundedCornerShape(8.dp))
                                     .clickable { showDailyClosureDialog = true }
                                     .testTag("btn_reports_daily_closure"),
-                                color = FinancialWarningContainer.copy(alpha = 0.7f),
-                                border = BorderStroke(1.dp, FinancialWarning.copy(alpha = 0.5f)),
-                                shape = RoundedCornerShape(10.dp)
+                                color = FinancialWarningContainer.copy(alpha = 0.5f),
+                                border = BorderStroke(1.dp, FinancialWarning.copy(alpha = 0.4f)),
+                                shape = RoundedCornerShape(8.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier.padding(8.dp),
-                                    contentAlignment = Alignment.Center
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(horizontal = 10.dp),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.CalendarMonth,
-                                        contentDescription = "দিন সমাপ্তি",
+                                        contentDescription = null,
                                         tint = FinancialWarning,
-                                        modifier = Modifier.size(18.dp)
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = "দিন সমাপ্তি ক্লোজার",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                 }
                             }
@@ -548,25 +766,74 @@ fun ReportsScreen(
                             if (onOpenBackupRestore != null) {
                                 Surface(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
+                                        .weight(1f)
+                                        .height(38.dp)
+                                        .clip(RoundedCornerShape(8.dp))
                                         .clickable { onOpenBackupRestore() }
                                         .testTag("btn_reports_backup"),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                                    shape = RoundedCornerShape(10.dp)
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                    shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Box(
-                                        modifier = Modifier.padding(8.dp),
-                                        contentAlignment = Alignment.Center
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .padding(horizontal = 10.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Backup,
-                                            contentDescription = "ব্যাকআপ",
+                                            contentDescription = null,
                                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            modifier = Modifier.size(18.dp)
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "ডাটা ব্যাকআপ",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
+                            }
+                        }
+
+                        // Row 4: Bluetooth POS Thermal Print Button
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showBluetoothPrinterDialog = true }
+                                .testTag("btn_reports_bluetooth_print"),
+                            color = Color(0xFF0D9488).copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, Color(0xFF0D9488).copy(alpha = 0.35f)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 10.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Print,
+                                    contentDescription = null,
+                                    tint = Color(0xFF0D9488),
+                                    modifier = Modifier.size(17.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "ব্লুটুথ POS প্রিন্টার (রসিদ/মেমো প্রিন্ট)",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF0D9488)
+                                )
                             }
                         }
                     }
@@ -689,6 +956,223 @@ fun ReportsScreen(
                 }
             }
 
+            // Formal Audited Profit & Loss Statement (P&L নিরীক্ষিত খতিয়ান)
+            item {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "লাভ-ক্ষতির নিরীক্ষিত স্টেটমেন্ট (P&L)",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = MawaPrimary.copy(alpha = 0.12f)
+                            ) {
+                                Text(
+                                    text = currentFilter.banglaLabel,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MawaPrimary,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+                        HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        PnLStatementRow(label = "(+) মোট বিক্রয় টার্নওভার", amount = periodTotalSales, isPositive = true)
+                        PnLStatementRow(label = "(−) পাইকারি পণ্য ক্রয় (ফর্দ ও চালান)", amount = periodPurchases, isPositive = false)
+                        PnLStatementRow(label = "(=) মোট বিক্রয় মুনাফা", amount = estimatedBusinessProfit, isPositive = true, isBold = true)
+                        PnLStatementRow(label = "(−) দোকান পরিচালন খরচ", amount = periodShopExpenses, isPositive = false)
+                        PnLStatementRow(label = "(−) ব্যক্তিগত / সংসার খরচ", amount = periodHomeWithdrawals, isPositive = false)
+
+                        Spacer(modifier = Modifier.height(6.dp))
+                        HorizontalDivider(thickness = 1.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                        Spacer(modifier = Modifier.height(6.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "(=) ব্যবসায়ের রক্ষিত উদ্বৃত্ত মূলধন",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = BengaliUtils.formatTaka(profitRemaining),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = if (profitRemaining >= 0) FinancialPositive else FinancialNegative
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Top Due Customers Card with WhatsApp & Call Actions (শীর্ষ দেনাদার ও তাগাদা)
+            if (topDueCustomers.isNotEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, Color(0xFFD97706).copy(alpha = 0.35f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFFEF3C7)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ReceiptLong,
+                                            contentDescription = null,
+                                            tint = Color(0xFFD97706),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "শীর্ষ বাকিদার (তাগাদা ও কালেকশন)",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Text(
+                                    text = "${BengaliUtils.toBengaliDigits(topDueCustomers.size.toString())} জন",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            topDueCustomers.forEach { cust ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = cust.customer.name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1
+                                        )
+                                        if (cust.customer.phone.isNotBlank()) {
+                                            Text(
+                                                text = cust.customer.phone,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.outline
+                                            )
+                                        }
+                                    }
+
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = BengaliUtils.formatTaka(cust.currentBalance),
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = FinancialNegative
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+
+                                        // WhatsApp Reminder Button
+                                        if (cust.customer.phone.isNotBlank()) {
+                                            val phone = cust.customer.phone.trim()
+                                            IconButton(
+                                                onClick = {
+                                                    try {
+                                                        val cleanPhone = if (phone.startsWith("+88")) phone else if (phone.startsWith("88")) "+$phone" else "+88$phone"
+                                                        val msg = "আসসালামু আলাইকুম ${cust.customer.name} ভাই, $shopName-এ আপনার পূর্ববর্তী বাকি হিসাব ${BengaliUtils.formatTaka(cust.currentBalance)} টাকা বাকি রয়েছে। সুবিধাজনক সময়ে পরিশোধ করার অনুরোধ রইল। ধন্যবাদ।"
+                                                        val uri = Uri.parse("https://api.whatsapp.com/send?phone=$cleanPhone&text=${Uri.encode(msg)}")
+                                                        val intent = Intent(Intent.ACTION_VIEW, uri)
+                                                        context.startActivity(intent)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(context, "হোয়াটসঅ্যাপ অ্যাপ পাওয়া যায়নি", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Chat,
+                                                    contentDescription = "WhatsApp",
+                                                    tint = Color(0xFF25D366),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+
+                                            // Phone Call Button
+                                            IconButton(
+                                                onClick = {
+                                                    try {
+                                                        val callIntent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:$phone"))
+                                                        context.startActivity(callIntent)
+                                                    } catch (e: Exception) {
+                                                        Toast.makeText(context, "কল শুরু করা যায়নি", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                },
+                                                modifier = Modifier.size(32.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Phone,
+                                                    contentDescription = "কল",
+                                                    tint = MawaPrimary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // 4. Interactive Trend Line Chart (আপ-ডাউন রেখা ও প্রতিটি পয়েন্টে ক্লিক করে তথ্য দেখা)
             item {
                 Spacer(modifier = Modifier.height(10.dp))
@@ -702,6 +1186,109 @@ fun ReportsScreen(
                     purchases = purchaseTransactions,
                     allTransactions = transactions
                 )
+            }
+
+            // 5.5 Top Suppliers & Brands (শীর্ষ পাইকারি মালামাল সরবরাহকারী)
+            if (topSuppliers.isNotEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFEDE9FE)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Store,
+                                            contentDescription = null,
+                                            tint = Color(0xFF7C3AED),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "শীর্ষ মালামাল সরবরাহকারী / ব্র্যান্ড",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                                Text(
+                                    text = "ক্রয় ভলিউম",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.outline
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            val maxSpend = topSuppliers.maxOfOrNull { it.second } ?: 1.0
+                            topSuppliers.forEach { (name, amount) ->
+                                val ratio = (amount / maxSpend).toFloat().coerceIn(0.05f, 1f)
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 5.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = name,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = BengaliUtils.formatTaka(amount),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(5.dp)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth(ratio)
+                                                .height(5.dp)
+                                                .clip(RoundedCornerShape(3.dp))
+                                                .background(Color(0xFF7C3AED))
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // 6. Complete Financial Summary Breakdown (Detailed Clean Rows)
@@ -1161,5 +1748,128 @@ fun ReportsScreen(
                 onDismiss = { showDailyClosureDialog = false }
             )
         }
+
+        // Bluetooth Thermal POS Printer Dialog
+        if (showBluetoothPrinterDialog) {
+            BluetoothThermalPrinterDialog(
+                shopName = shopName,
+                shopPhone = shopSettings?.phone ?: "",
+                memoNo = "RPT-${currentFilter.name}",
+                dateFormatted = BengaliUtils.getFormattedTodayDate(),
+                customerName = "হিসাব রিপোর্ট (${currentFilter.banglaLabel})",
+                items = listOf(
+                    InvoiceItem(name = "মোট বিক্রি", amount = periodTotalSales),
+                    InvoiceItem(name = "নগদ বিক্রি", amount = periodCashSales),
+                    InvoiceItem(name = "বাকি বিক্রি", amount = periodBakiSales),
+                    InvoiceItem(name = "বাকি আদায়", amount = periodBakiCollection),
+                    InvoiceItem(name = "পণ্য ক্রয়", amount = periodPurchases),
+                    InvoiceItem(name = "দোকান খরচ", amount = periodShopExpenses),
+                    InvoiceItem(name = "ব্যবসায়িক লাভ", amount = estimatedBusinessProfit),
+                    InvoiceItem(name = "বাড়ির খরচ", amount = periodHomeWithdrawals),
+                    InvoiceItem(name = "অবশিষ্ট উদ্বৃত্ত", amount = profitRemaining)
+                ),
+                totalAmount = periodTotalSales,
+                paidAmount = periodCashInflow,
+                dueAmount = periodTotalOutflow,
+                onDismiss = { showBluetoothPrinterDialog = false }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReportKpiCard(
+    title: String,
+    value: String,
+    subtitle: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    accentColor: Color,
+    containerColor: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp)),
+        shape = RoundedCornerShape(12.dp),
+        color = containerColor,
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.25f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Bold
+                )
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(accentColor.copy(alpha = 0.15f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = accentColor,
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = accentColor,
+                maxLines = 1
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.outline,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun PnLStatementRow(
+    label: String,
+    amount: Double,
+    isPositive: Boolean,
+    isBold: Boolean = false
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            style = if (isBold) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+            fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Text(
+            text = BengaliUtils.formatTaka(amount),
+            style = if (isBold) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodySmall,
+            fontWeight = if (isBold) FontWeight.Bold else FontWeight.Normal,
+            color = if (isPositive) FinancialPositive else FinancialNegative
+        )
     }
 }

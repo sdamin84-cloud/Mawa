@@ -23,22 +23,35 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.FileUpload
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockReset
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Restore
+import androidx.compose.material.icons.filled.SaveAlt
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.TableChart
 import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -78,6 +91,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -101,9 +116,10 @@ import java.util.Date
 import java.util.Locale
 
 enum class BackupTab(val title: String) {
-    BACKUP("ডাটা ব্যাকআপ"),
+    BACKUP("ব্যাকআপ ও সেভ"),
     RESTORE("ডাটা রিস্টোর"),
-    MEMO_EXPORT("মেমো ও ছবি (PNG)")
+    CLOUD_SYNC("ক্লাউড সিঙ্ক ☁️"),
+    MEMO_EXPORT("মেমো (PNG)")
 }
 
 @Composable
@@ -116,7 +132,7 @@ fun BackupRestoreDialog(
     val clipboardManager = LocalClipboardManager.current
     val scope = rememberCoroutineScope()
 
-    var selectedTab by remember { mutableStateOf(BackupTab.RESTORE) }
+    var selectedTab by remember { mutableStateOf(BackupTab.BACKUP) }
     var restoreJsonInput by remember { mutableStateOf("") }
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     var showRestoreConfirmDialog by remember { mutableStateOf(false) }
@@ -126,11 +142,22 @@ fun BackupRestoreDialog(
 
     var isProcessing by remember { mutableStateOf(false) }
 
+    // Cloud Auth Form States for CLOUD_SYNC tab
+    var authEmail by remember { mutableStateOf("") }
+    var authPassword by remember { mutableStateOf("") }
+    var authName by remember { mutableStateOf("") }
+    var isRegisterMode by remember { mutableStateOf(false) }
+    var passwordVisible by remember { mutableStateOf(false) }
+
     val customersWithBalance by viewModel.customersWithBalance.collectAsStateWithLifecycle()
     val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
     val fordiItems by viewModel.allFordiItems.collectAsStateWithLifecycle()
     val shopSettings by viewModel.shopSettings.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val isCloudSyncing by viewModel.isCloudSyncing.collectAsStateWithLifecycle()
+    val isAuthLoading by viewModel.isAuthLoading.collectAsStateWithLifecycle()
+    val cloudBackups by viewModel.cloudBackups.collectAsStateWithLifecycle()
+    val lastSyncTime by viewModel.lastCloudSyncTime.collectAsStateWithLifecycle()
 
     val shopName = shopSettings?.shopName?.ifBlank { "মাওয়া স্মার্ট খাতা" } ?: "মাওয়া স্মার্ট খাতা"
 
@@ -141,6 +168,68 @@ fun BackupRestoreDialog(
                 viewModel.parseBackupPreview(restoreJsonInput)
             } else {
                 null
+            }
+        }
+    }
+
+    // Direct JSON File Save Launcher (Saves full JSON backup directly into user's mobile device storage)
+    val jsonSaveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/json")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            scope.launch {
+                try {
+                    isProcessing = true
+                    val json = viewModel.exportFullBackupJson()
+                    val success = DataBackupRestoreManager.writeTextToUri(context, uri, json)
+                    if (success) {
+                        Toast.makeText(context, "✅ সম্পূর্ণ ডাটার JSON ব্যাকআপ ফাইলটি মোবাইলে সফলভাবে ডাউনলোড ও সেভ হয়েছে!", Toast.LENGTH_LONG).show()
+                    } else {
+                        Toast.makeText(context, "❌ ফাইল সেভ করতে সমস্যা হয়েছে", Toast.LENGTH_SHORT).show()
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(context, "ত্রুটি: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                } finally {
+                    isProcessing = false
+                }
+            }
+        }
+    }
+
+    // Direct Customers CSV Save Launcher
+    val csvCustomerSaveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val csv = DataBackupRestoreManager.generateCustomersCsv(customersWithBalance)
+                val success = DataBackupRestoreManager.writeTextToUri(context, uri, csv)
+                if (success) {
+                    Toast.makeText(context, "✅ কাস্টমার তালিকা CSV ফাইলটি ডিভাইসে সেভ হয়েছে!", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(context, "❌ ফাইল সেভ ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "ত্রুটি: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    // Direct Fordi CSV Save Launcher
+    val csvFordiSaveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("text/csv")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            try {
+                val csv = DataBackupRestoreManager.generateFordiCsv(fordiItems)
+                val success = DataBackupRestoreManager.writeTextToUri(context, uri, csv)
+                if (success) {
+                    Toast.makeText(context, "✅ বাজার ফর্দ CSV ফাইলটি ডিভাইসে সেভ হয়েছে!", Toast.LENGTH_LONG).show()
+                } else {
+                    Toast.makeText(context, "❌ ফাইল সেভ ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "ত্রুটি: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
         }
     }
@@ -635,14 +724,105 @@ fun BackupRestoreDialog(
                         }
 
                         BackupTab.BACKUP -> {
-                            // --- TAB 2: BACKUP OPTIONS ---
-                            // Supabase Cloud Card
+                            // --- TAB 2: DATA BACKUP & DIRECT DOWNLOAD OPTIONS ---
+
+                            // 1. Hero Card: Direct JSON Full Backup Download to Mobile Storage
+                            BackupOptionCard(
+                                icon = Icons.Default.SaveAlt,
+                                iconTint = MawaPrimary,
+                                iconBg = MawaPrimaryContainer,
+                                title = "সম্পূর্ণ ডাটার JSON ব্যাকআপ ফাইল",
+                                subtitle = "দোকানের সকল কাস্টমার বাকি, ক্যাশ হিসাব, বাজারের ফর্দ ও সেটিংস আপনার মোবাইলের ফাইলে সরাসরি ডাউনলোড বা সেভ করে রাখুন।",
+                                primaryActionLabel = "📥 মোবাইলে JSON ফাইল সেভ করুন",
+                                primaryActionIcon = Icons.Default.Download,
+                                onPrimaryAction = {
+                                    val dateStr = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
+                                    jsonSaveLauncher.launch("mawa_backup_$dateStr.json")
+                                },
+                                secondaryActionLabel = "📤 শেয়ার করুন",
+                                onSecondaryAction = {
+                                    scope.launch {
+                                        isProcessing = true
+                                        val json = viewModel.exportFullBackupJson()
+                                        val dateStr = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
+                                        DataBackupRestoreManager.shareTextFile(
+                                            context = context,
+                                            content = json,
+                                            fileName = "mawa_backup_$dateStr.json",
+                                            mimeType = "application/json",
+                                            title = "MAWA ডিজিটাল খাতা সম্পূর্ণ ব্যাকআপ ফাইল"
+                                        )
+                                        isProcessing = false
+                                    }
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // 2. Customers List CSV / Excel Export
+                            BackupOptionCard(
+                                icon = Icons.Default.TableChart,
+                                iconTint = FinancialPositive,
+                                iconBg = FinancialPositiveContainer,
+                                title = "কাস্টমার বাকি তালিকা CSV / Excel",
+                                subtitle = "সকল গ্রাহকের নাম, মোবাইল, পূর্বের বাকি ও বর্তমান বাকি এক্সেল বা সিএসভি ফাইলে নিন।",
+                                primaryActionLabel = "📥 মোবাইলে CSV সেভ",
+                                primaryActionIcon = Icons.Default.Download,
+                                onPrimaryAction = {
+                                    val dateStr = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+                                    csvCustomerSaveLauncher.launch("customers_$dateStr.csv")
+                                },
+                                secondaryActionLabel = "📤 শেয়ার",
+                                onSecondaryAction = {
+                                    val csv = DataBackupRestoreManager.generateCustomersCsv(customersWithBalance)
+                                    val dateStr = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+                                    DataBackupRestoreManager.shareTextFile(
+                                        context = context,
+                                        content = csv,
+                                        fileName = "customers_$dateStr.csv",
+                                        mimeType = "text/csv",
+                                        title = "কাস্টমার বাকি খতিয়ান তালিকা CSV"
+                                    )
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // 3. Fordi Items CSV Export
+                            BackupOptionCard(
+                                icon = Icons.Default.Receipt,
+                                iconTint = FinancialWarning,
+                                iconBg = MaterialTheme.colorScheme.surfaceVariant,
+                                title = "বাজারের ফর্দ তালিকা CSV এক্সপোর্ট",
+                                subtitle = "দোকানের বর্তমান কেনাকাটার ফর্দ ও দরদাম এক্সেল ফাইলে সংরক্ষণ করুন।",
+                                primaryActionLabel = "📥 ফর্দ CSV সেভ",
+                                primaryActionIcon = Icons.Default.Download,
+                                onPrimaryAction = {
+                                    val dateStr = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+                                    csvFordiSaveLauncher.launch("fordi_list_$dateStr.csv")
+                                },
+                                secondaryActionLabel = "📤 শেয়ার",
+                                onSecondaryAction = {
+                                    val csv = DataBackupRestoreManager.generateFordiCsv(fordiItems)
+                                    val dateStr = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
+                                    DataBackupRestoreManager.shareTextFile(
+                                        context = context,
+                                        content = csv,
+                                        fileName = "fordi_list_$dateStr.csv",
+                                        mimeType = "text/csv",
+                                        title = "দোকানের বাজার ফর্দ তালিকা CSV"
+                                    )
+                                }
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            // 4. Quick Supabase Cloud Sync Card
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        onDismiss()
-                                        onOpenSupabaseCloud()
+                                        selectedTab = BackupTab.CLOUD_SYNC
                                     },
                                 colors = CardDefaults.cardColors(containerColor = Color(0xFF3ECF8E).copy(alpha = 0.12f)),
                                 shape = RoundedCornerShape(14.dp),
@@ -676,13 +856,13 @@ fun BackupRestoreDialog(
                                         Spacer(modifier = Modifier.width(12.dp))
                                         Column {
                                             Text(
-                                                text = "সুপাবেজ ক্লাউড ব্যাকআপ ☁️",
+                                                text = "অনলাইন ক্লাউড লাইভ ব্যাকআপ ☁️",
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF047857)
                                             )
                                             Text(
-                                                text = if (currentUser != null) "লগইন আছে: ${currentUser?.email}" else "অনলাইনে ক্লাউডে ব্যাকআপ রাখতে লগইন করুন",
+                                                text = if (currentUser != null) "লগইন আছে: ${currentUser?.email} (১-ট্যাপে ক্লাউড সিঙ্ক)" else "সার্ভারে লাইভ ক্লাউড ব্যাকআপ রাখতে একাউন্ট খুলুন",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -690,87 +870,336 @@ fun BackupRestoreDialog(
                                     }
 
                                     Button(
-                                        onClick = {
-                                            onDismiss()
-                                            onOpenSupabaseCloud()
-                                        },
+                                        onClick = { selectedTab = BackupTab.CLOUD_SYNC },
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Text("ক্লাউড খুলুন ➔", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("সিঙ্ক হাব ➔", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }
+                        }
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                        BackupTab.CLOUD_SYNC -> {
+                            // --- TAB 3: UNIFIED SUPABASE CLOUD & AUTH HUB ---
+                            if (currentUser != null) {
+                                // Logged In User Card
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF3ECF8E).copy(alpha = 0.12f)),
+                                    border = BorderStroke(1.5.dp, Color(0xFF10B981).copy(alpha = 0.6f))
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp)) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(40.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color(0xFF10B981).copy(alpha = 0.2f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Icon(Icons.Default.AccountCircle, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(24.dp))
+                                                }
+                                                Spacer(modifier = Modifier.width(10.dp))
+                                                Column {
+                                                    Text(
+                                                        text = currentUser?.displayName?.ifBlank { "ব্যবহারকারী" } ?: "ব্যবসার মালিক",
+                                                        style = MaterialTheme.typography.titleMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF047857)
+                                                    )
+                                                    Text(
+                                                        text = currentUser?.email ?: "",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
 
-                            BackupOptionCard(
-                                icon = Icons.Default.CloudDownload,
-                                iconTint = MawaPrimary,
-                                iconBg = MawaPrimaryContainer,
-                                title = "সম্পূর্ণ ডাটা JSON ব্যাকআপ",
-                                subtitle = "দোকানের সকল খতিয়ান, হিসাব, ফর্দ ও সেটিংস একটি ফাইলে সংরক্ষণ করুন",
-                                actionLabel = "JSON ডাউনলোড ও শেয়ার",
-                                onAction = {
-                                    scope.launch {
-                                        isProcessing = true
-                                        val json = viewModel.exportFullBackupJson()
-                                        val dateStr = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
-                                        DataBackupRestoreManager.shareTextFile(
-                                            context = context,
-                                            content = json,
-                                            fileName = "mawa_backup_$dateStr.json",
-                                            mimeType = "application/json",
-                                            title = "MAWA ডিজিটাল খাতা সম্পূর্ণ ব্যাকআপ ফাইল"
-                                        )
-                                        isProcessing = false
+                                            OutlinedButton(
+                                                onClick = { viewModel.logoutSupabase() },
+                                                shape = RoundedCornerShape(8.dp),
+                                                colors = ButtonDefaults.outlinedButtonColors(contentColor = FinancialNegative)
+                                            ) {
+                                                Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("লগআউট", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+                                        HorizontalDivider(color = Color(0xFF10B981).copy(alpha = 0.3f))
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = if (!lastSyncTime.isNullOrBlank()) "সর্বশেষ ক্লাউড সিঙ্ক: $lastSyncTime" else "এখনো ক্লাউডে সিঙ্ক করা হয়নি",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.height(12.dp))
+
+                                        // Big 1-Click Cloud Sync Button
+                                        Button(
+                                            onClick = { viewModel.syncAndRestoreFromCloud() },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(44.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                            enabled = !isCloudSyncing
+                                        ) {
+                                            if (isCloudSyncing) {
+                                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text("ক্লাউডে সিঙ্ক হচ্ছে...", fontWeight = FontWeight.Bold, color = Color.White)
+                                            } else {
+                                                Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text("১-ট্যাপে সম্পূর্ণ ক্লাউড সিঙ্ক ও ব্যাকআপ করুন", fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                        }
                                     }
                                 }
-                            )
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                                Spacer(modifier = Modifier.height(14.dp))
 
-                            BackupOptionCard(
-                                icon = Icons.Default.TableChart,
-                                iconTint = FinancialPositive,
-                                iconBg = FinancialPositiveContainer,
-                                title = "কাস্টমার তালিকা CSV / Excel এক্সপোর্ট",
-                                subtitle = "সকল গ্রাহকের নাম, মোবাইল, পূর্বের বাকি ও বর্তমান বাকি এক্সেল ফাইলে নিন",
-                                actionLabel = "CSV ডাউনলোড ও শেয়ার",
-                                onAction = {
-                                    val csv = DataBackupRestoreManager.generateCustomersCsv(customersWithBalance)
-                                    val dateStr = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
-                                    DataBackupRestoreManager.shareTextFile(
-                                        context = context,
-                                        content = csv,
-                                        fileName = "customers_$dateStr.csv",
-                                        mimeType = "text/csv",
-                                        title = "কাস্টমার বাকি খতিয়ান তালিকা CSV"
+                                // Remote Cloud Backups List
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "অনলাইন ব্যাকআপ তালিকা (${cloudBackups.size} টি)",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
                                     )
+                                    IconButton(
+                                        onClick = { viewModel.loadCloudBackups() },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "রিফ্রেশ করুন", tint = MawaPrimary)
+                                    }
                                 }
-                            )
 
-                            Spacer(modifier = Modifier.height(12.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
 
-                            BackupOptionCard(
-                                icon = Icons.Default.Receipt,
-                                iconTint = FinancialWarning,
-                                iconBg = MaterialTheme.colorScheme.surfaceVariant,
-                                title = "বাজারের ফর্দ তালিকা CSV এক্সপোর্ট",
-                                subtitle = "দোকানের বর্তমান কেনাকাটার ফর্দ ও দরদাম এক্সেল ফাইলে সংরক্ষণ করুন",
-                                actionLabel = "ফর্দ CSV শেয়ার",
-                                onAction = {
-                                    val csv = DataBackupRestoreManager.generateFordiCsv(fordiItems)
-                                    val dateStr = SimpleDateFormat("yyyyMMdd", Locale.US).format(Date())
-                                    DataBackupRestoreManager.shareTextFile(
-                                        context = context,
-                                        content = csv,
-                                        fileName = "fordi_list_$dateStr.csv",
-                                        mimeType = "text/csv",
-                                        title = "দোকানের বাজার ফর্দ তালিকা CSV"
-                                    )
+                                if (cloudBackups.isEmpty()) {
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                                    ) {
+                                        Text(
+                                            text = "কোনো ক্লাউড ব্যাকআপ পাওয়া যায়নি। উপরের 'ক্লাউড সিঙ্ক' বাটনে ট্যাপ করে ব্যাকআপ তৈরি করুন।",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.padding(14.dp)
+                                        )
+                                    }
+                                } else {
+                                    cloudBackups.forEach { backupItem ->
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(vertical = 4.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(12.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = "📦 ${backupItem.backupName}",
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                    Text(
+                                                        text = "📅 ${backupItem.updatedAt.ifBlank { "সংরক্ষিত" }}",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+
+                                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                    Button(
+                                                        onClick = { viewModel.restoreCloudBackup(backupItem) { _, _ -> } },
+                                                        shape = RoundedCornerShape(8.dp),
+                                                        colors = ButtonDefaults.buttonColors(containerColor = MawaPrimary)
+                                                    ) {
+                                                        Icon(Icons.Default.Restore, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                        Spacer(modifier = Modifier.width(4.dp))
+                                                        Text("রিস্টোর", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    }
+
+                                                    IconButton(
+                                                        onClick = { viewModel.deleteCloudBackup(backupItem.id) { _, _ -> } },
+                                                        modifier = Modifier.size(36.dp)
+                                                    ) {
+                                                        Icon(Icons.Default.Delete, contentDescription = "মুছুন", tint = FinancialNegative)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
-                            )
+                            } else {
+                                // Not Logged In - Quick Auth Form
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(36.dp)
+                                                    .clip(CircleShape)
+                                                    .background(MawaPrimaryContainer),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(Icons.Default.CloudSync, contentDescription = null, tint = MawaPrimary, modifier = Modifier.size(20.dp))
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column {
+                                                Text(
+                                                    text = if (isRegisterMode) "নতুন ক্লাউড একাউন্ট খুলুন" else "সুপাবেজ ক্লাউডে লগইন করুন",
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "অনলাইন ডাটাবেজে স্বয়ংক্রিয় ব্যাকআপ ও যেকোনো ডিভাইস থেকে এক্সেসের সুবিধা",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(14.dp))
+
+                                        if (isRegisterMode) {
+                                            OutlinedTextField(
+                                                value = authName,
+                                                onValueChange = { authName = it },
+                                                label = { Text("দোকানের নাম / আপনার নাম") },
+                                                leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                singleLine = true,
+                                                shape = RoundedCornerShape(10.dp)
+                                            )
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                        }
+
+                                        OutlinedTextField(
+                                            value = authEmail,
+                                            onValueChange = { authEmail = it },
+                                            label = { Text("ইমেইল অ্যাড্রেস") },
+                                            leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            singleLine = true,
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        OutlinedTextField(
+                                            value = authPassword,
+                                            onValueChange = { authPassword = it },
+                                            label = { Text("পাসওয়ার্ড (কমপক্ষে ৬ অক্ষর)") },
+                                            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                                            trailingIcon = {
+                                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                                    Icon(
+                                                        imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                                        contentDescription = null
+                                                    )
+                                                }
+                                            },
+                                            visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            singleLine = true,
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+
+                                        Spacer(modifier = Modifier.height(14.dp))
+
+                                        Button(
+                                            onClick = {
+                                                if (authEmail.isBlank() || authPassword.isBlank()) {
+                                                    Toast.makeText(context, "ইমেইল ও পাসওয়ার্ড প্রদান করুন", Toast.LENGTH_SHORT).show()
+                                                    return@Button
+                                                }
+                                                if (isRegisterMode) {
+                                                    viewModel.registerWithSupabase(authEmail.trim(), authPassword.trim(), authName.trim()) { _, _ -> }
+                                                } else {
+                                                    viewModel.loginWithSupabase(authEmail.trim(), authPassword.trim()) { _, _ -> }
+                                                }
+                                            },
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(44.dp),
+                                            shape = RoundedCornerShape(10.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                            enabled = !isAuthLoading
+                                        ) {
+                                            if (isAuthLoading) {
+                                                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                                            } else {
+                                                Text(
+                                                    text = if (isRegisterMode) "একাউন্ট তৈরি করুন" else "লগইন করুন",
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    fontSize = 14.sp
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            TextButton(onClick = { isRegisterMode = !isRegisterMode }) {
+                                                Text(if (isRegisterMode) "আগের একাউন্ট আছে? লগইন করুন" else "নতুন একাউন্ট খুলতে চান? রেজিস্টার", fontSize = 12.sp)
+                                            }
+
+                                            if (!isRegisterMode) {
+                                                TextButton(
+                                                    onClick = {
+                                                        if (authEmail.isBlank()) {
+                                                            Toast.makeText(context, "পাসওয়ার্ড রিসেটের জন্য ইমেইল লিখুন", Toast.LENGTH_SHORT).show()
+                                                        } else {
+                                                            viewModel.resetSupabasePassword(authEmail.trim()) { _, _ -> }
+                                                        }
+                                                    }
+                                                ) {
+                                                    Text("ভুলে গেছেন?", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         BackupTab.MEMO_EXPORT -> {
@@ -1056,8 +1485,11 @@ private fun BackupOptionCard(
     iconBg: Color,
     title: String,
     subtitle: String,
-    actionLabel: String,
-    onAction: () -> Unit
+    primaryActionLabel: String,
+    primaryActionIcon: ImageVector = Icons.Default.Download,
+    onPrimaryAction: () -> Unit,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -1069,14 +1501,14 @@ private fun BackupOptionCard(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Box(
                     modifier = Modifier
-                        .size(36.dp)
+                        .size(38.dp)
                         .clip(CircleShape)
                         .background(iconBg),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+                    Icon(imageVector = icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(22.dp))
                 }
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Column {
                     Text(
                         text = title,
@@ -1092,19 +1524,50 @@ private fun BackupOptionCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            Button(
-                onClick = onAction,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(40.dp),
-                shape = RoundedCornerShape(8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = iconTint)
-            ) {
-                Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(text = actionLabel, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+            if (secondaryActionLabel != null && onSecondaryAction != null) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = onPrimaryAction,
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = iconTint)
+                    ) {
+                        Icon(imageVector = primaryActionIcon, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(text = primaryActionLabel, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp)
+                    }
+
+                    OutlinedButton(
+                        onClick = onSecondaryAction,
+                        modifier = Modifier.height(42.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = iconTint)
+                    ) {
+                        Icon(imageVector = Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(text = secondaryActionLabel, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
+            } else {
+                Button(
+                    onClick = onPrimaryAction,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(42.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = iconTint)
+                ) {
+                    Icon(imageVector = primaryActionIcon, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(text = primaryActionLabel, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 13.sp)
+                }
             }
         }
     }
