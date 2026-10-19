@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Home
@@ -98,6 +99,7 @@ fun MoreScreen(
     onNavigateProducts: () -> Unit,
     onOpenHomeExpense: () -> Unit = {},
     onOpenSupabaseCloud: () -> Unit = {},
+    onOpenFirebaseCloud: () -> Unit = {},
     onOpenBackupRestore: () -> Unit = {},
     onLockApp: () -> Unit = {},
     modifier: Modifier = Modifier
@@ -106,6 +108,7 @@ fun MoreScreen(
     val settings by viewModel.shopSettings.collectAsStateWithLifecycle()
     val accountingSummary by viewModel.accountingSummary.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val currentFirebaseUser by viewModel.currentFirebaseUser.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     val isCashSoundEnabled by viewModel.isCashSoundEnabled.collectAsStateWithLifecycle()
     val isDailyBackupReminderEnabled by viewModel.isDailyBackupReminderEnabled.collectAsStateWithLifecycle()
@@ -300,6 +303,17 @@ fun MoreScreen(
                             subtitle = "বর্তমান মোড: ${themeMode.banglaTitle}",
                             onClick = { showThemeDialog = true },
                             testTag = "menu_theme_settings"
+                        )
+
+                        // Google Firebase Cloud Card in More Menu
+                        MoreMenuItem(
+                            icon = Icons.Default.CloudSync,
+                            iconTint = Color(0xFFFF9100),
+                            iconBg = Color(0xFFFF9100).copy(alpha = 0.18f),
+                            title = "গুগল ফায়ারবেস ক্লাউড ব্যাকআপ 🔥",
+                            subtitle = if (currentFirebaseUser != null) "লগইন: ${currentFirebaseUser?.displayName?.ifBlank { currentFirebaseUser?.email }}" else "Google Cloud Firestore সুরক্ষিত ব্যাকআপ ও রিস্টোর",
+                            onClick = onOpenFirebaseCloud,
+                            testTag = "menu_firebase_cloud"
                         )
 
                         // Supabase Cloud Card in More Menu

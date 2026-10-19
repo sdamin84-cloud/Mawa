@@ -1,0 +1,38 @@
+{
+  "entities": {
+    "User": {
+      "collection": "users",
+      "fields": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "updatedAt": { "type": "timestamp" }
+      }
+    },
+    "CloudBackup": {
+      "collection": "users/{userId}/cloud_backups",
+      "fields": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "backupName": { "type": "string" },
+        "dataJson": { "type": "string" },
+        "customerCount": { "type": "number" },
+        "transactionCount": { "type": "number" },
+        "productCount": { "type": "number" },
+        "totalBaki": { "type": "number" },
+        "createdAt": { "type": "timestamp" }
+      }
+    },
+    "CloudRecord": {
+      "collection": "users/{userId}/records",
+      "fields": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "recordType": { "type": "string" },
+        "localId": { "type": "number" },
+        "dataJson": { "type": "string" },
+        "updatedAt": { "type": "timestamp" }
+      }
+    }
+  }
+}

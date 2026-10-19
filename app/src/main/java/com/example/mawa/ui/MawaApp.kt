@@ -61,6 +61,7 @@ import com.example.mawa.ui.components.MawaSideDrawer
 import com.example.mawa.ui.components.MawaTab
 import com.example.mawa.ui.components.PaymentQrDialog
 import com.example.mawa.ui.components.SmartRetailCalculatorBottomSheet
+import com.example.mawa.ui.components.FirebaseCloudDialog
 import com.example.mawa.ui.components.SupabaseCloudDialog
 import com.example.mawa.ui.components.UserModePreferenceDialog
 import com.example.mawa.util.AppLockManager
@@ -111,6 +112,7 @@ fun MawaApp(
     var showModePreferenceDialog by remember { mutableStateOf(false) }
     var showBackupRestoreDialog by remember { mutableStateOf(false) }
     var showSupabaseCloudDialog by remember { mutableStateOf(false) }
+    var showFirebaseCloudDialog by remember { mutableStateOf(false) }
     var showPaymentQrDialog by remember { mutableStateOf(false) }
     var showSecuritySettingsDialog by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -184,6 +186,10 @@ fun MawaApp(
                 onOpenSupabaseCloud = {
                     coroutineScope.launch { drawerState.close() }
                     showSupabaseCloudDialog = true
+                },
+                onOpenFirebaseCloud = {
+                    coroutineScope.launch { drawerState.close() }
+                    showFirebaseCloudDialog = true
                 },
                 onNavigateAuth = {
                     coroutineScope.launch { drawerState.close() }
@@ -555,7 +561,8 @@ fun MawaApp(
         BackupRestoreDialog(
             viewModel = viewModel,
             onDismiss = { showBackupRestoreDialog = false },
-            onOpenSupabaseCloud = { showSupabaseCloudDialog = true }
+            onOpenSupabaseCloud = { showSupabaseCloudDialog = true },
+            onOpenFirebaseCloud = { showFirebaseCloudDialog = true }
         )
     }
 
@@ -564,6 +571,14 @@ fun MawaApp(
         SupabaseCloudDialog(
             viewModel = viewModel,
             onDismiss = { showSupabaseCloudDialog = false }
+        )
+    }
+
+    // Google Firebase Cloud Firestore Backup & Restore Dialog
+    if (showFirebaseCloudDialog) {
+        FirebaseCloudDialog(
+            viewModel = viewModel,
+            onDismiss = { showFirebaseCloudDialog = false }
         )
     }
 

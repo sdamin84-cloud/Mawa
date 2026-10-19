@@ -95,6 +95,7 @@ fun MawaSideDrawer(
     onNavigateCashTally: () -> Unit = {},
     onOpenBackupRestore: () -> Unit = {},
     onOpenSupabaseCloud: () -> Unit = {},
+    onOpenFirebaseCloud: () -> Unit = {},
     onNavigateAuth: () -> Unit = {},
     onOpenPaymentQr: () -> Unit = {},
     onOpenSecuritySettings: () -> Unit = {},
@@ -107,6 +108,7 @@ fun MawaSideDrawer(
     val settings by viewModel.shopSettings.collectAsStateWithLifecycle()
     val appMode by viewModel.currentAppMode.collectAsStateWithLifecycle()
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
+    val currentFirebaseUser by viewModel.currentFirebaseUser.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
     var showThemeDialog by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
@@ -303,6 +305,16 @@ fun MawaSideDrawer(
                 subtitle = "ক্যাশবক্স মিলানো, জমা-খরচ ও নোট গণনা",
                 onClick = onNavigateCashTally,
                 testTag = "drawer_cash_tally"
+            )
+
+            DrawerNavMenuItem(
+                icon = Icons.Default.CloudSync,
+                iconTint = Color(0xFFFF9100),
+                iconBg = Color(0xFFFF9100).copy(alpha = 0.15f),
+                title = "গুগল ফায়ারবেস ক্লাউড 🔥",
+                subtitle = if (currentFirebaseUser != null) "লগইন: ${currentFirebaseUser?.displayName?.ifBlank { currentFirebaseUser?.email }}" else "Google Cloud Firestore ব্যাকআপ ও রিস্টোর",
+                onClick = onOpenFirebaseCloud,
+                testTag = "drawer_firebase_cloud"
             )
 
             DrawerNavMenuItem(

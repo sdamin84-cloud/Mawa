@@ -30,6 +30,12 @@ import com.example.mawa.data.remote.supabase.SupabaseAuthManager
 import com.example.mawa.data.remote.supabase.SupabaseAuthResult
 import com.example.mawa.data.remote.supabase.SupabaseDbManager
 import com.example.mawa.data.remote.supabase.SupabaseUser
+import com.example.mawa.data.remote.firebase.FirebaseAuthManager
+import com.example.mawa.data.remote.firebase.FirebaseAuthResult
+import com.example.mawa.data.remote.firebase.FirebaseBackupItem
+import com.example.mawa.data.remote.firebase.FirebaseDbManager
+import com.example.mawa.data.remote.firebase.FirebaseOperationResult
+import com.example.mawa.data.remote.firebase.FirebaseUserProfile
 import com.example.mawa.data.repository.MawaRepository
 import com.example.mawa.util.BengaliUtils
 import com.example.mawa.util.CashChimePlayer
@@ -106,6 +112,19 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     private val _isCloudSyncing = MutableStateFlow(false)
     val isCloudSyncing: StateFlow<Boolean> = _isCloudSyncing.asStateFlow()
 
+    // Google Firebase Integration
+    val firebaseAuthManager = FirebaseAuthManager(application)
+    val firebaseDbManager = FirebaseDbManager(application, firebaseAuthManager)
+
+    val currentFirebaseUser: StateFlow<FirebaseUserProfile?> = firebaseAuthManager.currentUser
+    val isFirebaseAuthLoading: StateFlow<Boolean> = firebaseAuthManager.isLoading
+
+    private val _firebaseBackups = MutableStateFlow<List<FirebaseBackupItem>>(emptyList())
+    val firebaseBackups: StateFlow<List<FirebaseBackupItem>> = _firebaseBackups.asStateFlow()
+
+    private val _isFirebaseSyncing = MutableStateFlow(false)
+    val isFirebaseSyncing: StateFlow<Boolean> = _isFirebaseSyncing.asStateFlow()
+
     init {
         viewModelScope.launch {
             repository.seedInitialDataIfEmpty()
@@ -120,6 +139,15 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 } else {
                     _cloudBackups.value = emptyList()
+                }
+            }
+        }
+        viewModelScope.launch {
+            currentFirebaseUser.collect { user ->
+                if (user != null) {
+                    loadFirebaseBackups()
+                } else {
+                    _firebaseBackups.value = emptyList()
                 }
             }
         }
@@ -1386,4 +1414,136 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    // ==========================================
+    // GOOGLE FIREBASE CLOUD METHODS
+    // ==========================================
+
+    fun signInFirebaseWithGoogle(activityContext: Context, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            when (val res = firebaseAuthManager.signInWithGoogle(activityContext)) {
+                is FirebaseAuthResult.Success -> {
+                    _feedbackMessage.emit(res.message)
+                    loadFirebaseBackups()
+                    onResult(true, res.message)
+                }
+                is FirebaseAuthResult.Error -> {
+                    _feedbackMessage.emit(res.message)
+                    onResult(false, res.message)
+                }
+            }
+        }
+    }
+
+    fun signInFirebaseWithEmail(email: String, pass: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            when (val res = firebaseAuthManager.signInWithEmail(email, pass)) {
+                is FirebaseAuthResult.Success -> {
+                    _feedbackMessage.emit(res.message)
+                    loadFirebaseBackups()
+                    onResult(true, res.message)
+                }
+                is FirebaseAuthResult.Error -> {
+                    _feedbackMessage.emit(res.message)
+                    onResult(false, res.message)
+                }
+            }
+        }
+    }
+
+    fun signUpFirebaseWithEmail(email: String, pass: String, name: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            when (val res = firebaseAuthManager.signUpWithEmail(email, pass, name)) {
+                is FirebaseAuthResult.Success -> {
+                    _feedbackMessage.emit(res.message)
+                    loadFirebaseBackups()
+                    onResult(true, res.message)
+                }
+                is FirebaseAuthResult.Error -> {
+                    _feedbackMessage.emit(res.message)
+                    onResult(false, res.message)
+                }
+            }
+        }
+    }
+
+    fun signOutFirebase() {
+        firebaseAuthManager.signOut()
+        _firebaseBackups.value = emptyList()
+        viewModelScope.launch {
+            _feedbackMessage.emit("ফায়ারবেস ক্লাউড থেকে সাইন-আউট করা হয়েছে")
+        }
+    }
+
+    fun loadFirebaseBackups() {
+        viewModelScope.launch {
+            if (!firebaseAuthManager.isLoggedIn()) return@launch
+            when (val res = firebaseDbManager.fetchBackupsFromFirebase()) {
+                is FirebaseOperationResult.Success -> {
+                    _firebaseBackups.value = res.data
+                }
+                is FirebaseOperationResult.Error -> {
+                    Log.e("MawaVM", "Firebase backups error: ${res.message}")
+                }
+            }
+        }
+    }
+
+    fun uploadBackupToFirebase(backupName: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _isFirebaseSyncing.value = true
+            val fullData = repository.getFullBackupData()
+            when (val res = firebaseDbManager.uploadBackupToFirebase(backupName, fullData)) {
+                is FirebaseOperationResult.Success -> {
+                    _isFirebaseSyncing.value = false
+                    _feedbackMessage.emit(res.message)
+                    loadFirebaseBackups()
+                    onResult(true, res.message)
+                }
+                is FirebaseOperationResult.Error -> {
+                    _isFirebaseSyncing.value = false
+                    _feedbackMessage.emit(res.message)
+                    onResult(false, res.message)
+                }
+            }
+        }
+    }
+
+    fun restoreFirebaseBackup(backupItem: FirebaseBackupItem, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _isFirebaseSyncing.value = true
+            when (val res = firebaseDbManager.restoreBackupFromFirebase(backupItem.id)) {
+                is FirebaseOperationResult.Success -> {
+                    repository.restoreFullBackup(res.data, overwriteExisting = true)
+                    notifyDataChanged()
+                    _isFirebaseSyncing.value = false
+                    val msg = "ফায়ারবেস ব্যাকআপ '${backupItem.backupName}' সফলভাবে রিস্টোর হয়েছে!"
+                    _feedbackMessage.emit(msg)
+                    onResult(true, msg)
+                }
+                is FirebaseOperationResult.Error -> {
+                    _isFirebaseSyncing.value = false
+                    _feedbackMessage.emit(res.message)
+                    onResult(false, res.message)
+                }
+            }
+        }
+    }
+
+    fun deleteFirebaseBackup(backupId: String, onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            when (val res = firebaseDbManager.deleteBackupFromFirebase(backupId)) {
+                is FirebaseOperationResult.Success -> {
+                    loadFirebaseBackups()
+                    _feedbackMessage.emit("ফায়ারবেস ব্যাকআপ সফলভাবে মুছে ফেলা হয়েছে")
+                    onResult(true, "সফল")
+                }
+                is FirebaseOperationResult.Error -> {
+                    _feedbackMessage.emit(res.message)
+                    onResult(false, res.message)
+                }
+            }
+        }
+    }
 }
+
