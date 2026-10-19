@@ -2,6 +2,12 @@ package com.example.mawa.data.remote.supabase
 
 import android.content.Context
 import android.util.Log
+import com.example.mawa.data.local.entity.CustomerEntity
+import com.example.mawa.data.local.entity.DailyCashEntity
+import com.example.mawa.data.local.entity.FordiItemEntity
+import com.example.mawa.data.local.entity.ProductEntity
+import com.example.mawa.data.local.entity.ShopSettingsEntity
+import com.example.mawa.data.local.entity.TransactionEntity
 import com.example.mawa.data.repository.MawaRepository
 import com.example.mawa.util.DataBackupRestoreManager
 import com.example.mawa.util.FullBackupData
@@ -16,6 +22,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -57,13 +65,13 @@ class MawaSyncManager(
     }
 
     /**
-     * Start periodic real-time sync polling loop (every 25 seconds if logged in).
+     * Start periodic real-time sync polling loop (every 12 seconds if logged in).
      */
     fun startRealtimeSyncLoop() {
         realtimeLoopJob?.cancel()
         realtimeLoopJob = scope.launch {
             while (isActive) {
-                delay(25_000L) // 25 seconds interval
+                delay(12_000L) // 12 seconds interval for live responsive updates
                 if (authManager.isLoggedIn() && !_isSyncing.value) {
                     try {
                         Log.d("MawaSyncManager", "Realtime poller checking for remote updates...")
@@ -77,9 +85,10 @@ class MawaSyncManager(
     }
 
     /**
-     * Schedules a debounced auto-sync to push local changes to Supabase in real-time.
+     * Schedules a debounced auto-sync to push local changes to Supabase in real-time
+     * and prune any server records that were deleted locally.
      */
-    fun scheduleDebouncedAutoSync(delayMillis: Long = 1500L) {
+    fun scheduleDebouncedAutoSync(delayMillis: Long = 1000L) {
         if (!authManager.isLoggedIn()) return
 
         debounceSyncJob?.cancel()
@@ -91,6 +100,21 @@ class MawaSyncManager(
                     val localBackup = repository.getFullBackupData()
                     dbManager.uploadBackupToCloud("MAWA_LIVE_BACKUP", localBackup)
                     dbManager.syncAllRecordsToCloud(localBackup)
+
+                    // Prune server-side records that were deleted locally
+                    val validEntityIds = mutableSetOf<String>()
+                    localBackup.shopSettings?.let { validEntityIds.add("shop_settings_${it.id}") }
+                    localBackup.customers.forEach { validEntityIds.add("baki_${it.id}") }
+                    localBackup.transactions.forEach { validEntityIds.add("tx_${it.id}") }
+                    localBackup.products.forEach { validEntityIds.add("prod_${it.id}") }
+                    localBackup.dailyCashRecords.forEach { validEntityIds.add("daily_cash_${it.dateKey}") }
+                    localBackup.personalTransactions.forEach { validEntityIds.add("ptx_${it.id}") }
+                    localBackup.fordiItems.groupBy { SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(it.createdAt)) }.keys.forEach {
+                        validEntityIds.add("fordi_$it")
+                    }
+
+                    dbManager.deleteOrphanedCloudRecords(validEntityIds)
+
                     val timeNow = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.US).format(Date())
                     _lastSyncTimestamp.value = timeNow
                 }
@@ -113,7 +137,7 @@ class MawaSyncManager(
                         try {
                             val localBackup = repository.getFullBackupData()
                             // If local has new changes, push them as well
-                            dbManager.uploadBackupToCloud("MAWA_LOGIN_SYNC", localBackup)
+                            dbManager.uploadBackupToCloud("MAWA_LIVE_BACKUP", localBackup)
                             dbManager.syncAllRecordsToCloud(localBackup)
 
                             val timeNow = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.US).format(Date())
@@ -260,6 +284,229 @@ class MawaSyncManager(
                 withContext(Dispatchers.Main) {
                     onComplete(false, e.localizedMessage ?: "ডাটা পুল করতে ব্যর্থ")
                 }
+            }
+        }
+    }
+
+    // =========================================================================
+    //  GRANULAR LIVE REAL-TIME CRUD METHODS (Write to server / Delete from server)
+    // =========================================================================
+
+    fun pushCustomerLive(customer: CustomerEntity) {
+        if (!authManager.isLoggedIn()) return
+        scope.launch {
+            try {
+                val cJson = JSONObject().apply {
+                    put("id", customer.id.toString())
+                    put("customerName", customer.name)
+                    put("name", customer.name)
+                    put("phone", customer.phone)
+                    put("address", customer.address)
+                    put("details", customer.address)
+                    put("openingBalance", customer.openingBalance)
+                    put("note", customer.note)
+                    put("createdAt", customer.createdAt)
+                    put("updatedAt", System.currentTimeMillis())
+                }
+                dbManager.upsertSingleRecord(
+                    domain = "business",
+                    entityType = "BAKI",
+                    entityId = "baki_${customer.id}",
+                    data = cJson
+                )
+            } catch (e: Exception) {
+                Log.w("MawaSyncManager", "pushCustomerLive error: ${e.message}")
+            }
+        }
+    }
+
+    fun deleteCustomerLive(customerId: Long) {
+        if (!authManager.isLoggedIn()) return
+        scope.launch {
+            try {
+                dbManager.deleteCloudRecord(
+                    entityId = "baki_$customerId",
+                    entityType = "BAKI"
+                )
+            } catch (e: Exception) {
+                Log.w("MawaSyncManager", "deleteCustomerLive error: ${e.message}")
+            }
+        }
+    }
+
+    fun pushTransactionLive(tx: TransactionEntity) {
+        if (!authManager.isLoggedIn()) return
+        scope.launch {
+            try {
+                val tJson = JSONObject().apply {
+                    put("id", tx.id.toString())
+                    put("type", tx.type.name)
+                    put("amount", tx.amount)
+                    put("timestamp", tx.timestamp)
+                    put("customerId", tx.customerId)
+                    put("customerName", tx.customerName)
+                    put("productName", tx.productName)
+                    put("note", tx.note)
+                    put("category", tx.category)
+                    put("date", SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(tx.timestamp)))
+                    put("time", SimpleDateFormat("hh:mm a", Locale.US).format(Date(tx.timestamp)))
+                    put("updatedAt", tx.timestamp)
+                }
+                val entityType = when (tx.type) {
+                    com.example.mawa.data.local.entity.TransactionType.SALE_BAKI,
+                    com.example.mawa.data.local.entity.TransactionType.BAKI_COLLECTION -> "BAKI_TX"
+                    com.example.mawa.data.local.entity.TransactionType.EXPENSE_SHOP,
+                    com.example.mawa.data.local.entity.TransactionType.EXPENSE_HOME,
+                    com.example.mawa.data.local.entity.TransactionType.PURCHASE_DIRECT,
+                    com.example.mawa.data.local.entity.TransactionType.PURCHASE_FORDI -> "EXPENSE"
+                    else -> "SALE"
+                }
+                dbManager.upsertSingleRecord(
+                    domain = "business",
+                    entityType = entityType,
+                    entityId = "tx_${tx.id}",
+                    data = tJson
+                )
+            } catch (e: Exception) {
+                Log.w("MawaSyncManager", "pushTransactionLive error: ${e.message}")
+            }
+        }
+    }
+
+    fun deleteTransactionLive(transactionId: Long) {
+        if (!authManager.isLoggedIn()) return
+        scope.launch {
+            try {
+                dbManager.deleteCloudRecord(entityId = "tx_$transactionId")
+            } catch (e: Exception) {
+                Log.w("MawaSyncManager", "deleteTransactionLive error: ${e.message}")
+            }
+        }
+    }
+
+    fun pushProductLive(p: ProductEntity) {
+        if (!authManager.isLoggedIn()) return
+        scope.launch {
+            try {
+                val pJson = JSONObject().apply {
+                    put("id", p.id.toString())
+                    put("name", p.name)
+                    put("banglaName", p.banglaName)
+                    put("category", p.category)
+                    put("stockQuantity", p.stockQuantity)
+                    put("unit", p.unit)
+                    put("defaultPurchasePrice", p.defaultPurchasePrice)
+                    put("defaultSellingPrice", p.defaultSellingPrice)
+                    put("createdAt", p.createdAt)
+                    put("updatedAt", System.currentTimeMillis())
+                }
+                dbManager.upsertSingleRecord(
+                    domain = "business",
+                    entityType = "PRODUCT",
+                    entityId = "prod_${p.id}",
+                    data = pJson
+                )
+            } catch (e: Exception) {
+                Log.w("MawaSyncManager", "pushProductLive error: ${e.message}")
+            }
+        }
+    }
+
+    fun deleteProductLive(productId: Long) {
+        if (!authManager.isLoggedIn()) return
+        scope.launch {
+            try {
+                dbManager.deleteCloudRecord(
+                    entityId = "prod_$productId",
+                    entityType = "PRODUCT"
+                )
+            } catch (e: Exception) {
+                Log.w("MawaSyncManager", "deleteProductLive error: ${e.message}")
+            }
+        }
+    }
+
+    fun pushDailyCashLive(dc: DailyCashEntity) {
+        if (!authManager.isLoggedIn()) return
+        scope.launch {
+            try {
+                val dcJson = JSONObject().apply {
+                    put("dateKey", dc.dateKey)
+                    put("dateMillis", dc.dateMillis)
+                    put("sabekCash", dc.sabekCash)
+                    put("closingCash", dc.closingCash)
+                    put("isClosed", dc.isClosed)
+                    put("updatedAt", dc.updatedAt)
+                }
+                dbManager.upsertSingleRecord(
+                    domain = "business",
+                    entityType = "DAILY_CASH",
+                    entityId = "daily_cash_${dc.dateKey}",
+                    data = dcJson
+                )
+            } catch (e: Exception) {
+                Log.w("MawaSyncManager", "pushDailyCashLive error: ${e.message}")
+            }
+        }
+    }
+
+    fun pushFordiLive(items: List<FordiItemEntity>) {
+        if (!authManager.isLoggedIn() || items.isEmpty()) return
+        scope.launch {
+            try {
+                val fDate = SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(items.first().createdAt))
+                val fJson = JSONObject().apply {
+                    put("id", "fordi_$fDate")
+                    put("date", fDate)
+                    put("updatedAt", System.currentTimeMillis())
+                    val itemsArr = JSONArray()
+                    items.forEach { f ->
+                        val fo = JSONObject().apply {
+                            put("id", f.id)
+                            put("productName", f.productName)
+                            put("plannedQuantity", f.plannedQuantity)
+                            put("unit", f.unit)
+                            put("purchaseRate", f.purchaseRate)
+                            put("isPurchased", f.isPurchased)
+                            put("actualTotal", f.actualTotal)
+                        }
+                        itemsArr.put(fo)
+                    }
+                    put("items", itemsArr)
+                }
+                dbManager.upsertSingleRecord(
+                    domain = "business",
+                    entityType = "FORDI",
+                    entityId = "fordi_$fDate",
+                    data = fJson
+                )
+            } catch (e: Exception) {
+                Log.w("MawaSyncManager", "pushFordiLive error: ${e.message}")
+            }
+        }
+    }
+
+    fun deleteFordiLive(fDate: String) {
+        if (!authManager.isLoggedIn()) return
+        scope.launch {
+            try {
+                dbManager.deleteCloudRecord(
+                    entityId = "fordi_$fDate",
+                    entityType = "FORDI"
+                )
+            } catch (e: Exception) {
+                Log.w("MawaSyncManager", "deleteFordiLive error: ${e.message}")
+            }
+        }
+    }
+
+    fun clearAllCloudRecordsLive() {
+        if (!authManager.isLoggedIn()) return
+        scope.launch {
+            try {
+                dbManager.deleteCloudRecordsForUser()
+            } catch (e: Exception) {
+                Log.w("MawaSyncManager", "clearAllCloudRecordsLive error: ${e.message}")
             }
         }
     }

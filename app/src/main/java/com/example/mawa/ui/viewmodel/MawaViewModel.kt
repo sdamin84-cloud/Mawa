@@ -126,7 +126,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun notifyDataChanged() {
-        mawaSyncManager.scheduleDebouncedAutoSync()
+        mawaSyncManager.scheduleDebouncedAutoSync(500L)
     }
 
     // Selected Date for Home Screen (allows navigating to past days)
@@ -710,7 +710,8 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
                 nidOrGuarantor = nidOrGuarantor.trim(),
                 note = note.trim()
             )
-            repository.addCustomer(customer)
+            val newId = repository.addCustomer(customer)
+            mawaSyncManager.pushCustomerLive(customer.copy(id = newId))
             _feedbackMessage.emit("কাস্টমার $name যুক্ত হয়েছে")
             notifyDataChanged()
             onSuccess()
@@ -726,6 +727,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             val customer = allCustomers.value.find { it.id == customerId } ?: return@launch
             val updated = customer.copy(promisedPaymentDate = promiseDateMillis)
             repository.updateCustomer(updated)
+            mawaSyncManager.pushCustomerLive(updated)
             _feedbackMessage.emit("টাকা দেওয়ার তারিখ নির্ধারিত হয়েছে")
             notifyDataChanged()
             onSuccess()
@@ -766,6 +768,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     fun updateCustomer(customer: CustomerEntity, onSuccess: () -> Unit = {}) {
         viewModelScope.launch {
             repository.updateCustomer(customer)
+            mawaSyncManager.pushCustomerLive(customer)
             _feedbackMessage.emit("${customer.name} তথ্য আপডেট হয়েছে")
             notifyDataChanged()
             onSuccess()
@@ -775,6 +778,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteCustomer(id: Long) {
         viewModelScope.launch {
             repository.deleteCustomer(id)
+            mawaSyncManager.deleteCustomerLive(id)
             _feedbackMessage.emit("কাস্টমার মুছে ফেলা হয়েছে")
             notifyDataChanged()
         }
@@ -804,6 +808,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
                 category = category.ifBlank { "সাধারণ" }.trim()
             )
             repository.addProduct(product)
+            mawaSyncManager.pushProductLive(product)
             _feedbackMessage.emit("পণ্য $name যুক্ত হয়েছে")
             notifyDataChanged()
             onSuccess()
@@ -813,6 +818,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     fun updateProduct(product: ProductEntity, onSuccess: () -> Unit = {}) {
         viewModelScope.launch {
             repository.updateProduct(product)
+            mawaSyncManager.pushProductLive(product)
             _feedbackMessage.emit("${product.name} আপডেট হয়েছে")
             notifyDataChanged()
             onSuccess()
@@ -822,6 +828,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteProduct(id: Long) {
         viewModelScope.launch {
             repository.deleteProduct(id)
+            mawaSyncManager.deleteProductLive(id)
             _feedbackMessage.emit("পণ্য মুছে ফেলা হয়েছে")
             notifyDataChanged()
         }
@@ -864,6 +871,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteTransaction(id: Long) {
         viewModelScope.launch {
             repository.deleteTransaction(id)
+            mawaSyncManager.deleteTransactionLive(id)
             _feedbackMessage.emit("লেনদেন বাতিল করা হয়েছে")
             notifyDataChanged()
         }
@@ -1053,6 +1061,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         return try {
             val backupData = com.example.mawa.util.DataBackupRestoreManager.parseFromJsonString(jsonString)
             repository.restoreFullBackup(backupData, overwriteExisting)
+            notifyDataChanged()
             
             // If the restored backup contains transactions, update selected date to latest transaction or today
             val latestTxTimestamp = backupData.transactions.maxOfOrNull { it.timestamp }
@@ -1075,7 +1084,9 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     fun clearAllSampleData(clearSettings: Boolean = false, onSuccess: () -> Unit = {}) {
         viewModelScope.launch {
             repository.clearAllData(clearSettings)
+            mawaSyncManager.clearAllCloudRecordsLive()
             _feedbackMessage.emit("সকল ডামি ও স্যাম্পল ডাটা মুছে ফেলা হয়েছে")
+            notifyDataChanged()
             onSuccess()
         }
     }

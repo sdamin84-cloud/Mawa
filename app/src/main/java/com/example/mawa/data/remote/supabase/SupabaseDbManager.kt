@@ -53,52 +53,102 @@ class SupabaseDbManager(
             val jsonObjectData = JSONObject(jsonString)
             val nowIso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
 
+            val resolvedBackupName = backupName.ifBlank { "MAWA_BACKUP_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}" }
             val record = JSONObject().apply {
                 put("user_id", userId)
                 authManager.getUserEmail()?.let { put("email", it) }
-                put("backup_name", backupName.ifBlank { "MAWA_BACKUP_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())}" })
+                put("backup_name", resolvedBackupName)
                 put("backup_data", jsonObjectData) // Used by MawaSyncManager
                 put("data", jsonObjectData)        // Kept for backward compatibility
                 put("updated_at", nowIso)
             }
 
-            val requestBuilder = Request.Builder()
-                .url("${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_USER_BACKUPS}")
-                .addHeader("Prefer", "resolution=merge-duplicates,return=representation")
-                .post(record.toString().toRequestBody(jsonMediaType))
+            // If it's a live backup, try PATCH first to update the single master row without piling duplicate backups
+            val isLiveSync = resolvedBackupName.startsWith("MAWA_LIVE") || resolvedBackupName.startsWith("MAWA_LOGIN")
+            var responseSuccess = false
+            var responseBody = ""
 
-            getAuthHeaders().forEach { (k, v) -> requestBuilder.addHeader(k, v) }
+            if (isLiveSync) {
+                val patchUrl = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_USER_BACKUPS}?user_id=eq.$userId&backup_name=eq.$resolvedBackupName"
+                val patchRequest = Request.Builder()
+                    .url(patchUrl)
+                    .addHeader("Prefer", "return=representation")
+                    .patch(record.toString().toRequestBody(jsonMediaType))
+                getAuthHeaders().forEach { (k, v) -> patchRequest.addHeader(k, v) }
 
-            client.newCall(requestBuilder.build()).execute().use { response ->
-                val responseBody = response.body?.string() ?: ""
-                Log.d("SupabaseDb", "uploadBackup response: ${response.code} body: $responseBody")
-
-                if (response.isSuccessful) {
-                    val item = try {
-                        if (responseBody.startsWith("[")) {
-                            val arr = JSONArray(responseBody)
-                            if (arr.length() > 0) parseBackupItem(arr.getJSONObject(0)) else null
-                        } else if (responseBody.startsWith("{")) {
-                            parseBackupItem(JSONObject(responseBody))
-                        } else null
-                    } catch (e: Exception) {
-                        null
-                    } ?: CloudBackupItem(
-                        userId = userId,
-                        backupName = backupName,
-                        dataJson = jsonString,
-                        updatedAt = nowIso
-                    )
-
-                    return@withContext CloudOperationResult.Success(
-                        data = item,
-                        message = "সুপাবেজ ক্লাউডে ব্যাকআপ সফলভাবে সংরক্ষিত হয়েছে!"
-                    )
-                } else {
-                    return@withContext CloudOperationResult.Error(
-                        message = "ক্লাউড ব্যাকআপ আপলোড ব্যর্থ: ${parseError(responseBody, response.code)}"
-                    )
+                try {
+                    client.newCall(patchRequest.build()).execute().use { patchResp ->
+                        val pBody = patchResp.body?.string() ?: ""
+                        if (patchResp.isSuccessful && pBody.isNotBlank() && pBody != "[]") {
+                            responseSuccess = true
+                            responseBody = pBody
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.w("SupabaseDb", "Live patch fallback: ${e.message}")
                 }
+            }
+
+            if (!responseSuccess) {
+                val primaryUrl = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_USER_BACKUPS}?on_conflict=user_id,backup_name"
+                val requestBuilder = Request.Builder()
+                    .url(primaryUrl)
+                    .addHeader("Prefer", "resolution=merge-duplicates,return=representation")
+                    .post(record.toString().toRequestBody(jsonMediaType))
+
+                getAuthHeaders().forEach { (k, v) -> requestBuilder.addHeader(k, v) }
+
+                client.newCall(requestBuilder.build()).execute().use { response ->
+                    responseBody = response.body?.string() ?: ""
+                    responseSuccess = response.isSuccessful
+                    Log.d("SupabaseDb", "uploadBackup response: ${response.code} body: $responseBody")
+                }
+
+                // If 42P10 constraint mismatch or error, fallback to user_id or generic upsert
+                if (!responseSuccess && responseBody.contains("42P10")) {
+                    val fallbackUrl = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_USER_BACKUPS}?on_conflict=user_id"
+                    val fbReq = Request.Builder()
+                        .url(fallbackUrl)
+                        .addHeader("Prefer", "resolution=merge-duplicates,return=representation")
+                        .post(record.toString().toRequestBody(jsonMediaType))
+                    getAuthHeaders().forEach { (k, v) -> fbReq.addHeader(k, v) }
+                    try {
+                        client.newCall(fbReq.build()).execute().use { fbResp ->
+                            val fbBody = fbResp.body?.string() ?: ""
+                            if (fbResp.isSuccessful) {
+                                responseSuccess = true
+                                responseBody = fbBody
+                            }
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+
+            if (responseSuccess) {
+                val item = try {
+                    if (responseBody.startsWith("[")) {
+                        val arr = JSONArray(responseBody)
+                        if (arr.length() > 0) parseBackupItem(arr.getJSONObject(0)) else null
+                    } else if (responseBody.startsWith("{")) {
+                        parseBackupItem(JSONObject(responseBody))
+                    } else null
+                } catch (e: Exception) {
+                    null
+                } ?: CloudBackupItem(
+                    userId = userId,
+                    backupName = resolvedBackupName,
+                    dataJson = jsonString,
+                    updatedAt = nowIso
+                )
+
+                return@withContext CloudOperationResult.Success(
+                    data = item,
+                    message = "সুপাবেজ ক্লাউডে ব্যাকআপ সফলভাবে সংরক্ষিত হয়েছে!"
+                )
+            } else {
+                return@withContext CloudOperationResult.Error(
+                    message = "ক্লাউড ব্যাকআপ আপলোড ব্যর্থ: ${parseError(responseBody, 400)}"
+                )
             }
         } catch (e: Exception) {
             Log.e("SupabaseDb", "uploadBackup error", e)
@@ -415,27 +465,51 @@ class SupabaseDbManager(
                 return@withContext CloudOperationResult.Success(0, "সিঙ্ক করার মতো কোনো রেকর্ড পাওয়া যায়নি")
             }
 
+            val primaryUrl = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?on_conflict=user_id,domain,entity_type,entity_id"
             val requestBuilder = Request.Builder()
-                .url("${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}")
+                .url(primaryUrl)
                 .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
                 .post(recordsArray.toString().toRequestBody(jsonMediaType))
 
             getAuthHeaders().forEach { (k, v) -> requestBuilder.addHeader(k, v) }
 
-            client.newCall(requestBuilder.build()).execute().use { response ->
-                val responseBody = response.body?.string() ?: ""
-                Log.d("SupabaseDb", "syncAllRecords code: ${response.code}")
+            var isSuccess = false
+            var respBody = ""
+            var respCode = 0
 
-                if (response.isSuccessful) {
-                    return@withContext CloudOperationResult.Success(
-                        data = recordsArray.length(),
-                        message = "${recordsArray.length()}টি রেকর্ড সফলভাবে সুপাবেজ ক্লাউডে সিঙ্ক হয়েছে!"
-                    )
-                } else {
-                    return@withContext CloudOperationResult.Error(
-                        message = "ক্লাউড সিঙ্ক ব্যর্থ: ${parseError(responseBody, response.code)}"
-                    )
-                }
+            client.newCall(requestBuilder.build()).execute().use { response ->
+                respBody = response.body?.string() ?: ""
+                respCode = response.code
+                isSuccess = response.isSuccessful
+                Log.d("SupabaseDb", "syncAllRecords code: ${response.code}")
+            }
+
+            // Fallback for tables whose unique constraint is on (user_id, entity_type, entity_id)
+            if (!isSuccess && respBody.contains("42P10")) {
+                val fallbackUrl = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?on_conflict=user_id,entity_type,entity_id"
+                val fbReq = Request.Builder()
+                    .url(fallbackUrl)
+                    .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                    .post(recordsArray.toString().toRequestBody(jsonMediaType))
+                getAuthHeaders().forEach { (k, v) -> fbReq.addHeader(k, v) }
+                try {
+                    client.newCall(fbReq.build()).execute().use { fbResp ->
+                        respBody = fbResp.body?.string() ?: ""
+                        respCode = fbResp.code
+                        isSuccess = fbResp.isSuccessful
+                    }
+                } catch (_: Exception) {}
+            }
+
+            if (isSuccess) {
+                return@withContext CloudOperationResult.Success(
+                    data = recordsArray.length(),
+                    message = "${recordsArray.length()}টি রেকর্ড সফলভাবে সুপাবেজ ক্লাউডে সিঙ্ক হয়েছে!"
+                )
+            } else {
+                return@withContext CloudOperationResult.Error(
+                    message = "ক্লাউড সিঙ্ক ব্যর্থ: ${parseError(respBody, respCode)}"
+                )
             }
         } catch (e: Exception) {
             Log.e("SupabaseDb", "syncAllRecords error", e)
@@ -476,8 +550,30 @@ class SupabaseDbManager(
                     var shopSettings: com.example.mawa.data.local.entity.ShopSettingsEntity? = null
                     val personalTx = mutableListOf<com.example.mawa.data.local.entity.PersonalTransactionEntity>()
 
+                    // Check if discrete transactions exist to avoid duplicate injection from BAKI models
+                    val hasDiscreteTransactions = (0 until arr.length()).any {
+                        val t = arr.getJSONObject(it).optString("entity_type", "").uppercase(Locale.US)
+                        t in setOf("BAKI_TX", "EXPENSE", "EXPENSE_SHOP", "EXPENSE_HOME", "PURCHASE", "SALE")
+                    }
+
+                    // Group and intelligently reconcile records with the same entity_id (e.g. from 'business' and 'BUSINESS' domains)
+                    // Comparing timestamps and contents to ensure neither sabekCash, closingCash, nor transaction info is lost!
+                    val unifiedRecordMap = mutableMapOf<String, JSONObject>()
                     for (i in 0 until arr.length()) {
                         val obj = arr.getJSONObject(i)
+                        val eId = obj.optString("entity_id", "").trim()
+                        val eType = obj.optString("entity_type", "").uppercase(Locale.US)
+                        val key = if (eId.isNotBlank()) "${eType}_$eId" else "raw_$i"
+
+                        if (unifiedRecordMap.containsKey(key)) {
+                            val existing = unifiedRecordMap[key]!!
+                            unifiedRecordMap[key] = mergeDuplicateCloudEntities(existing, obj, eType)
+                        } else {
+                            unifiedRecordMap[key] = obj
+                        }
+                    }
+
+                    for (obj in unifiedRecordMap.values) {
                         val entityType = obj.optString("entity_type", "").uppercase(Locale.US)
                         val dataObj = if (obj.has("data")) {
                             val d = obj.get("data")
@@ -507,7 +603,8 @@ class SupabaseDbManager(
                                 
                                 val innerTxArr = dataObj.optJSONArray("transactions")
                                 var hasSpecificTx = false
-                                if (innerTxArr != null && innerTxArr.length() > 0) {
+                                // Only parse inner transactions if no discrete transaction records exist in the cloud
+                                if (!hasDiscreteTransactions && innerTxArr != null && innerTxArr.length() > 0) {
                                     for (j in 0 until innerTxArr.length()) {
                                         val txObj = innerTxArr.optJSONObject(j) ?: continue
                                         val txAmt = txObj.optDouble("amount", 0.0)
@@ -667,6 +764,102 @@ class SupabaseDbManager(
         }
     }
 
+    /**
+     * Compares two records with the same entity_id (e.g. from 'business' and 'BUSINESS' domains)
+     * and intelligently merges them so no financial, customer, cash, or transactional data is lost.
+     */
+    private fun mergeDuplicateCloudEntities(
+        existingObj: JSONObject,
+        incomingObj: JSONObject,
+        entityType: String
+    ): JSONObject {
+        val existingData = if (existingObj.has("data")) {
+            val d = existingObj.get("data")
+            if (d is JSONObject) d else JSONObject(d.toString())
+        } else JSONObject()
+
+        val incomingData = if (incomingObj.has("data")) {
+            val d = incomingObj.get("data")
+            if (d is JSONObject) d else JSONObject(d.toString())
+        } else JSONObject()
+
+        val existingUpdated = existingObj.optString("updated_at", "")
+        val incomingUpdated = incomingObj.optString("updated_at", "")
+        val isIncomingNewer = incomingUpdated > existingUpdated
+
+        val mergedData = JSONObject()
+
+        val baseData = if (isIncomingNewer) incomingData else existingData
+        val secondaryData = if (isIncomingNewer) existingData else incomingData
+
+        val secKeys = secondaryData.keys()
+        while (secKeys.hasNext()) {
+            val k = secKeys.next()
+            mergedData.put(k, secondaryData.get(k))
+        }
+        val baseKeys = baseData.keys()
+        while (baseKeys.hasNext()) {
+            val k = baseKeys.next()
+            mergedData.put(k, baseData.get(k))
+        }
+
+        // Deep field-level preservation
+        when (entityType) {
+            "DAILY_CASH" -> {
+                val sabek1 = existingData.optDouble("sabekCash", 0.0)
+                val sabek2 = incomingData.optDouble("sabekCash", 0.0)
+                val closing1 = existingData.optDouble("closingCash", 0.0)
+                val closing2 = incomingData.optDouble("closingCash", 0.0)
+                val isClosed = existingData.optBoolean("isClosed", false) || incomingData.optBoolean("isClosed", false)
+
+                mergedData.put("sabekCash", if (sabek1 > 0 && sabek2 <= 0) sabek1 else if (sabek2 > 0 && sabek1 <= 0) sabek2 else maxOf(sabek1, sabek2))
+                mergedData.put("closingCash", if (closing1 > 0 && closing2 <= 0) closing1 else if (closing2 > 0 && closing1 <= 0) closing2 else maxOf(closing1, closing2))
+                mergedData.put("isClosed", isClosed)
+                val maxMillis = maxOf(existingData.optLong("dateMillis", 0L), incomingData.optLong("dateMillis", 0L))
+                if (maxMillis > 0) mergedData.put("dateMillis", maxMillis)
+            }
+            "BAKI", "BAKI_CUSTOMER", "CUSTOMER" -> {
+                val phone1 = existingData.optString("phone", "").trim()
+                val phone2 = incomingData.optString("phone", "").trim()
+                val addr1 = existingData.optString("address", existingData.optString("details", "")).trim()
+                val addr2 = incomingData.optString("address", incomingData.optString("details", "")).trim()
+                val bal1 = existingData.optDouble("openingBalance", existingData.optDouble("amount", 0.0))
+                val bal2 = incomingData.optDouble("openingBalance", incomingData.optDouble("amount", 0.0))
+
+                if (phone1.isNotBlank() && phone2.isBlank()) mergedData.put("phone", phone1)
+                if (addr1.isNotBlank() && addr2.isBlank()) mergedData.put("address", addr1)
+                if (bal1 > 0 && bal2 <= 0) mergedData.put("openingBalance", bal1)
+                else if (bal2 > 0 && bal1 <= 0) mergedData.put("openingBalance", bal2)
+
+                val tx1 = existingData.optJSONArray("transactions")
+                val tx2 = incomingData.optJSONArray("transactions")
+                if (tx1 != null && tx1.length() > 0 && (tx2 == null || tx2.length() == 0)) {
+                    mergedData.put("transactions", tx1)
+                } else if (tx2 != null && tx2.length() > 0 && (tx1 == null || tx1.length() == 0)) {
+                    mergedData.put("transactions", tx2)
+                }
+            }
+            "SETTINGS" -> {
+                val ob1 = existingData.optDouble("openingBalance", 0.0)
+                val ob2 = incomingData.optDouble("openingBalance", 0.0)
+                mergedData.put("openingBalance", if (ob1 > 0 && ob2 <= 0) ob1 else if (ob2 > 0 && ob1 <= 0) ob2 else maxOf(ob1, ob2))
+            }
+            "PRODUCT" -> {
+                val p1 = existingData.optDouble("defaultSellingPrice", existingData.optDouble("sellingPrice", 0.0))
+                val p2 = incomingData.optDouble("defaultSellingPrice", incomingData.optDouble("sellingPrice", 0.0))
+                if (p1 > 0 && p2 <= 0) mergedData.put("defaultSellingPrice", p1)
+            }
+        }
+
+        return JSONObject().apply {
+            put("entity_id", existingObj.optString("entity_id", incomingObj.optString("entity_id", "")))
+            put("entity_type", entityType)
+            put("domain", "business")
+            put("data", mergedData)
+            put("updated_at", if (isIncomingNewer) incomingUpdated else existingUpdated)
+        }
+    }
+
     private fun parseBackupItem(obj: JSONObject): CloudBackupItem {
         val id = obj.optLong("id", 0L)
         val uId = obj.optString("user_id", "")
@@ -684,6 +877,226 @@ class SupabaseDbManager(
             dataJson = dataStr,
             updatedAt = updatedAt
         )
+    }
+
+    /**
+     * Upsert a single discrete record into Supabase `mawa_cloud_records` table instantly on mutation.
+     */
+    suspend fun upsertSingleRecord(
+        domain: String,
+        entityType: String,
+        entityId: String,
+        data: JSONObject
+    ): CloudOperationResult<Boolean> = withContext(Dispatchers.IO) {
+        val userId = authManager.getUserId()
+        if (userId.isNullOrBlank()) {
+            return@withContext CloudOperationResult.Error("ব্যবহারকারী লগইন নেই")
+        }
+
+        try {
+            val nowIso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).format(Date())
+            val record = JSONObject().apply {
+                put("user_id", userId)
+                put("domain", domain)
+                put("entity_type", entityType)
+                put("entity_id", entityId)
+                put("data", data)
+                put("updated_at", nowIso)
+            }
+
+            val url = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?on_conflict=user_id,domain,entity_type,entity_id"
+            val request = Request.Builder()
+                .url(url)
+                .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                .post(record.toString().toRequestBody(jsonMediaType))
+
+            getAuthHeaders().forEach { (k, v) -> request.addHeader(k, v) }
+
+            var isSuccess = false
+            var errRespBody = ""
+            var errRespCode = 0
+
+            client.newCall(request.build()).execute().use { response ->
+                if (response.isSuccessful || response.code in listOf(200, 201, 204)) {
+                    isSuccess = true
+                } else {
+                    errRespBody = response.body?.string() ?: ""
+                    errRespCode = response.code
+                }
+            }
+
+            // Fallback 1: Unique index on (user_id, entity_type, entity_id) without domain
+            if (!isSuccess && errRespBody.contains("42P10")) {
+                val fallbackUrl1 = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?on_conflict=user_id,entity_type,entity_id"
+                val fbReq1 = Request.Builder()
+                    .url(fallbackUrl1)
+                    .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                    .post(record.toString().toRequestBody(jsonMediaType))
+                getAuthHeaders().forEach { (k, v) -> fbReq1.addHeader(k, v) }
+
+                try {
+                    client.newCall(fbReq1.build()).execute().use { fb1 ->
+                        if (fb1.isSuccessful || fb1.code in listOf(200, 201, 204)) {
+                            isSuccess = true
+                        } else {
+                            errRespBody = fb1.body?.string() ?: ""
+                            errRespCode = fb1.code
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // Fallback 2: Unique index on (user_id, entity_id)
+            if (!isSuccess && errRespBody.contains("42P10")) {
+                val fallbackUrl2 = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?on_conflict=user_id,entity_id"
+                val fbReq2 = Request.Builder()
+                    .url(fallbackUrl2)
+                    .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                    .post(record.toString().toRequestBody(jsonMediaType))
+                getAuthHeaders().forEach { (k, v) -> fbReq2.addHeader(k, v) }
+
+                try {
+                    client.newCall(fbReq2.build()).execute().use { fb2 ->
+                        if (fb2.isSuccessful || fb2.code in listOf(200, 201, 204)) {
+                            isSuccess = true
+                        } else {
+                            errRespBody = fb2.body?.string() ?: ""
+                            errRespCode = fb2.code
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            // Fallback 3: Generic upsert
+            if (!isSuccess) {
+                val fallbackUrl3 = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}"
+                val fbReq3 = Request.Builder()
+                    .url(fallbackUrl3)
+                    .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                    .post(record.toString().toRequestBody(jsonMediaType))
+                getAuthHeaders().forEach { (k, v) -> fbReq3.addHeader(k, v) }
+
+                try {
+                    client.newCall(fbReq3.build()).execute().use { fb3 ->
+                        if (fb3.isSuccessful || fb3.code in listOf(200, 201, 204)) {
+                            isSuccess = true
+                        } else {
+                            errRespBody = fb3.body?.string() ?: ""
+                            errRespCode = fb3.code
+                        }
+                    }
+                } catch (_: Exception) {}
+            }
+
+            if (isSuccess) {
+                CloudOperationResult.Success(true, "সার্ভারে লাইভ সংরক্ষিত হয়েছে")
+            } else {
+                CloudOperationResult.Error("আপলোড ব্যর্থ: ${parseError(errRespBody, errRespCode)}")
+            }
+        } catch (e: Exception) {
+            Log.e("SupabaseDb", "upsertSingleRecord error", e)
+            CloudOperationResult.Error("ত্রুটি: ${e.localizedMessage}")
+        }
+    }
+
+    /**
+     * Delete a single record from Supabase `mawa_cloud_records` immediately when deleted locally.
+     */
+    suspend fun deleteCloudRecord(
+        entityId: String,
+        entityType: String? = null
+    ): CloudOperationResult<Boolean> = withContext(Dispatchers.IO) {
+        val userId = authManager.getUserId()
+        if (userId.isNullOrBlank()) {
+            return@withContext CloudOperationResult.Error("লগইন নেই")
+        }
+
+        try {
+            var url = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?user_id=eq.$userId&entity_id=eq.$entityId"
+            if (!entityType.isNullOrBlank()) {
+                url += "&entity_type=eq.$entityType"
+            }
+
+            val request = Request.Builder()
+                .url(url)
+                .delete()
+
+            getAuthHeaders().forEach { (k, v) -> request.addHeader(k, v) }
+
+            client.newCall(request.build()).execute().use { response ->
+                if (response.isSuccessful || response.code in listOf(200, 204)) {
+                    Log.d("SupabaseDb", "deleteCloudRecord success for entityId: $entityId")
+                    CloudOperationResult.Success(true, "সার্ভার থেকে সফলভাবে মুছে ফেলা হয়েছে")
+                } else {
+                    val body = response.body?.string() ?: ""
+                    CloudOperationResult.Error("সার্ভার থেকে মুছতে ব্যর্থ: ${parseError(body, response.code)}")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("SupabaseDb", "deleteCloudRecord error", e)
+            CloudOperationResult.Error("মুছতে সমস্যা: ${e.localizedMessage}")
+        }
+    }
+
+    /**
+     * Delete all cloud records for current user (used when clearing sample data or resetting).
+     */
+    suspend fun deleteCloudRecordsForUser(): CloudOperationResult<Boolean> = withContext(Dispatchers.IO) {
+        val userId = authManager.getUserId()
+        if (userId.isNullOrBlank()) return@withContext CloudOperationResult.Error("লগইন নেই")
+
+        try {
+            val url = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?user_id=eq.$userId"
+            val request = Request.Builder().url(url).delete()
+            getAuthHeaders().forEach { (k, v) -> request.addHeader(k, v) }
+
+            client.newCall(request.build()).execute().use { response ->
+                if (response.isSuccessful || response.code in listOf(200, 204)) {
+                    CloudOperationResult.Success(true, "ক্লাউডের সকল রেকর্ড মুছে দেওয়া হয়েছে")
+                } else {
+                    CloudOperationResult.Error("মুছতে ব্যর্থ: ${response.code}")
+                }
+            }
+        } catch (e: Exception) {
+            CloudOperationResult.Error("ত্রুটি: ${e.localizedMessage}")
+        }
+    }
+
+    /**
+     * Prunes orphaned cloud records in `mawa_cloud_records` whose entity IDs are no longer in the local database.
+     */
+    suspend fun deleteOrphanedCloudRecords(validEntityIds: Set<String>): CloudOperationResult<Int> = withContext(Dispatchers.IO) {
+        val userId = authManager.getUserId()
+        if (userId.isNullOrBlank()) return@withContext CloudOperationResult.Success(0)
+
+        try {
+            val url = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?user_id=eq.$userId&select=entity_id"
+            val request = Request.Builder().url(url).get()
+            getAuthHeaders().forEach { (k, v) -> request.addHeader(k, v) }
+
+            val remoteIds = mutableListOf<String>()
+            client.newCall(request.build()).execute().use { response ->
+                if (response.isSuccessful) {
+                    val body = response.body?.string() ?: ""
+                    val arr = JSONArray(body)
+                    for (i in 0 until arr.length()) {
+                        val eId = arr.getJSONObject(i).optString("entity_id", "")
+                        if (eId.isNotBlank()) remoteIds.add(eId)
+                    }
+                }
+            }
+
+            val orphanedIds = remoteIds.filter { it !in validEntityIds }
+            var deletedCount = 0
+            for (orphanId in orphanedIds) {
+                deleteCloudRecord(orphanId)
+                deletedCount++
+            }
+            CloudOperationResult.Success(deletedCount, "$deletedCount টি অপসারিত রেকর্ড সার্ভার থেকে মুছে দেওয়া হয়েছে")
+        } catch (e: Exception) {
+            Log.w("SupabaseDb", "deleteOrphanedCloudRecords warning: ${e.message}")
+            CloudOperationResult.Success(0)
+        }
     }
 
     private fun parseError(body: String, code: Int): String {

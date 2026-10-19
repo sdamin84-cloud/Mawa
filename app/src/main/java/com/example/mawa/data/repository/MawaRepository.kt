@@ -861,19 +861,68 @@ class MawaRepository(private val database: MawaDatabase) {
             settingsDao.insertOrUpdateSettings(it)
         }
 
-        // Restore Supplier Companies
+        // Restore Supplier Companies with deduplication
         if (data.supplierCompanies.isNotEmpty()) {
-            supplierCompanyDao.insertCompanies(data.supplierCompanies)
+            if (overwriteExisting) {
+                supplierCompanyDao.insertCompanies(data.supplierCompanies)
+            } else {
+                val existingNames = supplierCompanyDao.getAllCompaniesDirect().map { it.companyName.trim().lowercase() }.toSet()
+                val toInsert = data.supplierCompanies.filter { !existingNames.contains(it.companyName.trim().lowercase()) }
+                if (toInsert.isNotEmpty()) {
+                    supplierCompanyDao.insertCompanies(toInsert)
+                }
+            }
         }
 
-        // Restore Daily Cash Records
+        // Restore Daily Cash Records with intelligent value preservation
         if (data.dailyCashRecords.isNotEmpty()) {
-            dailyCashDao.insertDailyCashList(data.dailyCashRecords)
+            if (overwriteExisting) {
+                dailyCashDao.insertDailyCashList(data.dailyCashRecords)
+            } else {
+                val existingDailyCash = dailyCashDao.getAllDailyCashDirect().associateBy { it.dateKey }.toMutableMap()
+                val dcToSave = mutableListOf<DailyCashEntity>()
+
+                for (incoming in data.dailyCashRecords) {
+                    val local = existingDailyCash[incoming.dateKey]
+                    if (local == null) {
+                        dcToSave.add(incoming)
+                    } else {
+                        // Merge without losing either sabekCash or closingCash!
+                        val mergedSabek = if (local.sabekCash > 0) local.sabekCash else incoming.sabekCash
+                        val mergedClosing = if (local.closingCash > 0) local.closingCash else incoming.closingCash
+                        val mergedClosed = local.isClosed || incoming.isClosed
+                        val mergedMillis = if (local.dateMillis > 0) local.dateMillis else incoming.dateMillis
+                        val mergedUpdated = maxOf(local.updatedAt, incoming.updatedAt)
+
+                        val merged = local.copy(
+                            dateMillis = mergedMillis,
+                            sabekCash = mergedSabek,
+                            closingCash = mergedClosing,
+                            isClosed = mergedClosed,
+                            updatedAt = mergedUpdated
+                        )
+                        if (merged != local) {
+                            dcToSave.add(merged)
+                        }
+                    }
+                }
+                if (dcToSave.isNotEmpty()) {
+                    dailyCashDao.insertDailyCashList(dcToSave)
+                }
+            }
         }
 
-        // Restore Cash Tally Records
+        // Restore Cash Tally Records with deduplication
         if (data.cashTallyRecords.isNotEmpty()) {
-            cashTallyDao.insertTallies(data.cashTallyRecords)
+            if (overwriteExisting) {
+                cashTallyDao.insertTallies(data.cashTallyRecords)
+            } else {
+                val existingTallies = cashTallyDao.getAllTalliesDirect().map { it.dateMillis / 60000L }.toSet()
+                val talliesToInsert = data.cashTallyRecords.filter { !existingTallies.contains(it.dateMillis / 60000L) }
+                if (talliesToInsert.isNotEmpty()) {
+                    cashTallyDao.insertTallies(talliesToInsert)
+                }
+            }
         }
 
         // Prepare customers to insert
@@ -940,29 +989,62 @@ class MawaRepository(private val database: MawaDatabase) {
             if (overwriteExisting) {
                 transactionDao.insertTransactions(finalTransactions)
             } else {
-                // Deduplicate transactions against existing DB records
-                val existingTxList = transactionDao.getAllTransactionsDirect()
+                // Deduplicate transactions against existing DB records using robust cross-app content signature
+                val existingTxList = transactionDao.getAllTransactionsDirect().toMutableList()
                 val existingTxIds = existingTxList.map { it.id }.toSet()
                 
-                // Helper to create unique transaction signature
-                fun txSignature(tx: TransactionEntity): String {
-                    val cId = tx.customerId ?: 0L
-                    val pId = tx.productId ?: 0L
-                    val noteTrim = tx.note.trim()
-                    // Discard sub-second drift by rounding to nearest 2 seconds
-                    val timeBucket = tx.timestamp / 2000L
-                    return "${tx.type.name}_${tx.amount}_${timeBucket}_${cId}_${pId}_$noteTrim"
+                fun isTxDuplicate(tx: TransactionEntity, existing: List<TransactionEntity>): Boolean {
+                    if (tx.id > 0 && existingTxIds.contains(tx.id)) return true
+                    val cName = tx.customerName?.trim()?.lowercase() ?: ""
+                    val pName = tx.productName?.trim()?.lowercase() ?: ""
+                    val noteTrim = tx.note.trim().lowercase()
+                    val amtCents = (tx.amount * 100).toLong()
+                    val dayBucket = tx.timestamp / 86400000L
+
+                    return existing.any { ex ->
+                        val exAmtCents = (ex.amount * 100).toLong()
+                        if (exAmtCents != amtCents || ex.type != tx.type) return@any false
+
+                        val exCName = ex.customerName?.trim()?.lowercase() ?: ""
+                        val exPName = ex.productName?.trim()?.lowercase() ?: ""
+                        val exNoteTrim = ex.note.trim().lowercase()
+                        val exDayBucket = ex.timestamp / 86400000L
+
+                        // 1. Exact match within 5 minutes
+                        val timeDiff = kotlin.math.abs(ex.timestamp - tx.timestamp)
+                        if (timeDiff <= 300_000L) {
+                            if (cName.isNotBlank() && exCName.isNotBlank()) {
+                                return@any cName == exCName
+                            }
+                            return@any true
+                        }
+
+                        // 2. Same day, same customer match
+                        if (dayBucket == exDayBucket && cName.isNotBlank() && cName == exCName) {
+                            return@any true
+                        }
+
+                        // 3. Same day cash sale match
+                        if (dayBucket == exDayBucket && tx.type == com.example.mawa.data.local.entity.TransactionType.SALE_CASH && ex.type == com.example.mawa.data.local.entity.TransactionType.SALE_CASH) {
+                            return@any true
+                        }
+
+                        // 4. Same day, same note match
+                        if (dayBucket == exDayBucket && noteTrim.isNotBlank() && noteTrim == exNoteTrim) {
+                            return@any true
+                        }
+
+                        false
+                    }
                 }
 
-                val existingSignatures = existingTxList.map { txSignature(it) }.toMutableSet()
                 val txToInsert = mutableListOf<TransactionEntity>()
+                val combinedExisting = existingTxList.toMutableList()
 
                 for (tx in finalTransactions) {
-                    val sig = txSignature(tx)
-                    val idExists = tx.id > 0 && existingTxIds.contains(tx.id)
-                    if (!idExists && !existingSignatures.contains(sig)) {
+                    if (!isTxDuplicate(tx, combinedExisting)) {
                         txToInsert.add(tx)
-                        existingSignatures.add(sig)
+                        combinedExisting.add(tx)
                     }
                 }
 

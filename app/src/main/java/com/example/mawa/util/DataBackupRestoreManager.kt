@@ -697,6 +697,10 @@ object DataBackupRestoreManager {
             }
         }
 
+        // Check if top-level structured data exists to avoid duplicate parsing from legacy key blocks
+        val hasStructuredTransactions = transactions.isNotEmpty()
+        val hasStructuredCustomers = customers.isNotEmpty()
+
         // --- Handle Key-Value / SharedPreferences Backup Format ---
         // e.g. key_baki_records, key_expenses_DD-MM-YYYY, key_fordi_records, key_product_memory, key_sabek_cash_...
         var latestSabekCashDate = 0L
@@ -708,7 +712,8 @@ object DataBackupRestoreManager {
             val lowerKey = key.lowercase()
 
             // 1. Customer Baki records (e.g. key_baki_records, baki_list, etc.)
-            if (lowerKey.contains("baki_record") || lowerKey.contains("baki_list") || lowerKey == "key_baki_records" || lowerKey == "baki") {
+            // Only parse if top-level structured arrays were missing in the backup file
+            if (!hasStructuredCustomers && (lowerKey.contains("baki_record") || lowerKey.contains("baki_list") || lowerKey == "key_baki_records" || lowerKey == "baki")) {
                 val bakiArr = root.optJSONArray(key)
                 if (bakiArr != null) {
                     for (i in 0 until bakiArr.length()) {
@@ -722,7 +727,7 @@ object DataBackupRestoreManager {
                         val txArrInner = cObj.optJSONArray("transactions")
 
                         var hasSpecificTransactions = false
-                        if (txArrInner != null && txArrInner.length() > 0) {
+                        if (!hasStructuredTransactions && txArrInner != null && txArrInner.length() > 0) {
                             for (j in 0 until txArrInner.length()) {
                                 val txObj = txArrInner.optJSONObject(j) ?: continue
                                 if (txObj.optLong("deletedAt", 0L) > 0) continue
@@ -770,7 +775,8 @@ object DataBackupRestoreManager {
             }
 
             // 2. Expenses / Purchases / Sales by date (e.g. expenses_by_date, key_expenses_06-08-2026, expenses_..., etc.)
-            if (lowerKey.contains("expense") || lowerKey.contains("cost_") || lowerKey.contains("khoroch")) {
+            // Only parse if top-level structured transactions array was absent
+            if (!hasStructuredTransactions && (lowerKey.contains("expense") || lowerKey.contains("cost_") || lowerKey.contains("khoroch"))) {
                 val expArr = root.optJSONArray(key)
                 val expObj = root.optJSONObject(key)
                 val dateFromKey = extractDateStringFromKey(key)
@@ -934,7 +940,8 @@ object DataBackupRestoreManager {
             }
 
             // 6. Cash Sales by date (e.g. key_cash_sale_15-06-2026, cash_sale_...)
-            if (lowerKey.contains("cash_sale") || lowerKey.contains("nogod_sale") || lowerKey.contains("daily_sale")) {
+            // Only parse if top-level structured transactions array was absent
+            if (!hasStructuredTransactions && (lowerKey.contains("cash_sale") || lowerKey.contains("nogod_sale") || lowerKey.contains("daily_sale"))) {
                 val saleAmt = root.optDouble(key, 0.0)
                 if (saleAmt > 0) {
                     val dateStr = extractDateStringFromKey(key)
@@ -991,39 +998,48 @@ object DataBackupRestoreManager {
         }
 
         // Auto-reconcile cash sales for dates where closing cash and expenses exist, but no explicit sale was exported
-        dailyCashMap.forEach { (dateKey, dailyCash) ->
-            if (dailyCash.closingCash > 0) {
-                val dayExpenses = transactions.filter {
-                    isSameDay(it.timestamp, dailyCash.dateMillis) &&
-                            (it.type == TransactionType.EXPENSE_SHOP ||
-                             it.type == TransactionType.EXPENSE_HOME ||
-                             it.type == TransactionType.PURCHASE_DIRECT ||
-                             it.type == TransactionType.PURCHASE_FORDI)
-                }.sumOf { it.amount }
+        // Only run if top-level structured transactions array was absent
+        if (!hasStructuredTransactions) {
+            dailyCashMap.forEach { (dateKey, dailyCash) ->
+                if (dailyCash.closingCash > 0) {
+                    val dayExpenses = transactions.filter {
+                        isSameDay(it.timestamp, dailyCash.dateMillis) &&
+                                (it.type == TransactionType.EXPENSE_SHOP ||
+                                 it.type == TransactionType.EXPENSE_HOME ||
+                                 it.type == TransactionType.PURCHASE_DIRECT ||
+                                 it.type == TransactionType.PURCHASE_FORDI)
+                    }.sumOf { it.amount }
 
-                val hasExplicitSale = transactions.any {
-                    isSameDay(it.timestamp, dailyCash.dateMillis) && it.type == TransactionType.SALE_CASH
-                }
+                    val hasExplicitSale = transactions.any {
+                        isSameDay(it.timestamp, dailyCash.dateMillis) && it.type == TransactionType.SALE_CASH
+                    }
 
-                if (!hasExplicitSale && dayExpenses > 0) {
-                    val computedSale = (dailyCash.closingCash + dayExpenses - dailyCash.sabekCash).coerceAtLeast(0.0)
-                    if (computedSale > 0) {
-                        transactions.add(
-                            TransactionEntity(
-                                type = TransactionType.SALE_CASH,
-                                amount = computedSale,
-                                note = "নগদ বিক্রি ($dateKey)",
-                                timestamp = dailyCash.dateMillis
+                    if (!hasExplicitSale && dayExpenses > 0) {
+                        val computedSale = (dailyCash.closingCash + dayExpenses - dailyCash.sabekCash).coerceAtLeast(0.0)
+                        if (computedSale > 0) {
+                            transactions.add(
+                                TransactionEntity(
+                                    type = TransactionType.SALE_CASH,
+                                    amount = computedSale,
+                                    note = "নগদ বিক্রি ($dateKey)",
+                                    timestamp = dailyCash.dateMillis
+                                )
                             )
-                        )
+                        }
                     }
                 }
             }
         }
 
-        // Deduplicate parsed transactions to prevent duplicate entries
+        // Deduplicate parsed transactions to prevent duplicate entries across varying formats
         val distinctTransactions = transactions.distinctBy {
-            "${it.timestamp}_${it.amount}_${it.type}_${it.customerName}_${it.note}"
+            val cName = it.customerName?.trim()?.lowercase() ?: ""
+            val pName = it.productName?.trim()?.lowercase() ?: ""
+            val amtCents = (it.amount * 100).toLong()
+            val type = it.type.name
+            val note = it.note.trim().lowercase()
+            val timeWindow = it.timestamp / 30000L
+            "${type}_${amtCents}_${cName}_${pName}_${note}_${timeWindow}"
         }
 
         // Supplier Companies
@@ -1121,10 +1137,12 @@ object DataBackupRestoreManager {
         val dateStr = t.optString("date", "")
         val timeStr = t.optString("time", "")
         val tsRaw = t.optLong("timestamp", t.optLong("created_at", t.optLong("updatedAt", 0L)))
-        val ts = if (dateStr.isNotBlank() && dateStr.contains(Regex("[0-9]"))) {
-            parseDateAndTimeToMillis(dateStr, timeStr, if (tsRaw > 0) tsRaw else System.currentTimeMillis())
+        val ts = if (tsRaw > 0) {
+            tsRaw
+        } else if (dateStr.isNotBlank() && dateStr.contains(Regex("[0-9]"))) {
+            parseDateAndTimeToMillis(dateStr, timeStr, System.currentTimeMillis())
         } else {
-            if (tsRaw > 0) tsRaw else t.optLong("date", System.currentTimeMillis())
+            t.optLong("date", System.currentTimeMillis())
         }
 
         return TransactionEntity(

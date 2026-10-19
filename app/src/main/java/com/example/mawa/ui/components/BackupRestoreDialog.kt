@@ -25,8 +25,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.CalendarToday
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.CloudUpload
@@ -148,6 +150,7 @@ fun BackupRestoreDialog(
     var authName by remember { mutableStateOf("") }
     var isRegisterMode by remember { mutableStateOf(false) }
     var passwordVisible by remember { mutableStateOf(false) }
+    var showSqlGuide by remember { mutableStateOf(true) }
 
     val customersWithBalance by viewModel.customersWithBalance.collectAsStateWithLifecycle()
     val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
@@ -727,35 +730,126 @@ fun BackupRestoreDialog(
                             // --- TAB 2: DATA BACKUP & DIRECT DOWNLOAD OPTIONS ---
 
                             // 1. Hero Card: Direct JSON Full Backup Download to Mobile Storage
-                            BackupOptionCard(
-                                icon = Icons.Default.SaveAlt,
-                                iconTint = MawaPrimary,
-                                iconBg = MawaPrimaryContainer,
-                                title = "সম্পূর্ণ ডাটার JSON ব্যাকআপ ফাইল",
-                                subtitle = "দোকানের সকল কাস্টমার বাকি, ক্যাশ হিসাব, বাজারের ফর্দ ও সেটিংস আপনার মোবাইলের ফাইলে সরাসরি ডাউনলোড বা সেভ করে রাখুন।",
-                                primaryActionLabel = "📥 মোবাইলে JSON ফাইল সেভ করুন",
-                                primaryActionIcon = Icons.Default.Download,
-                                onPrimaryAction = {
-                                    val dateStr = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
-                                    jsonSaveLauncher.launch("mawa_backup_$dateStr.json")
-                                },
-                                secondaryActionLabel = "📤 শেয়ার করুন",
-                                onSecondaryAction = {
-                                    scope.launch {
-                                        isProcessing = true
-                                        val json = viewModel.exportFullBackupJson()
-                                        val dateStr = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
-                                        DataBackupRestoreManager.shareTextFile(
-                                            context = context,
-                                            content = json,
-                                            fileName = "mawa_backup_$dateStr.json",
-                                            mimeType = "application/json",
-                                            title = "MAWA ডিজিটাল খাতা সম্পূর্ণ ব্যাকআপ ফাইল"
-                                        )
-                                        isProcessing = false
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                                border = BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.35f))
+                            ) {
+                                Column(modifier = Modifier.padding(16.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(MawaPrimaryContainer),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(Icons.Default.SaveAlt, contentDescription = null, tint = MawaPrimary, modifier = Modifier.size(24.dp))
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Text(
+                                                text = "সম্পূর্ণ ডাটার JSON ব্যাকআপ ফাইল",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                            Text(
+                                                text = "দোকানের সকল বাকি, ক্যাশ হিসাব, ফর্দ ও সেটিংস মোবাইলের ফাইলে সেভ করুন।",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(14.dp))
+
+                                    // Option A: Master Backup File (Updates the same master file so user doesn't get endless cluttered JSON files)
+                                    Button(
+                                        onClick = {
+                                            jsonSaveLauncher.launch("mawa_master_backup.json")
+                                        },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = MawaPrimary)
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("⭐ মাস্টার ব্যাকআপ ফাইল আপডেট করুন (সুপারিশকৃত)", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
+
+                                    Text(
+                                        text = "💡 এটি একই মাস্টার ফাইল আপডেট করে, ফলে মোবাইলের ফাইলে প্রতিবার নতুন করে জেসন জমে clutter বা বিশৃঙ্খলা হবে না।",
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(top = 4.dp, start = 4.dp, bottom = 8.dp)
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        OutlinedButton(
+                                            onClick = {
+                                                val dateStr = SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date())
+                                                jsonSaveLauncher.launch("mawa_backup_$dateStr.json")
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Icon(Icons.Default.CalendarToday, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("তারিখসহ কপি", fontSize = 12.sp)
+                                        }
+
+                                        OutlinedButton(
+                                            onClick = {
+                                                scope.launch {
+                                                    isProcessing = true
+                                                    val json = viewModel.exportFullBackupJson()
+                                                    DataBackupRestoreManager.shareTextFile(
+                                                        context = context,
+                                                        content = json,
+                                                        fileName = "mawa_master_backup.json",
+                                                        mimeType = "application/json",
+                                                        title = "MAWA ডিজিটাল খাতা সম্পূর্ণ ব্যাকআপ ফাইল"
+                                                    )
+                                                    isProcessing = false
+                                                }
+                                            },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(10.dp)
+                                        ) {
+                                            Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("শেয়ার করুন", fontSize = 12.sp)
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(10.dp))
+
+                                    // Deduplication Protection Badge
+                                    Card(
+                                        colors = CardDefaults.cardColors(containerColor = Color(0xFF10B981).copy(alpha = 0.12f)),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(10.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(18.dp))
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "স্মার্ট ডুপ্লিকেট রোধ সক্রিয়: জেসন ফাইল আপলোড করার পর ক্লাউড লগইন করলেও ডাটা ডাবল হবে না, স্বয়ংক্রিয়ভাবে নির্ভুল মার্জ হবে।",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF047857),
+                                                fontWeight = FontWeight.Medium,
+                                                lineHeight = 15.sp
+                                            )
+                                        }
                                     }
                                 }
-                            )
+                            }
 
                             Spacer(modifier = Modifier.height(12.dp))
 
@@ -969,6 +1063,127 @@ fun BackupRestoreDialog(
                                                 Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(20.dp), tint = Color.White)
                                                 Spacer(modifier = Modifier.width(8.dp))
                                                 Text("১-ট্যাপে সম্পূর্ণ ক্লাউড সিঙ্ক ও ব্যাকআপ করুন", fontWeight = FontWeight.Bold, color = Color.White)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
+                                // --- Supabase Realtime Live Sync & SQL Setup Guide Card ---
+                                val supabaseSqlScript = """
+-- ১. mawa_cloud_records টেবিল তৈরি (ফিল্ডভিত্তিক তাৎক্ষণিক লাইভ সিঙ্ক ও ডিলিটের জন্য)
+CREATE TABLE IF NOT EXISTS public.mawa_cloud_records (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    domain TEXT NOT NULL DEFAULT 'business',
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    data JSONB NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    deleted_at TIMESTAMPTZ,
+    CONSTRAINT unique_user_domain_entity UNIQUE (user_id, domain, entity_type, entity_id)
+);
+
+-- ২. user_backups টেবিল তৈরি (সম্পূর্ণ ডাটাবেজ স্ন্যাপশট ব্যাকআপের জন্য)
+CREATE TABLE IF NOT EXISTS public.user_backups (
+    id BIGSERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    backup_name TEXT NOT NULL,
+    backup_data JSONB NOT NULL,
+    data JSONB NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    CONSTRAINT unique_user_backup_name UNIQUE (user_id, backup_name)
+);
+
+-- ৩. রিয়েলটাইম লাইভ ট্র্যাকিং সক্রিয় করুন (Realtime Live Sync)
+ALTER PUBLICATION supabase_realtime ADD TABLE public.mawa_cloud_records;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.user_backups;
+ALTER TABLE public.mawa_cloud_records REPLICA IDENTITY FULL;
+ALTER TABLE public.user_backups REPLICA IDENTITY FULL;
+
+-- ৪. ডাটা সিকিউরিটি পলিসি (Row Level Security - RLS)
+ALTER TABLE public.mawa_cloud_records ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_backups ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can manage their records" ON public.mawa_cloud_records;
+CREATE POLICY "Users can manage their records" 
+ON public.mawa_cloud_records FOR ALL 
+USING (auth.uid() = user_id) 
+WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users can manage their backups" ON public.user_backups;
+CREATE POLICY "Users can manage their backups" 
+ON public.user_backups FOR ALL 
+USING (auth.uid() = user_id) 
+WITH CHECK (auth.uid() = user_id);
+                                """.trimIndent()
+
+                                Card(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                                    border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.4f))
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.Code, contentDescription = null, tint = Color(0xFF047857), modifier = Modifier.size(20.dp))
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(
+                                                    text = "সুপাবেজে লাইভ রিয়েলটাইম করতে করণীয়",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp,
+                                                    color = Color(0xFF047857)
+                                                )
+                                            }
+                                            TextButton(onClick = { showSqlGuide = !showSqlGuide }) {
+                                                Text(if (showSqlGuide) "লুকান" else "দেখুন", fontSize = 12.sp)
+                                            }
+                                        }
+
+                                        if (showSqlGuide) {
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = "১. সুপাবেজে লিখার সাথে সাথে লাইভ করতে এবং ডুপ্লিকেট রোধ করতে Supabase Dashboard -> SQL Editor-এ নিচের স্ক্রিপ্টটি রান করুন:\n২. অ্যাপে ফিল্ড বা এন্ট্রি যোগ করলে ৫০০ms-এ সার্ভারে যাবে এবং মুছে ফেললে সাথে সাথে সার্ভার থেকেও মুছে যাবে।",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                lineHeight = 16.sp
+                                            )
+                                            Spacer(modifier = Modifier.height(8.dp))
+
+                                            Surface(
+                                                color = Color(0xFF1E293B),
+                                                shape = RoundedCornerShape(8.dp),
+                                                modifier = Modifier.fillMaxWidth()
+                                            ) {
+                                                Text(
+                                                    text = supabaseSqlScript,
+                                                    color = Color(0xFFE2E8F0),
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 10.sp,
+                                                    lineHeight = 14.sp,
+                                                    modifier = Modifier.padding(10.dp)
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Button(
+                                                onClick = {
+                                                    clipboardManager.setText(AnnotatedString(supabaseSqlScript))
+                                                    Toast.makeText(context, "✅ সুপাবেজ SQL কোড ক্লিপবোর্ডে কপি হয়েছে!", Toast.LENGTH_LONG).show()
+                                                },
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(8.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF047857))
+                                            ) {
+                                                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("📋 SQL কোড কপি করুন", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                             }
                                         }
                                     }
