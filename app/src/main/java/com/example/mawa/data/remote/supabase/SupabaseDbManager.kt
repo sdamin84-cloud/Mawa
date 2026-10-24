@@ -384,22 +384,83 @@ class SupabaseDbManager(
                 })
             }
 
-            // 5. Daily Cash (DAILY_CASH)
-            backupData.dailyCashRecords.forEach { dc ->
+            // Pre-calculate daily summaries for sales, expenses, and collections across all dates
+            val dFormat = SimpleDateFormat("dd-MM-yyyy", Locale.US)
+            val txByDate = backupData.transactions.groupBy { dFormat.format(Date(it.timestamp)) }
+            val allActiveDates = (backupData.dailyCashRecords.map { it.dateKey } + txByDate.keys).distinct()
+
+            // 5. Daily Cash & Reports (DAILY_CASH & DAILY_REPORT)
+            val dailyCashMap = backupData.dailyCashRecords.associateBy { it.dateKey }
+            allActiveDates.forEach { dKey ->
+                val dc = dailyCashMap[dKey]
+                val dayTxList = txByDate[dKey] ?: emptyList()
+                val totalSales = dayTxList.filter { 
+                    it.type == com.example.mawa.data.local.entity.TransactionType.SALE_CASH || 
+                    it.type == com.example.mawa.data.local.entity.TransactionType.SALE_BAKI 
+                }.sumOf { it.amount }
+                val cashSales = dayTxList.filter { it.type == com.example.mawa.data.local.entity.TransactionType.SALE_CASH }.sumOf { it.amount }
+                val bakiSales = dayTxList.filter { it.type == com.example.mawa.data.local.entity.TransactionType.SALE_BAKI }.sumOf { it.amount }
+                val bakiCol = dayTxList.filter { it.type == com.example.mawa.data.local.entity.TransactionType.BAKI_COLLECTION }.sumOf { it.amount }
+                val shopExp = dayTxList.filter { it.type == com.example.mawa.data.local.entity.TransactionType.EXPENSE_SHOP }.sumOf { it.amount }
+                val homeExp = dayTxList.filter { it.type == com.example.mawa.data.local.entity.TransactionType.EXPENSE_HOME }.sumOf { it.amount }
+                val purDirect = dayTxList.filter { it.type == com.example.mawa.data.local.entity.TransactionType.PURCHASE_DIRECT }.sumOf { it.amount }
+                val purFordi = dayTxList.filter { it.type == com.example.mawa.data.local.entity.TransactionType.PURCHASE_FORDI }.sumOf { it.amount }
+                val totalExpenses = shopExp + homeExp + purDirect + purFordi
+
+                val sabekCash = dc?.sabekCash ?: 0.0
+                val netCashInHand = if (dc != null && dc.closingCash > 0.0) {
+                    dc.closingCash
+                } else {
+                    sabekCash + cashSales + bakiCol - totalExpenses
+                }
+
                 val dcJson = JSONObject().apply {
-                    put("dateKey", dc.dateKey)
-                    put("dateMillis", dc.dateMillis)
-                    put("sabekCash", dc.sabekCash)
-                    put("closingCash", dc.closingCash)
-                    put("isClosed", dc.isClosed)
-                    put("updatedAt", dc.updatedAt)
+                    put("dateKey", dKey)
+                    put("dateMillis", dc?.dateMillis ?: (dayTxList.firstOrNull()?.timestamp ?: System.currentTimeMillis()))
+                    put("sabekCash", sabekCash)
+                    put("closingCash", dc?.closingCash ?: netCashInHand)
+                    put("cashInHand", netCashInHand)
+                    put("totalSales", totalSales)
+                    put("cashSales", cashSales)
+                    put("bakiSales", bakiSales)
+                    put("bakiCollection", bakiCol)
+                    put("totalExpenses", totalExpenses)
+                    put("isClosed", dc?.isClosed ?: false)
+                    put("updatedAt", dc?.updatedAt ?: System.currentTimeMillis())
                 }
                 recordsArray.put(JSONObject().apply {
                     put("user_id", userId)
                     put("domain", "business")
                     put("entity_type", "DAILY_CASH")
-                    put("entity_id", "daily_cash_${dc.dateKey}")
+                    put("entity_id", "daily_cash_$dKey")
                     put("data", dcJson)
+                    put("updated_at", nowIso)
+                })
+
+                // Generate explicit DAILY_REPORT record for direct cloud reporting & sync
+                val reportJson = JSONObject().apply {
+                    put("dateKey", dKey)
+                    put("date", dKey)
+                    put("totalSales", totalSales)
+                    put("cashSales", cashSales)
+                    put("bakiSales", bakiSales)
+                    put("totalExpenses", totalExpenses)
+                    put("shopExpenses", shopExp)
+                    put("homeExpenses", homeExp)
+                    put("purchaseExpenses", purDirect + purFordi)
+                    put("bakiCollection", bakiCol)
+                    put("sabekCash", sabekCash)
+                    put("closingCash", dc?.closingCash ?: netCashInHand)
+                    put("netCashInHand", netCashInHand)
+                    put("transactionCount", dayTxList.size)
+                    put("updatedAt", System.currentTimeMillis())
+                }
+                recordsArray.put(JSONObject().apply {
+                    put("user_id", userId)
+                    put("domain", "business")
+                    put("entity_type", "DAILY_REPORT")
+                    put("entity_id", "daily_report_$dKey")
+                    put("data", reportJson)
                     put("updated_at", nowIso)
                 })
             }
@@ -465,50 +526,76 @@ class SupabaseDbManager(
                 return@withContext CloudOperationResult.Success(0, "সিঙ্ক করার মতো কোনো রেকর্ড পাওয়া যায়নি")
             }
 
+            // Chunk records into batches of 40 to avoid Supabase request timeouts or payload limits
+            val chunkSize = 40
+            val totalRecords = recordsArray.length()
+            var syncedCount = 0
+            var lastError: String? = null
+
             val primaryUrl = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?on_conflict=user_id,domain,entity_type,entity_id"
-            val requestBuilder = Request.Builder()
-                .url(primaryUrl)
-                .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
-                .post(recordsArray.toString().toRequestBody(jsonMediaType))
+            val fallbackUrl = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?on_conflict=user_id,entity_type,entity_id"
 
-            getAuthHeaders().forEach { (k, v) -> requestBuilder.addHeader(k, v) }
+            for (i in 0 until totalRecords step chunkSize) {
+                val end = minOf(i + chunkSize, totalRecords)
+                val chunkArray = JSONArray()
+                for (j in i until end) {
+                    chunkArray.put(recordsArray.getJSONObject(j))
+                }
 
-            var isSuccess = false
-            var respBody = ""
-            var respCode = 0
-
-            client.newCall(requestBuilder.build()).execute().use { response ->
-                respBody = response.body?.string() ?: ""
-                respCode = response.code
-                isSuccess = response.isSuccessful
-                Log.d("SupabaseDb", "syncAllRecords code: ${response.code}")
-            }
-
-            // Fallback for tables whose unique constraint is on (user_id, entity_type, entity_id)
-            if (!isSuccess && respBody.contains("42P10")) {
-                val fallbackUrl = "${SupabaseConfig.SUPABASE_REST_URL}/${SupabaseConfig.TABLE_CLOUD_RECORDS}?on_conflict=user_id,entity_type,entity_id"
-                val fbReq = Request.Builder()
-                    .url(fallbackUrl)
+                val requestBuilder = Request.Builder()
+                    .url(primaryUrl)
                     .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
-                    .post(recordsArray.toString().toRequestBody(jsonMediaType))
-                getAuthHeaders().forEach { (k, v) -> fbReq.addHeader(k, v) }
+                    .post(chunkArray.toString().toRequestBody(jsonMediaType))
+                getAuthHeaders().forEach { (k, v) -> requestBuilder.addHeader(k, v) }
+
+                var isSuccess = false
+                var respBody = ""
+                var respCode = 0
+
                 try {
-                    client.newCall(fbReq.build()).execute().use { fbResp ->
-                        respBody = fbResp.body?.string() ?: ""
-                        respCode = fbResp.code
-                        isSuccess = fbResp.isSuccessful
+                    client.newCall(requestBuilder.build()).execute().use { response ->
+                        respBody = response.body?.string() ?: ""
+                        respCode = response.code
+                        isSuccess = response.isSuccessful
                     }
-                } catch (_: Exception) {}
+                } catch (e: Exception) {
+                    lastError = e.localizedMessage
+                }
+
+                // Fallback for tables whose unique constraint is on (user_id, entity_type, entity_id)
+                if (!isSuccess && respBody.contains("42P10")) {
+                    val fbReq = Request.Builder()
+                        .url(fallbackUrl)
+                        .addHeader("Prefer", "resolution=merge-duplicates,return=minimal")
+                        .post(chunkArray.toString().toRequestBody(jsonMediaType))
+                    getAuthHeaders().forEach { (k, v) -> fbReq.addHeader(k, v) }
+                    try {
+                        client.newCall(fbReq.build()).execute().use { fbResp ->
+                            respBody = fbResp.body?.string() ?: ""
+                            respCode = fbResp.code
+                            isSuccess = fbResp.isSuccessful
+                        }
+                    } catch (e: Exception) {
+                        lastError = e.localizedMessage
+                    }
+                }
+
+                if (isSuccess) {
+                    syncedCount += chunkArray.length()
+                } else {
+                    lastError = parseError(respBody, respCode)
+                    Log.e("SupabaseDb", "Chunk sync failed: $lastError")
+                }
             }
 
-            if (isSuccess) {
+            if (syncedCount > 0) {
                 return@withContext CloudOperationResult.Success(
-                    data = recordsArray.length(),
-                    message = "${recordsArray.length()}টি রেকর্ড সফলভাবে সুপাবেজ ক্লাউডে সিঙ্ক হয়েছে!"
+                    data = syncedCount,
+                    message = "${syncedCount}টি রেকর্ড (বিক্রি, খরচ ও রিপোর্ট সহ) সফলভাবে সুপাবেজ ক্লাউডে সিঙ্ক হয়েছে!"
                 )
             } else {
                 return@withContext CloudOperationResult.Error(
-                    message = "ক্লাউড সিঙ্ক ব্যর্থ: ${parseError(respBody, respCode)}"
+                    message = "ক্লাউড সিঙ্ক ব্যর্থ: ${lastError ?: "রেকর্ড পাঠানো যায়নি"}"
                 )
             }
         } catch (e: Exception) {

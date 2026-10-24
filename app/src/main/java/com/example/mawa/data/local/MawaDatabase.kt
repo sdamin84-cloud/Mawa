@@ -9,6 +9,7 @@ import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.mawa.data.local.dao.CashTallyDao
+import com.example.mawa.data.local.dao.CompanyOrderDao
 import com.example.mawa.data.local.dao.CustomerDao
 import com.example.mawa.data.local.dao.DailyCashDao
 import com.example.mawa.data.local.dao.FordiDao
@@ -18,6 +19,7 @@ import com.example.mawa.data.local.dao.ShopSettingsDao
 import com.example.mawa.data.local.dao.SupplierCompanyDao
 import com.example.mawa.data.local.dao.TransactionDao
 import com.example.mawa.data.local.entity.CashTallyEntity
+import com.example.mawa.data.local.entity.CompanyOrderEntity
 import com.example.mawa.data.local.entity.CustomerEntity
 import com.example.mawa.data.local.entity.DailyCashEntity
 import com.example.mawa.data.local.entity.FordiItemEntity
@@ -209,6 +211,24 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
     }
 }
 
+val MIGRATION_8_9 = object : Migration(8, 9) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("""
+            CREATE TABLE IF NOT EXISTS `company_orders` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                `companyName` TEXT NOT NULL,
+                `totalAmount` REAL NOT NULL,
+                `orderDate` INTEGER NOT NULL,
+                `orderDateString` TEXT NOT NULL,
+                `note` TEXT NOT NULL,
+                `status` TEXT NOT NULL,
+                `confirmedAt` INTEGER,
+                `createdAt` INTEGER NOT NULL
+            )
+        """.trimIndent())
+    }
+}
+
 @Database(
     entities = [
         TransactionEntity::class,
@@ -219,9 +239,10 @@ val MIGRATION_7_8 = object : Migration(7, 8) {
         PersonalTransactionEntity::class,
         DailyCashEntity::class,
         SupplierCompanyEntity::class,
-        CashTallyEntity::class
+        CashTallyEntity::class,
+        CompanyOrderEntity::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -236,6 +257,7 @@ abstract class MawaDatabase : RoomDatabase() {
     abstract fun dailyCashDao(): DailyCashDao
     abstract fun supplierCompanyDao(): SupplierCompanyDao
     abstract fun cashTallyDao(): CashTallyDao
+    abstract fun companyOrderDao(): CompanyOrderDao
 
     companion object {
         @Volatile
@@ -248,7 +270,7 @@ abstract class MawaDatabase : RoomDatabase() {
                     MawaDatabase::class.java,
                     "mawa_khata_database"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     .fallbackToDestructiveMigration(false)
                     .build()
                 INSTANCE = instance

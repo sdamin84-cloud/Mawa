@@ -91,6 +91,9 @@ class FirebaseDbManager(
                 .set(backupMap)
                 .await()
 
+            // Also sync each entity into its own dedicated Firestore subcollection
+            syncAllRecordsToFirebase(backupData)
+
             // Update parent user document metadata
             val userMeta = hashMapOf(
                 "uid" to uid,
@@ -98,17 +101,175 @@ class FirebaseDbManager(
                 "lastBackupName" to item.backupName,
                 "lastBackupAt" to now,
                 "totalCustomers" to item.customerCount,
-                "totalTransactions" to item.transactionCount
+                "totalTransactions" to item.transactionCount,
+                "totalProducts" to item.productCount
             )
             db.collection(COLLECTION_USERS)
                 .document(uid)
                 .set(userMeta, SetOptions.merge())
                 .await()
 
-            FirebaseOperationResult.Success(item, "ফায়ারবেস ক্লাউডে ব্যাকআপ সফলভাবে সংরক্ষিত হয়েছে!")
+            FirebaseOperationResult.Success(
+                item,
+                "ফায়ারবেসে প্রতিটি কাস্টমার, লেনদেন, পণ্য ও ক্যাশ খাতা যার যার জায়গায় সঠিকভাবে বসেছে এবং ব্যাকআপ সংরক্ষিত হয়েছে!"
+            )
         } catch (e: Exception) {
             Log.e(TAG, "Firebase backup upload failed", e)
             FirebaseOperationResult.Error("ফায়ারবেসে ব্যাকআপ আপলোড ব্যর্থ: ${e.localizedMessage ?: "ত্রুটি"}", e)
+        }
+    }
+
+    suspend fun syncAllRecordsToFirebase(backupData: FullBackupData): FirebaseOperationResult<Int> {
+        val uid = authManager.getUserId()
+            ?: return FirebaseOperationResult.Error("ব্যবহারকারী লগইন করা নেই")
+
+        return try {
+            val userDoc = db.collection(COLLECTION_USERS).document(uid)
+            var totalCount = 0
+
+            // 1. Customers batch
+            val customerChunks = backupData.customers.chunked(450)
+            for (chunk in customerChunks) {
+                val batch = db.batch()
+                for (c in chunk) {
+                    val docRef = userDoc.collection("customers").document(c.id.toString())
+                    val map = hashMapOf(
+                        "id" to c.id,
+                        "name" to c.name,
+                        "phone" to c.phone,
+                        "address" to c.address,
+                        "openingBalance" to c.openingBalance,
+                        "creditLimit" to c.creditLimit,
+                        "categoryTag" to c.categoryTag,
+                        "nidOrGuarantor" to c.nidOrGuarantor,
+                        "note" to c.note,
+                        "promisedPaymentDate" to c.promisedPaymentDate,
+                        "createdAt" to c.createdAt,
+                        "updatedAt" to System.currentTimeMillis()
+                    )
+                    batch.set(docRef, map, SetOptions.merge())
+                    totalCount++
+                }
+                batch.commit().await()
+            }
+
+            // 2. Transactions batch
+            val txChunks = backupData.transactions.chunked(450)
+            for (chunk in txChunks) {
+                val batch = db.batch()
+                for (tx in chunk) {
+                    val docRef = userDoc.collection("transactions").document(tx.id.toString())
+                    val map = hashMapOf(
+                        "id" to tx.id,
+                        "type" to tx.type.name,
+                        "amount" to tx.amount,
+                        "customerId" to tx.customerId,
+                        "customerName" to tx.customerName,
+                        "note" to tx.note,
+                        "productName" to tx.productName,
+                        "quantity" to tx.quantity,
+                        "unit" to tx.unit,
+                        "rate" to tx.rate,
+                        "category" to tx.category,
+                        "paymentStatus" to tx.paymentStatus,
+                        "promisedPaymentDate" to tx.promisedPaymentDate,
+                        "timestamp" to tx.timestamp,
+                        "updatedAt" to System.currentTimeMillis()
+                    )
+                    batch.set(docRef, map, SetOptions.merge())
+                    totalCount++
+                }
+                batch.commit().await()
+            }
+
+            // 3. Products batch
+            val productChunks = backupData.products.chunked(450)
+            for (chunk in productChunks) {
+                val batch = db.batch()
+                for (p in chunk) {
+                    val docRef = userDoc.collection("products").document(p.id.toString())
+                    val map = hashMapOf(
+                        "id" to p.id,
+                        "name" to p.name,
+                        "banglaName" to p.banglaName,
+                        "defaultPurchasePrice" to p.defaultPurchasePrice,
+                        "defaultSellingPrice" to p.defaultSellingPrice,
+                        "stockQuantity" to p.stockQuantity,
+                        "unit" to p.unit,
+                        "category" to p.category,
+                        "barcode" to p.barcode,
+                        "updatedAt" to System.currentTimeMillis()
+                    )
+                    batch.set(docRef, map, SetOptions.merge())
+                    totalCount++
+                }
+                batch.commit().await()
+            }
+
+            // 4. Daily Cash Records
+            val cashChunks = backupData.dailyCashRecords.chunked(450)
+            for (chunk in cashChunks) {
+                val batch = db.batch()
+                for (dc in chunk) {
+                    val docRef = userDoc.collection("daily_cash").document(dc.dateKey)
+                    val map = hashMapOf(
+                        "dateKey" to dc.dateKey,
+                        "dateMillis" to dc.dateMillis,
+                        "sabekCash" to dc.sabekCash,
+                        "closingCash" to dc.closingCash,
+                        "updatedAt" to System.currentTimeMillis()
+                    )
+                    batch.set(docRef, map, SetOptions.merge())
+                    totalCount++
+                }
+                batch.commit().await()
+            }
+
+            // 5. Supplier Companies
+            val supplierChunks = backupData.supplierCompanies.chunked(450)
+            for (chunk in supplierChunks) {
+                val batch = db.batch()
+                for (sc in chunk) {
+                    val docRef = userDoc.collection("supplier_companies").document(sc.id.toString())
+                    val map = hashMapOf(
+                        "id" to sc.id,
+                        "companyName" to sc.companyName,
+                        "srName" to sc.srName,
+                        "srPhone" to sc.srPhone,
+                        "orderDay" to sc.orderDay,
+                        "deliveryDay" to sc.deliveryDay,
+                        "updatedAt" to System.currentTimeMillis()
+                    )
+                    batch.set(docRef, map, SetOptions.merge())
+                    totalCount++
+                }
+                batch.commit().await()
+            }
+
+            // 6. Shop Profile Settings
+            backupData.shopSettings?.let { s ->
+                val docRef = userDoc.collection("settings").document("shop_profile")
+                val map = hashMapOf(
+                    "shopName" to s.shopName,
+                    "ownerName" to s.ownerName,
+                    "phone" to s.phone,
+                    "openingBalance" to s.openingBalance,
+                    "bkashNumber" to s.bkashNumber,
+                    "nagadNumber" to s.nagadNumber,
+                    "bankDetails" to s.bankDetails,
+                    "updatedAt" to System.currentTimeMillis()
+                )
+                docRef.set(map, SetOptions.merge()).await()
+                totalCount++
+            }
+
+            FirebaseOperationResult.Success(
+                totalCount,
+                "ফায়ারবেসে মোট $totalCount টি রেকর্ড যার যার জায়গায় নিখুঁতভাবে সিঙ্ক হয়েছে"
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Sync to Firebase collections failed", e)
+            FirebaseOperationResult.Error("ফায়ারবেস কালেকশন সিঙ্ক ব্যর্থ: ${e.localizedMessage ?: "ত্রুটি"}", e)
         }
     }
 

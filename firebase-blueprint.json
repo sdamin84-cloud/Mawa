@@ -6,7 +6,78 @@
         "uid": { "type": "string" },
         "email": { "type": "string" },
         "displayName": { "type": "string" },
-        "updatedAt": { "type": "timestamp" }
+        "lastSyncAt": { "type": "timestamp" },
+        "totalCustomers": { "type": "number" },
+        "totalTransactions": { "type": "number" }
+      }
+    },
+    "Customer": {
+      "collection": "users/{userId}/customers",
+      "fields": {
+        "id": { "type": "number" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
+        "openingBalance": { "type": "number" },
+        "creditLimit": { "type": "number" },
+        "categoryTag": { "type": "string" },
+        "note": { "type": "string" },
+        "createdAt": { "type": "timestamp" }
+      }
+    },
+    "Transaction": {
+      "collection": "users/{userId}/transactions",
+      "fields": {
+        "id": { "type": "number" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "customerId": { "type": "number" },
+        "customerName": { "type": "string" },
+        "note": { "type": "string" },
+        "timestamp": { "type": "timestamp" },
+        "date": { "type": "string" },
+        "time": { "type": "string" }
+      }
+    },
+    "Product": {
+      "collection": "users/{userId}/products",
+      "fields": {
+        "id": { "type": "number" },
+        "name": { "type": "string" },
+        "buyPrice": { "type": "number" },
+        "sellPrice": { "type": "number" },
+        "stock": { "type": "number" },
+        "unit": { "type": "string" },
+        "category": { "type": "string" }
+      }
+    },
+    "DailyCash": {
+      "collection": "users/{userId}/daily_cash",
+      "fields": {
+        "dateKey": { "type": "string" },
+        "dateMillis": { "type": "timestamp" },
+        "sabekCash": { "type": "number" },
+        "closingCash": { "type": "number" }
+      }
+    },
+    "SupplierCompany": {
+      "collection": "users/{userId}/supplier_companies",
+      "fields": {
+        "id": { "type": "number" },
+        "companyName": { "type": "string" },
+        "srName": { "type": "string" },
+        "srPhone": { "type": "string" },
+        "orderDay": { "type": "string" },
+        "deliveryDay": { "type": "string" }
+      }
+    },
+    "ShopProfile": {
+      "collection": "users/{userId}/settings",
+      "fields": {
+        "shopName": { "type": "string" },
+        "ownerName": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" }
       }
     },
     "CloudBackup": {
@@ -20,18 +91,8 @@
         "transactionCount": { "type": "number" },
         "productCount": { "type": "number" },
         "totalBaki": { "type": "number" },
-        "createdAt": { "type": "timestamp" }
-      }
-    },
-    "CloudRecord": {
-      "collection": "users/{userId}/records",
-      "fields": {
-        "id": { "type": "string" },
-        "userId": { "type": "string" },
-        "recordType": { "type": "string" },
-        "localId": { "type": "number" },
-        "dataJson": { "type": "string" },
-        "updatedAt": { "type": "timestamp" }
+        "timestamp": { "type": "timestamp" },
+        "formattedDate": { "type": "string" }
       }
     }
   }

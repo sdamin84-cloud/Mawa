@@ -2,6 +2,7 @@ package com.example.mawa.data.repository
 
 import com.example.mawa.data.local.MawaDatabase
 import com.example.mawa.data.local.entity.CashTallyEntity
+import com.example.mawa.data.local.entity.CompanyOrderEntity
 import com.example.mawa.data.local.entity.CustomerEntity
 import com.example.mawa.data.local.entity.DailyCashEntity
 import com.example.mawa.data.local.entity.FordiItemEntity
@@ -42,6 +43,7 @@ class MawaRepository(private val database: MawaDatabase) {
     private val dailyCashDao = database.dailyCashDao()
     private val supplierCompanyDao = database.supplierCompanyDao()
     private val cashTallyDao = database.cashTallyDao()
+    private val companyOrderDao = database.companyOrderDao()
 
     val allTransactions: Flow<List<TransactionEntity>> = transactionDao.getAllTransactions()
     val recentTransactions: Flow<List<TransactionEntity>> = transactionDao.getRecentTransactions(30)
@@ -55,6 +57,7 @@ class MawaRepository(private val database: MawaDatabase) {
     val allDailyCash: Flow<List<DailyCashEntity>> = dailyCashDao.getAllDailyCashFlow()
     val allSupplierCompanies: Flow<List<SupplierCompanyEntity>> = supplierCompanyDao.getAllCompanies()
     val allCashTallies: Flow<List<CashTallyEntity>> = cashTallyDao.getAllTalliesFlow()
+    val allCompanyOrders: Flow<List<CompanyOrderEntity>> = companyOrderDao.getAllOrders()
 
     // Personal Transactions
     val allPersonalTransactions: Flow<List<PersonalTransactionEntity>> = personalTransactionDao.getAllPersonalTransactions()
@@ -181,10 +184,22 @@ class MawaRepository(private val database: MawaDatabase) {
             }
         }
 
+        val todayExpensesTotal = todayPurchases + todayShopExpenses + todayHomeWithdrawals
+        val autoCalculatedCashSales = if (dayRecord != null && dayRecord.closingCash > 0) {
+            (dayRecord.closingCash + todayExpensesTotal - effectiveOpeningBalance - todayBakiCollection).coerceAtLeast(0.0)
+        } else if (todayExpensesTotal > (effectiveOpeningBalance + todayCashSales + todayBakiCollection)) {
+            (todayExpensesTotal - (effectiveOpeningBalance + todayBakiCollection)).coerceAtLeast(0.0)
+        } else {
+            0.0
+        }
+
+        val finalCashSales = maxOf(todayCashSales, autoCalculatedCashSales)
+        val finalTotalSales = finalCashSales + todayBakiSales
+        val finalCashChange = finalCashSales + todayBakiCollection - todayExpensesTotal
         val totalCashInHand = if (dayRecord != null && dayRecord.isClosed && dayRecord.closingCash > 0) {
             dayRecord.closingCash
         } else {
-            effectiveOpeningBalance + todayCashChange
+            (effectiveOpeningBalance + finalCashChange).coerceAtLeast(0.0)
         }
 
         // Calculate total outstanding baki across all customers up to target date
@@ -199,9 +214,9 @@ class MawaRepository(private val database: MawaDatabase) {
         return AccountingSummary(
             openingBalance = effectiveOpeningBalance,
             totalCashInHand = totalCashInHand,
-            todayCashChange = todayCashChange,
-            todayTotalSales = todayCashSales + todayBakiSales,
-            todayCashSales = todayCashSales,
+            todayCashChange = finalCashChange,
+            todayTotalSales = finalTotalSales,
+            todayCashSales = finalCashSales,
             todayBakiSales = todayBakiSales,
             todayBakiCollection = todayBakiCollection,
             todayPurchases = todayPurchases,
@@ -423,6 +438,73 @@ class MawaRepository(private val database: MawaDatabase) {
 
     suspend fun getAllSupplierCompaniesDirect(): List<SupplierCompanyEntity> = withContext(Dispatchers.IO) {
         supplierCompanyDao.getAllCompaniesDirect()
+    }
+
+    // Company Orders (অর্ডার খাতা)
+    suspend fun saveCompanyOrder(order: CompanyOrderEntity): Long = withContext(Dispatchers.IO) {
+        companyOrderDao.insertOrder(order)
+    }
+
+    suspend fun confirmCompanyOrder(orderId: Long, order: CompanyOrderEntity, recordAsPurchase: Boolean = true) = withContext(Dispatchers.IO) {
+        companyOrderDao.confirmOrder(orderId)
+        if (recordAsPurchase && order.totalAmount > 0) {
+            transactionDao.insertTransaction(
+                TransactionEntity(
+                    type = TransactionType.PURCHASE_DIRECT,
+                    amount = order.totalAmount,
+                    productName = "${order.companyName} অর্ডার মাল",
+                    category = "কোম্পানি অর্ডার",
+                    note = if (order.note.isNotBlank()) "অর্ডার গ্রহণ সম্পন্ন: ${order.note}" else "কোম্পানি অর্ডার গ্রহণ সম্পন্ন",
+                    paymentStatus = "PAID",
+                    timestamp = System.currentTimeMillis()
+                )
+            )
+        }
+    }
+
+    suspend fun cancelCompanyOrder(orderId: Long) = withContext(Dispatchers.IO) {
+        companyOrderDao.cancelOrder(orderId)
+    }
+
+    suspend fun deleteCompanyOrder(orderId: Long) = withContext(Dispatchers.IO) {
+        companyOrderDao.deleteOrder(orderId)
+    }
+
+    suspend fun seedInitialCompanyOrdersIfEmpty() = withContext(Dispatchers.IO) {
+        try {
+            val count = companyOrderDao.getOrderCount()
+            if (count == 0) {
+                val now = System.currentTimeMillis()
+                val todayStr = com.example.mawa.util.BengaliUtils.getFormattedTodayDate(now)
+                val sampleOrders = listOf(
+                    CompanyOrderEntity(
+                        companyName = "প্রাণ ফুডস",
+                        totalAmount = 7500.0,
+                        orderDate = now,
+                        orderDateString = todayStr,
+                        note = "কম স্টক",
+                        status = "PENDING"
+                    ),
+                    CompanyOrderEntity(
+                        companyName = "মেঘনা গ্রুপ",
+                        totalAmount = 4300.0,
+                        orderDate = now,
+                        orderDateString = todayStr,
+                        note = "কম স্টক",
+                        status = "PENDING"
+                    ),
+                    CompanyOrderEntity(
+                        companyName = "আকিজ বেকারি",
+                        totalAmount = 2900.0,
+                        orderDate = now,
+                        orderDateString = todayStr,
+                        note = "বিশেষ মাল",
+                        status = "PENDING"
+                    )
+                )
+                companyOrderDao.insertOrders(sampleOrders)
+            }
+        } catch (_: Exception) {}
     }
 
     suspend fun mergeEntityNames(oldName: String, newName: String) = withContext(Dispatchers.IO) {

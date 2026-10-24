@@ -159,17 +159,24 @@ fun InteractiveTrendChart(
 
                 val cashSales = txList.filter { it.type == TransactionType.SALE_CASH }.sumOf { it.amount }
                 val bakiSales = txList.filter { it.type == TransactionType.SALE_BAKI }.sumOf { it.amount }
-                val totalSales = cashSales + bakiSales
+                val bakiCol = txList.filter { it.type == TransactionType.BAKI_COLLECTION }.sumOf { it.amount }
                 val purchases = txList.filter { it.type == TransactionType.PURCHASE_FORDI || it.type == TransactionType.PURCHASE_DIRECT }.sumOf { it.amount }
-                val expenses = txList.filter { it.type == TransactionType.EXPENSE_SHOP }.sumOf { it.amount }
-                val profit = totalSales - purchases - expenses
+                val expenses = txList.filter { it.type == TransactionType.EXPENSE_SHOP || it.type == TransactionType.EXPENSE_HOME }.sumOf { it.amount }
+                val totalExp = purchases + expenses
+
+                // If shop paid expenses exceeding recorded cash, the money came from today's sales
+                val autoSales = if (totalExp > (cashSales + bakiCol)) (totalExp - bakiCol) else 0.0
+                val effectiveCashSales = maxOf(cashSales, autoSales)
+                val totalSales = effectiveCashSales + bakiSales
+                // Estimated gross profit (at standard 10% retail margin or net)
+                val profit = (totalSales * 0.10).coerceAtLeast(0.0)
 
                 DailyTrendPoint(
                     dateMillis = firstTs,
                     dateLabel = dayFormat.format(Date(firstTs)),
                     dayLabel = dayOfWeekFormat.format(Date(firstTs)),
                     totalSales = totalSales,
-                    cashSales = cashSales,
+                    cashSales = effectiveCashSales,
                     bakiSales = bakiSales,
                     purchases = purchases,
                     expenses = expenses,

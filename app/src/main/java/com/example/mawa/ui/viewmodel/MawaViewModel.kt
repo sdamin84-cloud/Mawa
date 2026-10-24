@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.mawa.data.local.MawaDatabase
 import com.example.mawa.data.local.entity.CashTallyEntity
+import com.example.mawa.data.local.entity.CompanyOrderEntity
 import com.example.mawa.data.local.entity.CustomerEntity
 import com.example.mawa.data.local.entity.FordiItemEntity
 import com.example.mawa.data.local.entity.PersonalTransactionEntity
@@ -128,6 +129,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
     init {
         viewModelScope.launch {
             repository.seedInitialDataIfEmpty()
+            repository.seedInitialCompanyOrdersIfEmpty()
         }
         viewModelScope.launch {
             currentUser.collect { user ->
@@ -318,6 +320,57 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             started = SharingStarted.WhileSubscribed(5000),
             initialValue = emptyList()
         )
+
+    val allCompanyOrders: StateFlow<List<CompanyOrderEntity>> = repository.allCompanyOrders
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    fun addCompanyOrder(
+        companyName: String,
+        amount: Double,
+        note: String,
+        dateString: String = "",
+        orderDate: Long = System.currentTimeMillis()
+    ) {
+        val resolvedDateString = dateString.ifBlank { com.example.mawa.util.BengaliUtils.getFormattedTodayDate(orderDate) }
+        viewModelScope.launch {
+            repository.saveCompanyOrder(
+                CompanyOrderEntity(
+                    companyName = companyName.trim(),
+                    totalAmount = amount,
+                    orderDate = orderDate,
+                    orderDateString = resolvedDateString,
+                    note = note.trim(),
+                    status = "PENDING"
+                )
+            )
+            notifyDataChanged()
+        }
+    }
+
+    fun confirmCompanyOrder(order: CompanyOrderEntity, recordAsPurchase: Boolean = true) {
+        viewModelScope.launch {
+            repository.confirmCompanyOrder(order.id, order, recordAsPurchase)
+            notifyDataChanged()
+        }
+    }
+
+    fun cancelCompanyOrder(orderId: Long) {
+        viewModelScope.launch {
+            repository.cancelCompanyOrder(orderId)
+            notifyDataChanged()
+        }
+    }
+
+    fun deleteCompanyOrder(orderId: Long) {
+        viewModelScope.launch {
+            repository.deleteCompanyOrder(orderId)
+            notifyDataChanged()
+        }
+    }
 
     val pendingSupplierPayments: StateFlow<List<TransactionEntity>> = repository.allTransactions
         .map { list ->
@@ -1539,6 +1592,25 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
                     onResult(true, "সফল")
                 }
                 is FirebaseOperationResult.Error -> {
+                    _feedbackMessage.emit(res.message)
+                    onResult(false, res.message)
+                }
+            }
+        }
+    }
+
+    fun syncAllLocalRecordsToFirebase(onResult: (Boolean, String) -> Unit) {
+        viewModelScope.launch {
+            _isFirebaseSyncing.value = true
+            val fullData = repository.getFullBackupData()
+            when (val res = firebaseDbManager.syncAllRecordsToFirebase(fullData)) {
+                is FirebaseOperationResult.Success -> {
+                    _isFirebaseSyncing.value = false
+                    _feedbackMessage.emit(res.message)
+                    onResult(true, res.message)
+                }
+                is FirebaseOperationResult.Error -> {
+                    _isFirebaseSyncing.value = false
                     _feedbackMessage.emit(res.message)
                     onResult(false, res.message)
                 }

@@ -57,6 +57,7 @@ import androidx.compose.material.icons.filled.ExpandLess
 import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoveToInbox
 import androidx.compose.material.icons.filled.Payments
@@ -67,12 +68,19 @@ import androidx.compose.material.icons.filled.AddBusiness
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.QrCode2
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Storefront
+import androidx.compose.material.icons.filled.CreditCard
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Paid
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Tune
@@ -133,6 +141,7 @@ import com.example.mawa.data.local.entity.CashTallyEntity
 import com.example.mawa.data.local.entity.ShopSettingsEntity
 import com.example.mawa.data.local.entity.SupplierCompanyEntity
 import com.example.mawa.data.model.AccountingSummary
+import com.example.mawa.ui.components.Animated2DShopHeroBanner
 import com.example.mawa.ui.components.CompanySrProfileCard
 import com.example.mawa.ui.components.DailyClosureDialog
 import com.example.mawa.ui.components.DenominationCounterBottomSheet
@@ -179,10 +188,13 @@ fun HomeScreen(
     onOpenBaki: () -> Unit,
     onOpenJoma: () -> Unit,
     onOpenExpenseDrawer: () -> Unit,
-    onOpenFordi: () -> Unit,
+    onOpenOrderKhata: () -> Unit,
     onOpenReports: () -> Unit,
     onOpenDrawer: () -> Unit,
+    onOpenProducts: () -> Unit = {},
+    onOpenProfile: () -> Unit = {},
     onOpenSupabaseCloud: () -> Unit = {},
+    onOpenCalculator: () -> Unit = {},
     onLockApp: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -218,7 +230,6 @@ fun HomeScreen(
     var showHomeWithdrawalSheet by remember { mutableStateOf(false) }
 
     val context = LocalContext.current
-    val isDark = isSystemInDarkTheme()
     val focusManager = LocalFocusManager.current
     val closingCashFocusRequester = remember { FocusRequester() }
     var profitMarginPercent by remember {
@@ -258,34 +269,33 @@ fun HomeScreen(
     val closingCashValue = closingCashInput.toDoubleOrNull() ?: 0.0
 
     // Automatic Daily Sales & Cash In Hand Calculation (দোকানের ঐতিহ্যবাহী নির্ভুল খাতা নিয়ম):
-    // ১. যদি সমাপনী ক্যাশ লিখে দেওয়া থাকে: মোট বেচা = সমাপনী ক্যাশ + মোট খরচ - সাবেক
-    // ২. যদি সমাপনী ক্যাশ না লেখা থাকে: হাতে থাকা ক্যাশ = সাবেক + নগদ বিক্রি + বাকি আদায় - মোট খরচ (খরচ বেশি হলে স্বাভাবিকভাবে মাইনাস আসবে)
+    // ১. যদি সমাপনী ক্যাশ লিখে দেওয়া থাকে: মোট বেচা = সমাপনী ক্যাশ + মোট খরচ - সাবেক - বাকি আদায়
+    // ২. যদি সমাপনী ক্যাশ না লেখা থাকে: খরচ সাবেক অপেক্ষা বেশি হলে সেই বাড়তি খরচই আজকের নগদ বিক্রি
     val autoComputedDailySale = if (closingCashInput.isNotBlank()) {
-        (closingCashValue + todayExpensesTotal - sabekValue - summary.todayBakiCollection)
+        (closingCashValue + todayExpensesTotal - sabekValue - summary.todayBakiCollection).coerceAtLeast(0.0)
     } else {
-        if (todayExpensesTotal > sabekValue) (todayExpensesTotal - sabekValue) else 0.0
+        if (todayExpensesTotal > (sabekValue + summary.todayBakiCollection)) {
+            (todayExpensesTotal - (sabekValue + summary.todayBakiCollection)).coerceAtLeast(0.0)
+        } else 0.0
     }
 
     // সর্বমোট বিক্রি (Explicit Sales থাকলে অথবা Reconciled Auto Sales + বাকি বিক্রি)
-    val effectiveDailySales = if (summary.todayTotalSales > 0) {
-        summary.todayTotalSales
-    } else if (closingCashInput.isNotBlank()) {
+    val effectiveDailySales = maxOf(
+        summary.todayTotalSales,
         autoComputedDailySale + summary.todayBakiSales
-    } else {
-        summary.todayBakiSales
-    }
+    )
 
-    val effectiveCashSales = if (summary.todayCashSales > 0) {
-        summary.todayCashSales
-    } else {
-        if (closingCashInput.isNotBlank()) autoComputedDailySale else 0.0
-    }
+    val effectiveCashSales = maxOf(
+        summary.todayCashSales,
+        autoComputedDailySale
+    )
 
-    // প্রদর্শনের জন্য বর্তমান হাতে ক্যাশ (সাবেক ২৫০ এবং খরচ ২০০ হলে +৫০, খরচ ৩০০ হলে -৫০)
+    // প্রদর্শনের জন্য বর্তমান হাতে ক্যাশ:
+    // কখনো ঋণাত্মক (-৪৯০০) দেখাবে না; ঘাটতি পূরণ হয়ে ০ দেখাবে বা প্রকৃত সমাপনী ক্যাশ দেখাবে
     val displayCashInHand = if (closingCashInput.isNotBlank()) {
         closingCashValue
     } else {
-        sabekValue + summary.todayCashSales + summary.todayBakiCollection - todayExpensesTotal
+        (sabekValue + effectiveCashSales + summary.todayBakiCollection - todayExpensesTotal).coerceAtLeast(0.0)
     }
 
     // টাকার উপর শতকরা লাভ (দোকানের মালামাল কেনা ও বিক্রির ঘূর্ণায়মান মূলধন হিসেবে নিট মার্জিন)
@@ -509,24 +519,6 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Instant Payment QR Code Button
-                            IconButton(
-                                onClick = { showPaymentQrDialog = true },
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(Color(0xFFE2136E).copy(alpha = 0.12f))
-                                    .border(1.dp, Color(0xFFE2136E).copy(alpha = 0.35f), CircleShape)
-                                    .testTag("header_payment_qr_btn")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.QrCode2,
-                                    contentDescription = "ডিজিটাল পেমেন্ট QR",
-                                    tint = Color(0xFFE2136E),
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-
                             // Quick Lock Button (if PIN lock is configured)
                             if (AppLockManager.isLockEnabled(context)) {
                                 IconButton(
@@ -584,6 +576,24 @@ fun HomeScreen(
                                 }
                             }
 
+                            // Calculator Quick Button
+                            IconButton(
+                                onClick = onOpenCalculator,
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f))
+                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), CircleShape)
+                                    .testTag("header_calculator_btn")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Calculate,
+                                    contentDescription = "ক্যালকুলেটর",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+
                             IconButton(
                                 onClick = onOpenDrawer,
                                 modifier = Modifier
@@ -604,16 +614,16 @@ fun HomeScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // Sleek Flat Date Navigator in Header (Cardless)
+                    // Sleek Modern Date Navigator (matching image (1).jpg teal bar)
                     Surface(
                         shape = RoundedCornerShape(12.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                        color = Color(0xFF0F766E),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 4.dp, vertical = 4.dp),
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -627,34 +637,34 @@ fun HomeScreen(
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                     contentDescription = "পূর্ববর্তী দিন",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
 
                             // Middle Date Label (Clickable Date Picker)
                             Surface(
                                 onClick = { showDatePickerDialog = true },
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isToday) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.tertiaryContainer,
+                                shape = RoundedCornerShape(8.dp),
+                                color = Color.White.copy(alpha = 0.16f),
                                 modifier = Modifier.testTag("header_date_picker_btn")
                             ) {
                                 Row(
                                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.CalendarToday,
                                         contentDescription = null,
-                                        tint = if (isToday) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer,
-                                        modifier = Modifier.size(15.dp)
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                     Text(
                                         text = if (isToday) "আজ: $activeDateString" else activeDateString,
-                                        style = MaterialTheme.typography.labelMedium,
+                                        style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (isToday) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onTertiaryContainer
+                                        color = Color.White
                                     )
                                 }
                             }
@@ -669,284 +679,164 @@ fun HomeScreen(
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                                     contentDescription = "পরবর্তী দিন",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(18.dp)
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
                     }
 
-                    // Shopkeeper Profile Prompt Card (if shop profile is not yet personalized)
-                    val isCustomProfileSet = remember(settings?.shopName) {
-                        !settings?.shopName.isNullOrBlank() && 
-                        settings?.shopName != "মাওয়া ডিজিটাল খাতা" && 
-                        settings?.shopName != "আমার দোকান"
-                    }
-                    if (!isCustomProfileSet) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Card(
+                    // Search Bar (প্রোফাইল সেট করুন এর জায়গায় সার্বজনীন সার্চ বার)
+                    var homeSearchQuery by remember { mutableStateOf("") }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
+                        shadowElevation = 1.dp,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable { showShopProfileDialog = true }
-                                .testTag("card_setup_shop_profile"),
-                            shape = RoundedCornerShape(12.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
-                            ),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+                                .padding(horizontal = 12.dp, vertical = 7.dp)
                         ) {
                             Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(36.dp)
-                                            .clip(CircleShape)
-                                            .background(MaterialTheme.colorScheme.primary),
-                                        contentAlignment = Alignment.Center
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "সার্চ",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                androidx.compose.foundation.text.BasicTextField(
+                                    value = homeSearchQuery,
+                                    onValueChange = { homeSearchQuery = it },
+                                    singleLine = true,
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("home_search_bar_input"),
+                                    decorationBox = { innerTextField ->
+                                        if (homeSearchQuery.isEmpty()) {
+                                            Text(
+                                                text = "কাস্টমার, বিক্রি, বাকি, খরচ সার্চ করুন...",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                                            )
+                                        }
+                                        innerTextField()
+                                    }
+                                )
+                                if (homeSearchQuery.isNotEmpty()) {
+                                    IconButton(
+                                        onClick = { homeSearchQuery = "" },
+                                        modifier = Modifier.size(24.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.AddBusiness,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.onPrimary,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                    Column {
-                                        Text(
-                                            text = "নিজের দোকানের নামে প্রোফাইল খুলুন",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "MAWA এপে আপনার দোকানের নাম, স্বত্বাধিকারী ও মেমো ব্র্যান্ডিং সেট করুন",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                            fontSize = 11.sp
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "মুছুন",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(16.dp)
                                         )
                                     }
                                 }
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = MaterialTheme.colorScheme.primary
-                                ) {
+                            }
+
+                            // Dynamic Live Search Results
+                            if (homeSearchQuery.isNotBlank()) {
+                                val q = homeSearchQuery.trim().lowercase(Locale.ROOT)
+                                val matchingCust = remember(allCustomers, q) {
+                                    allCustomers.filter { it.name.lowercase(Locale.ROOT).contains(q) || it.phone.contains(q) }.take(3)
+                                }
+                                val matchingTx = remember(allTransactions, q) {
+                                    allTransactions.filter { 
+                                        it.note.lowercase(Locale.ROOT).contains(q) || 
+                                        (it.customerName?.lowercase(Locale.ROOT)?.contains(q) == true) ||
+                                        (it.productName?.lowercase(Locale.ROOT)?.contains(q) == true)
+                                    }.take(3)
+                                }
+                                val matchingProd = remember(allProducts, q) {
+                                    allProducts.filter { it.name.lowercase(Locale.ROOT).contains(q) || it.banglaName.contains(q) }.take(3)
+                                }
+
+                                Spacer(modifier = Modifier.height(8.dp))
+                                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                Spacer(modifier = Modifier.height(6.dp))
+
+                                if (matchingCust.isEmpty() && matchingTx.isEmpty() && matchingProd.isEmpty()) {
                                     Text(
-                                        text = "খুলুন",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp)
+                                        text = "কোনো মিল পাওয়া যায়নি",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(vertical = 4.dp)
                                     )
-                                }
-                            }
-                        }
-                    }
-
-                    // 1.25 Multi-Feature Sliding Hero Banner Carousel with Auto-slide
-                    val heroSlides = remember {
-                        listOf(
-                            HomeHeroSlide(
-                                imageRes = R.drawable.img_retail_banner,
-                                badge = "দৈনিক বেচা ও ক্যাশ",
-                                badgeColor = Color(0xFF10B981),
-                                title = "নগদ ও বাকি বিক্রি ট্র্যাকিং",
-                                subtitle = "এটি দিয়ে দ্রুত নগদ ও বাকি বেচার হিসাব রাখা যায়",
-                                featureList = "✓ বিক্রি এন্ট্রি · ✓ ক্যাশ শর্ট রোধ · ✓ স্বয়ংক্রিয় ডায়েরি"
-                            ),
-                            HomeHeroSlide(
-                                imageRes = R.drawable.img_baki_banner,
-                                badge = "ডিজিটাল বাকি খাতা",
-                                badgeColor = Color(0xFFF59E0B),
-                                title = "কাস্টমার বাকি ও তাগাদা SMS",
-                                subtitle = "এটি দিয়ে কার কাছে কত বাকি তা দেখে সহজে তাগাদা দেওয়া যায়",
-                                featureList = "✓ কাস্টমার লেজার · ✓ মেসেজ তাগাদা · ✓ বাকি কালেকশন"
-                            ),
-                            HomeHeroSlide(
-                                imageRes = R.drawable.img_tally_banner,
-                                badge = "স্মার্ট ফর্দ ও অর্ডার",
-                                badgeColor = Color(0xFF6366F1),
-                                title = "কোম্পানি ফর্দ ও এসআর ডিরেক্টরি",
-                                subtitle = "এটি দিয়ে দোকানের ঘাটতি মালের ফর্দ বানিয়ে এসআরকে পাঠানো যায়",
-                                featureList = "✓ মালের ঘাটতি তালিকা · ✓ এসআর অর্ডার শিট · ✓ চালান যাচাই"
-                            ),
-                            HomeHeroSlide(
-                                imageRes = R.drawable.img_analytics_banner,
-                                badge = "ব্যবসায়িক রিপোর্ট",
-                                badgeColor = Color(0xFF0EA5E9),
-                                title = "লাভ-লোকসান ও স্টক ইনসাইট",
-                                subtitle = "এটি দিয়ে কোন পণ্যে কত লাভ হলো ও নির্ভুল স্টক হিসাব দেখা যায়",
-                                featureList = "✓ মোট মুনাফা বিশ্লেষণ · ✓ পণ্য স্টক রিপোর্ট · ✓ ক্লাউড ব্যাকআপ"
-                            )
-                        )
-                    }
-
-                    val pagerState = rememberPagerState(pageCount = { heroSlides.size })
-
-                    LaunchedEffect(pagerState) {
-                        while (true) {
-                            delay(4500)
-                            val nextPage = (pagerState.currentPage + 1) % heroSlides.size
-                            pagerState.animateScrollToPage(nextPage)
-                        }
-                    }
-
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 10.dp)
-                            .testTag("home_hero_banner_carousel"),
-                        shape = RoundedCornerShape(18.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(155.dp)
-                        ) {
-                            HorizontalPager(
-                                state = pagerState,
-                                modifier = Modifier.fillMaxSize()
-                            ) { page ->
-                                val slide = heroSlides[page]
-                                Box(modifier = Modifier.fillMaxSize()) {
-                                    Image(
-                                        painter = painterResource(id = slide.imageRes),
-                                        contentDescription = slide.title,
-                                        modifier = Modifier.fillMaxSize(),
-                                        contentScale = ContentScale.Crop
-                                    )
-                                    // Multi-stop Gradient overlay for great text contrast
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(
-                                                Brush.verticalGradient(
-                                                    colors = listOf(
-                                                        Color.Black.copy(alpha = 0.45f),
-                                                        Color.Black.copy(alpha = 0.25f),
-                                                        Color.Black.copy(alpha = 0.88f)
-                                                    )
-                                                )
-                                            )
-                                    )
-
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 14.dp, vertical = 10.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        // Top Row: Badge on left, Date & Total Sale Bar on right
+                                } else {
+                                    matchingCust.forEach { cust ->
                                         Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { onOpenBaki() }
+                                                .padding(vertical = 5.dp, horizontal = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Surface(
-                                                shape = RoundedCornerShape(16.dp),
-                                                color = slide.badgeColor.copy(alpha = 0.92f)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.5.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .size(6.dp)
-                                                            .clip(CircleShape)
-                                                            .background(Color.White)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(5.dp))
-                                                    Text(
-                                                        text = slide.badge,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = Color.White,
-                                                        fontWeight = FontWeight.Bold,
-                                                        fontSize = 10.5.sp
-                                                    )
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(cust.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                                if (cust.phone.isNotBlank()) {
+                                                    Spacer(modifier = Modifier.width(6.dp))
+                                                    Text("(${cust.phone})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                                 }
                                             }
-
-                                            // Date & Total Sale Bar (small simple text bar)
-                                            Surface(
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = Color.Black.copy(alpha = 0.55f),
-                                                border = BorderStroke(0.8.dp, Color.White.copy(alpha = 0.35f))
-                                            ) {
-                                                Text(
-                                                    text = "$activeDateString · মোট বেচা: ${BengaliUtils.formatTaka(effectiveDailySales)}",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontSize = 11.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = Color.White,
-                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                )
-                                            }
+                                            Text("বাকি খাতা ➔", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                                         }
-
-                                        // Middle / Bottom: Title, Subtitle, Features & Page Indicator
-                                        Column {
-                                            Text(
-                                                text = slide.title,
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White
-                                            )
-                                            Text(
-                                                text = slide.subtitle,
-                                                style = MaterialTheme.typography.bodySmall,
-                                                fontSize = 11.5.sp,
-                                                color = Color.White.copy(alpha = 0.92f),
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Spacer(modifier = Modifier.height(3.dp))
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text(
-                                                    text = slide.featureList,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontSize = 10.sp,
-                                                    color = Color(0xFFFDE68A),
-                                                    fontWeight = FontWeight.Medium,
-                                                    modifier = Modifier.weight(1f),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-
-                                                // Dots indicator
-                                                Row(
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    repeat(heroSlides.size) { index ->
-                                                        val isSelected = pagerState.currentPage == index
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .height(5.dp)
-                                                                .width(if (isSelected) 16.dp else 5.dp)
-                                                                .clip(RoundedCornerShape(3.dp))
-                                                                .background(
-                                                                    if (isSelected) Color.White else Color.White.copy(alpha = 0.45f)
-                                                                )
-                                                        )
-                                                    }
-                                                }
+                                    }
+                                    matchingProd.forEach { prod ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { onOpenProducts() }
+                                                .padding(vertical = 5.dp, horizontal = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.Storefront, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(if (prod.banglaName.isNotBlank()) prod.banglaName else prod.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("স্টক: ${BengaliUtils.toBanglaDigits(prod.stockQuantity.toLong())}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
+                                            Text("৳ ${BengaliUtils.formatTaka(prod.defaultSellingPrice)}", style = MaterialTheme.typography.labelSmall, color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                    matchingTx.forEach { tx ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { onOpenSales() }
+                                                .padding(vertical = 5.dp, horizontal = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Default.Receipt, contentDescription = null, tint = Color(0xFFE11D48), modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(tx.note.ifBlank { tx.type.name }, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                            }
+                                            Text("৳ ${BengaliUtils.formatTaka(tx.amount)}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -954,88 +844,74 @@ fun HomeScreen(
                         }
                     }
 
-                    // 1.28 Icon-First Quick Action Hub (আইকন গ্রিড - লিখার জঞ্জালমুক্ত দ্রুত অ্যাকশন)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Row(
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // 6 CORE ACTION TILES GRID (সারাংশের উপরে - কোনো ব্যানার বা রিপিট বাটন ছাড়া)
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        HomeQuickActionTile(
-                            icon = Icons.Default.ShoppingCart,
-                            label = "নতুন বিক্রি",
-                            color = Color(0xFF059669),
-                            containerColor = Color(0xFFECFDF5),
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenSales
-                        )
-                        HomeQuickActionTile(
-                            icon = Icons.Default.Receipt,
-                            label = "বাকি খাতা",
-                            color = Color(0xFFD97706),
-                            containerColor = Color(0xFFFEF3C7),
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenBaki
-                        )
-                        HomeQuickActionTile(
-                            icon = Icons.Default.Add,
-                            label = "খরচ ও ক্রয়",
-                            color = Color(0xFFE11D48),
-                            containerColor = Color(0xFFFFF1F2),
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenExpenseDrawer
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        HomeQuickActionTile(
-                            icon = Icons.Default.Assignment,
-                            label = "ফর্দি বাজার",
-                            color = Color(0xFF0F766E),
-                            containerColor = Color(0xFFCCFBF1),
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenFordi
-                        )
-                        HomeQuickActionTile(
-                            icon = Icons.Default.Assessment,
-                            label = "হিসাব রিপোর্ট",
-                            color = Color(0xFF0284C7),
-                            containerColor = Color(0xFFE0F2FE),
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenReports
-                        )
-                        HomeQuickActionTile(
-                            icon = Icons.Default.Store,
-                            label = "পণ্য ও স্টক",
-                            color = Color(0xFF6366F1),
-                            containerColor = Color(0xFFEEF2FF),
-                            modifier = Modifier.weight(1f),
-                            onClick = onOpenDrawer
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        HomeQuickActionTile(
-                            icon = Icons.Default.QrCode2,
-                            label = "পেমেন্ট QR কালেকশন",
-                            color = Color(0xFFE2136E),
-                            containerColor = Color(0xFFFCE7F3),
-                            modifier = Modifier.weight(1f),
-                            onClick = { showPaymentQrDialog = true }
-                        )
-                        HomeQuickActionTile(
-                            icon = Icons.Default.Security,
-                            label = "অ্যাপ পিন লক",
-                            color = Color(0xFF0D9488),
-                            containerColor = Color(0xFFCCFBF1),
-                            modifier = Modifier.weight(1f),
-                            onClick = { showSecuritySettingsDialog = true }
-                        )
+                        // Row 1: নতুন বিক্রি, বাকি খাতা, অর্ডার খাতা
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            BigHomeActionTile(
+                                icon = Icons.Default.ShoppingCart,
+                                label = "নতুন বিক্রি",
+                                iconTint = Color(0xFF059669),
+                                containerTint = Color(0xFFECFDF5),
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenSales
+                            )
+                            BigHomeActionTile(
+                                icon = Icons.Default.Receipt,
+                                label = "বাকি খাতা",
+                                iconTint = Color(0xFFD97706),
+                                containerTint = Color(0xFFFEF3C7),
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenBaki
+                            )
+                            BigHomeActionTile(
+                                icon = Icons.Default.Assignment,
+                                label = "অর্ডার খাতা",
+                                iconTint = Color(0xFF0F766E),
+                                containerTint = Color(0xFFCCFBF1),
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenOrderKhata
+                            )
+                        }
+
+                        // Row 2: খরচ ও ক্রয়, পণ্য ও স্টক, হিসাব রিপোর্ট
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            BigHomeActionTile(
+                                icon = Icons.Default.Paid,
+                                label = "খরচ ও ক্রয়",
+                                iconTint = Color(0xFFE11D48),
+                                containerTint = Color(0xFFFFF1F2),
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenExpenseDrawer
+                            )
+                            BigHomeActionTile(
+                                icon = Icons.Default.Storefront,
+                                label = "পণ্য ও স্টক",
+                                iconTint = Color(0xFF0284C7),
+                                containerTint = Color(0xFFE0F2FE),
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenProducts
+                            )
+                            BigHomeActionTile(
+                                icon = Icons.Default.Assessment,
+                                label = "হিসাব রিপোর্ট",
+                                iconTint = Color(0xFF4F46E5),
+                                containerTint = Color(0xFFEEF2FF),
+                                modifier = Modifier.weight(1f),
+                                onClick = onOpenReports
+                            )
+                        }
                     }
 
                     // Historical Notice Banner if viewing past date
@@ -1074,244 +950,9 @@ fun HomeScreen(
                         }
                     }
 
-                    // 1.3 Similar Company / Product Names Reminder Banner (একই কোম্পানি/পণ্য ভিন্ন স্টাইলে লিখা থাকলে রিমাইন্ডার ও ১-ট্যাপ সংশোধন)
-                    if (detectedSimilarGroups.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        SimilarNamesReminderBanner(
-                            similarGroups = detectedSimilarGroups,
-                            onOpenMergeDialog = { showSimilarNamesMergeDialog = true },
-                            onKeepSeparate = { group ->
-                                viewModel.markSimilarGroupAsSeparate(group)
-                            }
-                        )
-                    }
-
-                    // 1.4 Pending Afternoon / Promised Payments (মাল বুঝে পেয়েছি, বিকালে/পরে পেমেন্ট দেব)
-                    if (pendingSupplierPayments.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        PendingAfternoonPaymentsBanner(
-                            pendingTransactions = pendingSupplierPayments,
-                            onMarkAsPaid = { txId ->
-                                viewModel.updateTransactionPaymentStatus(txId, "PAID")
-                            }
-                        )
-                    }
-
-                    // 1.45 Home Withdrawal Shortage Banner (ঘাটতি রোধ: দোকান থেকে সংসারে খরচ/পণ্য নিলে ঘাটতি নয় বরং ব্যক্তিগত উত্তোলন)
-                    if (summary.todayHomeWithdrawals > 0) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        HomeWithdrawalShortageBanner(
-                            todayHomeWithdrawals = summary.todayHomeWithdrawals,
-                            onOpenHomeWithdrawalSheet = { showHomeWithdrawalSheet = true }
-                        )
-                    }
-
-                    // 1.46 Daily Safety Backup Reminder (আজকের হিসাব ব্যাকআপ রাখার রিমাইন্ডার)
-                    DailyBackupReminderCard(
-                        allTransactions = allTransactions,
-                        allCustomers = allCustomers,
-                        allProducts = allProducts,
-                        allFordiItems = allFordiItems,
-                        allSupplierCompanies = allSupplierCompanies,
-                        shopSettings = settings,
-                        modifier = Modifier.padding(top = 8.dp)
-                    )
-
-                    // 1.47 Financial Health Score & Day Closure Audit (ব্যবসায়িক স্বাস্থ্য ও অডিট)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    val isDayLocked = remember(selectedHomeDateMillis) {
-                        DailyClosureManager.isDayLocked(context, selectedHomeDateMillis)
-                    }
-                    FinancialHealthScoreCard(
-                        dailyCashInHand = displayCashInHand,
-                        todaySales = effectiveDailySales,
-                        todayBakiCollection = summary.todayBakiCollection,
-                        todayTotalExpenses = todayExpensesTotal,
-                        totalOutstandingBaki = summary.totalOutstandingBaki,
-                        isDayLocked = isDayLocked,
-                        onOpenDailyClosure = { showDailyClosureDialog = true }
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // 1.5 Smart Company & Product Quick Entry Bar (বুদ্ধিবৃত্তিক সার্চ, খরচ এন্ট্রি ও SR নাম্বার)
-                    SmartCompanyQuickEntryBar(
-                        transactions = allTransactions,
-                        fordiItems = allFordiItems,
-                        products = allProducts,
-                        supplierCompanies = allSupplierCompanies,
-                        onSaveSupplierCompany = { comp ->
-                            viewModel.saveSupplierCompany(comp)
-                        },
-                        onAddShopExpense = { amount, companyName ->
-                            viewModel.recordExpense(
-                                amount = amount,
-                                description = companyName,
-                                isHome = false
-                            )
-                        },
-                        onAddDirectPurchase = { amount, companyName ->
-                            viewModel.recordDirectPurchase(
-                                productName = companyName,
-                                quantity = 1.0,
-                                unit = "পিস",
-                                rate = amount,
-                                total = amount,
-                                note = companyName
-                            )
-                        },
-                        onAddToFordi = { companyName, rate ->
-                            viewModel.addFordiItem(
-                                productName = companyName,
-                                plannedQty = 1.0,
-                                unit = "পিস",
-                                purchaseRate = rate,
-                                sellingRate = 0.0
-                            )
-                        },
-                        onAddShopExpenseWithStatus = { amount, companyName, status ->
-                            viewModel.recordExpense(
-                                amount = amount,
-                                description = companyName,
-                                isHome = false,
-                                paymentStatus = status
-                            )
-                        },
-                        onAddDirectPurchaseWithStatus = { amount, companyName, status ->
-                            viewModel.recordDirectPurchase(
-                                productName = companyName,
-                                quantity = 1.0,
-                                unit = "পিস",
-                                rate = amount,
-                                total = amount,
-                                note = companyName,
-                                paymentStatus = status
-                            )
-                        }
-                    )
-
-                    // 1.55 Smart Predictive Purchasing & Recurring Expenses (আজকের সম্ভাব্য কোম্পানি ও নিয়মিত কেনাকাটার পূর্বাভাস)
-                    if (predictivePurchases.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        SmartPredictivePurchaseCard(
-                            predictions = predictivePurchases,
-                            targetDateMillis = selectedHomeDateMillis,
-                            onConfirmExpense = { name, amount, isPurchase, note ->
-                                if (isPurchase) {
-                                    viewModel.recordDirectPurchase(
-                                        productName = name,
-                                        quantity = 1.0,
-                                        unit = "পিস",
-                                        rate = amount,
-                                        total = amount,
-                                        note = note
-                                    )
-                                } else {
-                                    viewModel.recordExpense(
-                                        amount = amount,
-                                        description = note,
-                                        isHome = false
-                                    )
-                                }
-                            },
-                            onOpenWeeklyCalendar = { showWeeklyScheduleDialog = true }
-                        )
-                    }
-
-                    // 1.6 Scheduled Delivery & Orders Card (আজ ও আগামীকালের অর্ডার/ডেলিভারি ট্র্যাকিং ও খরচ স্থানান্তর)
-                    val hasScheduledOrders = remember(allFordiItems) {
-                        allFordiItems.any { !it.isPurchased && (it.orderDay.isNotBlank() || it.deliveryDay.isNotBlank()) }
-                    }
-                    if (hasScheduledOrders) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        ScheduledDeliveryOrdersCard(
-                            fordiItems = allFordiItems,
-                            onConfirmReceivedAndPaid = { item ->
-                                val qty = if (item.actualQuantity > 0) item.actualQuantity else item.plannedQuantity
-                                val rate = if (item.actualRate > 0) item.actualRate else item.purchaseRate
-                                viewModel.convertFordiToPurchase(item, qty, rate, paymentStatus = "PAID")
-                            },
-                            onConfirmReceivedDueAfternoon = { item ->
-                                val qty = if (item.actualQuantity > 0) item.actualQuantity else item.plannedQuantity
-                                val rate = if (item.actualRate > 0) item.actualRate else item.purchaseRate
-                                viewModel.convertFordiToPurchase(item, qty, rate, paymentStatus = "DUE_PAYMENT")
-                            },
-                            onAddNewOrder = { onOpenFordi() }
-                        )
-                    }
-
-                    // 1.7 Weekly 7-Day Company Schedule Calendar Entry Banner
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(14.dp))
-                            .clickable { showWeeklyScheduleDialog = true }
-                            .testTag("open_weekly_company_schedule_banner"),
-                        shape = RoundedCornerShape(14.dp),
-                        color = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(34.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.20f else 0.12f)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.CalendarMonth,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text(
-                                        text = "📅 সপ্তাহের ৭ দিনের কোম্পানি শিডিউল",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    Text(
-                                        text = "কোন বারে কোন কোম্পানির SR আসেন ও ডেলিভারি নামবে",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontSize = 11.sp,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.primary
-                            ) {
-                                Text(
-                                    text = "ক্যালেন্ডার",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    fontWeight = FontWeight.Bold,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
-                                )
-                            }
-                        }
-                    }
-
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // 2. Cardless Master Accounting Summary (কার্ডলেস আজকের হিসাব ও ক্যাশ সারাংশ)
+                    // 2. MASTER ACCOUNTING SUMMARY (আজকের মূল হিসাব ও ক্যাশ সারাংশ - প্রথম পলকেই দৃশ্যমান)
                     Column(
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -1391,22 +1032,41 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(10.dp))
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
-                                color = FinancialPositiveContainer
+                                shape = RoundedCornerShape(12.dp),
+                                color = MaterialTheme.colorScheme.surface,
+                                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                shadowElevation = 0.5.dp
                             ) {
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 7.dp),
+                                        .padding(horizontal = 14.dp, vertical = 8.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "গতকালের সমাপনী ক্যাশ: ${BengaliUtils.formatTaka(summary.openingBalance)}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = FinancialPositive
-                                    )
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF10B981).copy(alpha = 0.12f)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.History,
+                                                contentDescription = null,
+                                                tint = Color(0xFF059669),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "গতকালের সমাপনী ক্যাশ: ${BengaliUtils.formatTaka(summary.openingBalance)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
                                     Button(
                                         onClick = {
                                             val formatted = if (summary.openingBalance % 1.0 == 0.0) summary.openingBalance.toLong().toString() else summary.openingBalance.toString()
@@ -1415,7 +1075,7 @@ fun HomeScreen(
                                         },
                                         contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
                                         shape = RoundedCornerShape(6.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = FinancialPositive),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF059669)),
                                         modifier = Modifier.height(28.dp)
                                     ) {
                                         Text(
@@ -1513,8 +1173,8 @@ fun HomeScreen(
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable { showDenominationSheet = true }
                                 .testTag("btn_open_denomination_hint"),
-                            color = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                         ) {
                             Row(
                                 modifier = Modifier
@@ -1529,7 +1189,7 @@ fun HomeScreen(
                                 ) {
                                     Surface(
                                         shape = CircleShape,
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.20f else 0.12f),
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                                         modifier = Modifier.size(26.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
@@ -1577,19 +1237,25 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // 4-Tile Flat Grid (কার্ডলেস মসৃণ টাইলিং)
+                        // 4-Tile High-Impact Grid (কুল ও মিনিমাল ডিজাইন - কোনো কালার ব্লিডিং বা জ্বলে যাওয়া নেই)
                         Column(modifier = Modifier.fillMaxWidth()) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                // Tile 1: মোট বিক্রি
+                                // Tile 1: মোট বিক্রি (বেচা)
                                 Surface(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(14.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                                    color = MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                    shadowElevation = 0.5.dp
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                                    ) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1598,30 +1264,30 @@ fun HomeScreen(
                                             Text(
                                                 text = "মোট বিক্রি (বেচা)",
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                fontWeight = FontWeight.Bold
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = FontWeight.SemiBold
                                             )
-                                            Surface(
-                                                shape = CircleShape,
-                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                                modifier = Modifier.size(24.dp)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(26.dp)
+                                                    .clip(RoundedCornerShape(7.dp))
+                                                    .background(Color(0xFF10B981).copy(alpha = 0.12f)),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.TrendingUp,
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.primary,
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                }
+                                                Icon(
+                                                    imageVector = Icons.Default.TrendingUp,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF059669),
+                                                    modifier = Modifier.size(15.dp)
+                                                )
                                             }
                                         }
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Spacer(modifier = Modifier.height(6.dp))
                                         Text(
                                             text = BengaliUtils.formatTaka(effectiveDailySales),
                                             style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Black,
-                                            color = MaterialTheme.colorScheme.primary
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF047857)
                                         )
                                     }
                                 }
@@ -1630,9 +1296,15 @@ fun HomeScreen(
                                 Surface(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(14.dp),
-                                    color = FinancialNegativeContainer.copy(alpha = 0.65f)
+                                    color = MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                    shadowElevation = 0.5.dp
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                                    ) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1641,30 +1313,30 @@ fun HomeScreen(
                                             Text(
                                                 text = "মোট খরচ",
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                fontWeight = FontWeight.Bold
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = FontWeight.SemiBold
                                             )
-                                            Surface(
-                                                shape = CircleShape,
-                                                color = FinancialNegative.copy(alpha = 0.2f),
-                                                modifier = Modifier.size(24.dp)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(26.dp)
+                                                    .clip(RoundedCornerShape(7.dp))
+                                                    .background(Color(0xFFF43F5E).copy(alpha = 0.12f)),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.TrendingDown,
-                                                        contentDescription = null,
-                                                        tint = FinancialNegative,
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                }
+                                                Icon(
+                                                    imageVector = Icons.Default.TrendingDown,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFFE11D48),
+                                                    modifier = Modifier.size(15.dp)
+                                                )
                                             }
                                         }
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Spacer(modifier = Modifier.height(6.dp))
                                         Text(
                                             text = BengaliUtils.formatTaka(todayExpensesTotal),
                                             style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Black,
-                                            color = FinancialNegative
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFBE123C)
                                         )
                                     }
                                 }
@@ -1676,60 +1348,69 @@ fun HomeScreen(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                // Tile 3: সাবেক ক্যাশ
+                                // Tile 3: সাবেক (শুরুর ক্যাশ)
                                 Surface(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(14.dp),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+                                    color = MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                    shadowElevation = 0.5.dp
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                                    ) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = "সাবেক ক্যাশ",
+                                                text = "সাবেক (শুরু)",
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                fontWeight = FontWeight.Bold
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = FontWeight.SemiBold
                                             )
-                                            Surface(
-                                                shape = CircleShape,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.15f),
-                                                modifier = Modifier.size(24.dp)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(26.dp)
+                                                    .clip(RoundedCornerShape(7.dp))
+                                                    .background(Color(0xFF6366F1).copy(alpha = 0.12f)),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.History,
-                                                        contentDescription = null,
-                                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                }
+                                                Icon(
+                                                    imageVector = Icons.Default.History,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF4F46E5),
+                                                    modifier = Modifier.size(15.dp)
+                                                )
                                             }
                                         }
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Spacer(modifier = Modifier.height(6.dp))
                                         Text(
                                             text = BengaliUtils.formatTaka(sabekValue),
                                             style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Black,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF4338CA)
                                         )
                                     }
                                 }
 
-                                // Tile 4: হাতে ক্যাশ
-                                val isCashPositive = displayCashInHand >= 0
-                                val tile4Color = if (isCashPositive) FinancialPositive else FinancialNegative
-                                val tile4Container = if (isCashPositive) FinancialPositiveContainer.copy(alpha = 0.65f) else FinancialNegativeContainer.copy(alpha = 0.65f)
-
+                                // Tile 4: হাতে ক্যাশ (সমাপনী) - কখনো ঋণাত্মক দেখাবে না
+                                val safeDisplayCash = displayCashInHand.coerceAtLeast(0.0)
                                 Surface(
                                     modifier = Modifier.weight(1f),
                                     shape = RoundedCornerShape(14.dp),
-                                    color = tile4Container
+                                    color = MaterialTheme.colorScheme.surface,
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                                    shadowElevation = 0.5.dp
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 12.dp)
+                                    ) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
                                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1738,30 +1419,30 @@ fun HomeScreen(
                                             Text(
                                                 text = "হাতে ক্যাশ",
                                                 style = MaterialTheme.typography.labelMedium,
-                                                color = MaterialTheme.colorScheme.onSurface,
-                                                fontWeight = FontWeight.Bold
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                fontWeight = FontWeight.SemiBold
                                             )
-                                            Surface(
-                                                shape = CircleShape,
-                                                color = tile4Color.copy(alpha = 0.2f),
-                                                modifier = Modifier.size(24.dp)
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(26.dp)
+                                                    .clip(RoundedCornerShape(7.dp))
+                                                    .background(Color(0xFF0D9488).copy(alpha = 0.12f)),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Box(contentAlignment = Alignment.Center) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Payments,
-                                                        contentDescription = null,
-                                                        tint = tile4Color,
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                }
+                                                Icon(
+                                                    imageVector = Icons.Default.AccountBalanceWallet,
+                                                    contentDescription = null,
+                                                    tint = Color(0xFF0D9488),
+                                                    modifier = Modifier.size(15.dp)
+                                                )
                                             }
                                         }
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Spacer(modifier = Modifier.height(6.dp))
                                         Text(
-                                            text = BengaliUtils.formatTaka(displayCashInHand),
+                                            text = BengaliUtils.formatTaka(safeDisplayCash),
                                             style = MaterialTheme.typography.titleLarge,
-                                            fontWeight = FontWeight.Black,
-                                            color = tile4Color
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF0F766E)
                                         )
                                     }
                                 }
@@ -1770,13 +1451,13 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(10.dp))
 
-                        // ----------------------------------------------------
-                        // Cardless Profit On Money / Margin Module (টাকার উপর শতকরা লাভ)
-                        // ----------------------------------------------------
+                        // Profit Margin Card (টাকার উপর শতকরা লাভ) - Cool Minimal
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
-                            color = FinancialPositiveContainer.copy(alpha = 0.65f)
+                            color = MaterialTheme.colorScheme.surface,
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                            shadowElevation = 0.5.dp
                         ) {
                             Column(
                                 modifier = Modifier
@@ -1826,7 +1507,7 @@ fun HomeScreen(
 
                                 Spacer(modifier = Modifier.height(8.dp))
 
-                                // Quick Percentage Selection Chips (৫%, ৮%, ১০%, ১২%, ১৫%, ২০% + অন্য %)
+                                // Quick Percentage Selection Chips
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -1890,7 +1571,6 @@ fun HomeScreen(
                                     }
                                 }
 
-                                // Detailed note only when expanded
                                 if (isDetailedSummary) {
                                     Spacer(modifier = Modifier.height(8.dp))
                                     Surface(
@@ -1911,7 +1591,7 @@ fun HomeScreen(
                             }
                         }
 
-                        // Detailed step-by-step formula & breakdown rows (shown only in Detailed View)
+                        // Detailed step-by-step formula & breakdown rows
                         if (isDetailedSummary) {
                             Spacer(modifier = Modifier.height(10.dp))
 
@@ -1942,7 +1622,6 @@ fun HomeScreen(
 
                             Spacer(modifier = Modifier.height(8.dp))
 
-                            // Seamless Flat Detail Rows
                             MawaSummaryRow(
                                 label = "মোট বিক্রি (দোকানের বেচা)",
                                 amount = effectiveDailySales,
@@ -1992,7 +1671,7 @@ fun HomeScreen(
                                 icon = Icons.Default.ShoppingBag,
                                 iconTint = MaterialTheme.colorScheme.primary,
                                 isSubRow = true,
-                                onClick = onOpenFordi
+                                onClick = onOpenOrderKhata
                             )
                             MawaSummaryRow(
                                 label = "দোকান পরিচালনা খরচ",
@@ -2016,57 +1695,60 @@ fun HomeScreen(
                             )
                         }
                     }
-                }
-            }
 
-            // 4. Baki Outstanding Summary (Cardless Flat Banner)
-            item {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 6.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .clickable { onOpenBaki() },
-                    shape = RoundedCornerShape(16.dp),
-                    color = FinancialNegativeContainer.copy(alpha = 0.35f)
-                ) {
-                    Row(
+                    // Baki Outstanding Summary Card - Cool Minimal
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                            .clip(RoundedCornerShape(14.dp))
+                            .clickable { onOpenBaki() },
+                        shape = RoundedCornerShape(14.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        shadowElevation = 0.5.dp
                     ) {
-                        Column {
-                            Text(
-                                text = "সর্বমোট বকেয়া বাকি",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "আজকের নতুন বাকি: ${BengaliUtils.formatTaka(summary.todayNewBaki)}",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(
+                                    text = "সর্বমোট বকেয়া বাকি",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = "আজকের নতুন বাকি: ${BengaliUtils.formatTaka(summary.todayNewBaki)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 11.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
 
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(
-                                text = BengaliUtils.formatTaka(summary.totalOutstandingBaki),
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = FinancialNegative
-                            )
-                            Text(
-                                text = "খাতা দেখুন →",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = BengaliUtils.formatTaka(summary.totalOutstandingBaki),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Black,
+                                    color = FinancialNegative
+                                )
+                                Text(
+                                    text = "খাতা দেখুন →",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
+
+
                 }
             }
 
@@ -2134,8 +1816,320 @@ fun HomeScreen(
                 }
             }
 
+            // 7. SECONDARY MANAGEMENT MODULES (খরচ ও হিসাব তালিকার নিচে সাজানো)
             item {
-                Spacer(modifier = Modifier.height(30.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                ) {
+                    HorizontalDivider(
+                        thickness = 0.8.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "ব্যবসায়িক ব্যবস্থাপনা ও শিডিউল",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 14.sp
+                        )
+                        Text(
+                            text = "অর্ডার, স্কোর ও ব্যাকআপ",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // 1. আজকের কোম্পানি শিডিউল ও অর্ডার খাতা (আজকের নির্দিষ্ট কোম্পানির ডাটা একটি একটি করে প্রদর্শন)
+                    val todayBengaliDay = remember { BengaliUtils.getBengaliDayOfWeek(System.currentTimeMillis()) }
+                    val todayScheduledCompanies = remember(allSupplierCompanies, todayBengaliDay) {
+                        allSupplierCompanies.filter { 
+                            it.orderDay.contains(todayBengaliDay, ignoreCase = true) || 
+                            it.deliveryDay.contains(todayBengaliDay, ignoreCase = true) 
+                        }
+                    }
+                    var activeCompanyScheduleIndex by remember { mutableStateOf(0) }
+
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .testTag("today_company_schedule_card"),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp)
+                        ) {
+                            // Header
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Store,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = "আজকের কোম্পানি শিডিউল ($todayBengaliDay)",
+                                            style = MaterialTheme.typography.titleSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = if (todayScheduledCompanies.isNotEmpty()) {
+                                                "আজকের নির্ধারিত কোম্পানি (${BengaliUtils.toBanglaDigits(todayScheduledCompanies.size.toLong())}টির মধ্যে ${BengaliUtils.toBanglaDigits((activeCompanyScheduleIndex.coerceIn(0, todayScheduledCompanies.size - 1) + 1).toLong())}নং)"
+                                            } else {
+                                                "আজ $todayBengaliDay কোনো কোম্পানির নির্ধারিত শিডিউল নেই"
+                                            },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontSize = 11.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { showWeeklyScheduleDialog = true },
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                                ) {
+                                    Text(
+                                        text = "পূর্ণ ক্যালেন্ডার",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            if (todayScheduledCompanies.isEmpty()) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(12.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "আজ নিয়মিত কোনো কোম্পানির আসার দিন নেই।",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        Button(
+                                            onClick = onOpenOrderKhata,
+                                            shape = RoundedCornerShape(8.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                        ) {
+                                            Text("অর্ডার খাতা", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            } else {
+                                val currentComp = todayScheduledCompanies[activeCompanyScheduleIndex.coerceIn(0, todayScheduledCompanies.size - 1)]
+                                val isDeliveryDay = currentComp.deliveryDay.contains(todayBengaliDay, ignoreCase = true)
+                                val isOrderDay = currentComp.orderDay.contains(todayBengaliDay, ignoreCase = true)
+
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.25f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.4f))
+                                ) {
+                                    Column(modifier = Modifier.padding(14.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = currentComp.companyName,
+                                                    style = MaterialTheme.typography.titleMedium,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                val statusText = if (isDeliveryDay && isOrderDay) "আজ মাল ডেলিভারি ও নতুন অর্ডার নেওয়ার দিন"
+                                                    else if (isDeliveryDay) "আজ কোম্পানির মাল পৌঁছানোর (ডেলিভারি) দিন"
+                                                    else "আজ অর্ডার নেওয়ার দিন"
+                                                Text(
+                                                    text = "🚚 $statusText",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = FinancialPositive
+                                                )
+                                                if (!currentComp.srName.isNullOrBlank()) {
+                                                    Text(
+                                                        text = "এসআর: ${currentComp.srName}${if (!currentComp.srPhone.isNullOrBlank()) " (${currentComp.srPhone})" else ""}",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+
+                                            Button(
+                                                onClick = onOpenOrderKhata,
+                                                shape = RoundedCornerShape(10.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.ShoppingCart,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("অর্ডার খাতা", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                            }
+                                        }
+
+                                        // Pagination if more than 1 company for today
+                                        if (todayScheduledCompanies.size > 1) {
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                TextButton(
+                                                    onClick = {
+                                                        activeCompanyScheduleIndex = (activeCompanyScheduleIndex - 1 + todayScheduledCompanies.size) % todayScheduledCompanies.size
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                ) {
+                                                    Text("← পূর্ববর্তী", style = MaterialTheme.typography.labelSmall)
+                                                }
+
+                                                Text(
+                                                    text = "${BengaliUtils.toBanglaDigits((activeCompanyScheduleIndex + 1).toLong())} / ${BengaliUtils.toBanglaDigits(todayScheduledCompanies.size.toLong())}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+
+                                                TextButton(
+                                                    onClick = {
+                                                        activeCompanyScheduleIndex = (activeCompanyScheduleIndex + 1) % todayScheduledCompanies.size
+                                                    },
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                                ) {
+                                                    Text("পরবর্তী কোম্পানি →", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // 2. Financial Health Score & Day Closure Audit Card (অর্ডার ও স্বাস্থ্য স্কোর)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    val isDayLocked = remember(selectedHomeDateMillis) {
+                        DailyClosureManager.isDayLocked(context, selectedHomeDateMillis)
+                    }
+                    FinancialHealthScoreCard(
+                        dailyCashInHand = displayCashInHand,
+                        todaySales = effectiveDailySales,
+                        todayBakiCollection = summary.todayBakiCollection,
+                        todayTotalExpenses = todayExpensesTotal,
+                        totalOutstandingBaki = summary.totalOutstandingBaki,
+                        isDayLocked = isDayLocked,
+                        onOpenDailyClosure = { showDailyClosureDialog = true }
+                    )
+
+                    // 5. Scheduled Delivery & Orders Card
+                    val hasScheduledOrders = remember(allFordiItems) {
+                        allFordiItems.any { !it.isPurchased && (it.orderDay.isNotBlank() || it.deliveryDay.isNotBlank()) }
+                    }
+                    if (hasScheduledOrders) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        ScheduledDeliveryOrdersCard(
+                            fordiItems = allFordiItems,
+                            onConfirmReceivedAndPaid = { item ->
+                                val qty = if (item.actualQuantity > 0) item.actualQuantity else item.plannedQuantity
+                                val rate = if (item.actualRate > 0) item.actualRate else item.purchaseRate
+                                viewModel.convertFordiToPurchase(item, qty, rate, paymentStatus = "PAID")
+                            },
+                            onConfirmReceivedDueAfternoon = { item ->
+                                val qty = if (item.actualQuantity > 0) item.actualQuantity else item.plannedQuantity
+                                val rate = if (item.actualRate > 0) item.actualRate else item.purchaseRate
+                                viewModel.convertFordiToPurchase(item, qty, rate, paymentStatus = "DUE_PAYMENT")
+                            },
+                            onAddNewOrder = { onOpenOrderKhata() }
+                        )
+                    }
+
+                    // 7. Pending Afternoon / Promised Payments
+                    if (pendingSupplierPayments.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        PendingAfternoonPaymentsBanner(
+                            pendingTransactions = pendingSupplierPayments,
+                            onMarkAsPaid = { txId ->
+                                viewModel.updateTransactionPaymentStatus(txId, "PAID")
+                            }
+                        )
+                    }
+
+                    // 8. Home Withdrawal Shortage Banner
+                    if (summary.todayHomeWithdrawals > 0) {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        HomeWithdrawalShortageBanner(
+                            todayHomeWithdrawals = summary.todayHomeWithdrawals,
+                            onOpenHomeWithdrawalSheet = { showHomeWithdrawalSheet = true }
+                        )
+                    }
+
+                    // Ample clearance for the bottom navigation cradle
+                    Spacer(modifier = Modifier.height(84.dp))
+                }
             }
         }
 
@@ -2228,7 +2222,7 @@ fun HomeScreen(
                 fordiItems = allFordiItems,
                 onDismiss = { showWeeklyScheduleDialog = false },
                 onSaveCompany = { comp -> viewModel.saveSupplierCompany(comp) },
-                onOpenFordi = onOpenFordi,
+                onOpenFordi = onOpenOrderKhata,
                 onConfirmDeliveryReceived = { item, isPaid ->
                     val qty = if (item.actualQuantity > 0) item.actualQuantity else item.plannedQuantity
                     val rate = if (item.actualRate > 0) item.actualRate else item.purchaseRate
@@ -2255,18 +2249,18 @@ fun HomeScreen(
 }
 
 @Composable
-private fun HomeQuickActionTile(
+private fun BigHomeActionTile(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    color: Color,
-    containerColor: Color,
+    iconTint: Color,
+    containerTint: Color,
     modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.90f else 1.0f,
+        targetValue = if (isPressed) 0.93f else 1.0f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioMediumBouncy,
             stiffness = Spring.StiffnessMediumLow
@@ -2274,68 +2268,127 @@ private fun HomeQuickActionTile(
         label = "tile_scale"
     )
     val isDark = isSystemInDarkTheme()
-    val effectiveBg = MaterialTheme.colorScheme.surface
-    val effectiveBorder = if (isDark) MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant
+
+    Surface(
+        modifier = modifier
+            .scale(scale)
+            .shadow(
+                elevation = if (isPressed) 1.dp else 2.5.dp,
+                shape = RoundedCornerShape(16.dp),
+                spotColor = Color.Black.copy(alpha = 0.05f)
+            )
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick
+            )
+            .testTag("action_tile_${label}"),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp, horizontal = 4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(46.dp)
+                    .clip(CircleShape)
+                    .background(containerTint),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = iconTint,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun BigHomeWideActionTile(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    iconTint: Color,
+    containerTint: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.95f else 1.0f,
+        label = "wide_tile_scale"
+    )
+    val isDark = isSystemInDarkTheme()
 
     Surface(
         modifier = modifier
             .scale(scale)
             .shadow(
                 elevation = if (isPressed) 1.dp else 2.dp,
-                shape = RoundedCornerShape(13.dp),
-                spotColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-                ambientColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.04f)
+                shape = RoundedCornerShape(16.dp),
+                spotColor = Color.Black.copy(alpha = 0.05f)
             )
-            .clip(RoundedCornerShape(13.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick
             )
-            .testTag("home_quick_action_${label}"),
-        shape = RoundedCornerShape(13.dp),
-        color = effectiveBg,
-        border = BorderStroke(1.dp, effectiveBorder)
+            .testTag("action_wide_tile_${label}"),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 10.dp, horizontal = 4.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(42.dp)
                     .clip(CircleShape)
-                    .background(color.copy(alpha = if (isDark) 0.20f else 0.12f)),
+                    .background(containerTint),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = label,
-                    tint = color,
-                    modifier = Modifier.size(19.dp)
+                    tint = iconTint,
+                    modifier = Modifier.size(22.dp)
                 )
             }
-            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = label,
-                style = MaterialTheme.typography.labelSmall,
+                style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
-                fontSize = 11.5.sp,
+                fontSize = 13.5.sp,
                 color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
 }
-
-data class HomeHeroSlide(
-    val imageRes: Int,
-    val badge: String,
-    val badgeColor: Color,
-    val title: String,
-    val subtitle: String,
-    val featureList: String
-)

@@ -119,8 +119,8 @@ enum class MawaTab(
 ) {
     HOME("হোম", Icons.Filled.Store, Icons.Outlined.Store, "tab_home"),
     FORDI("ফর্দ", Icons.Filled.Assignment, Icons.Outlined.Assignment, "tab_fordi"),
-    EXPENSE("খরচ", Icons.Filled.Receipt, Icons.Outlined.Receipt, "tab_expense"),
     BAKI("বাকি", Icons.Filled.People, Icons.Outlined.People, "tab_baki"),
+    EXPENSE("খরচ", Icons.Filled.Receipt, Icons.Outlined.Receipt, "tab_expense"),
     PERSONAL("ব্যক্তিগত", Icons.Filled.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet, "tab_personal"),
     HOME_ACCOUNTING("বাড়ির হিসাব", Icons.Filled.Home, Icons.Outlined.Home, "tab_home_accounting"),
     REPORTS("রিপোর্ট", Icons.Filled.Assessment, Icons.Outlined.Assessment, "tab_reports")
@@ -137,20 +137,9 @@ fun MawaBottomBar(
     val context = LocalContext.current
     val haptic = LocalHapticFeedback.current
 
-    val (leftTabs, rightTabs) = when (appMode) {
-        AppMode.PERSONAL_ONLY -> Pair(
-            listOf(MawaTab.PERSONAL, MawaTab.HOME_ACCOUNTING),
-            listOf(MawaTab.REPORTS)
-        )
-        AppMode.BUSINESS_ONLY -> Pair(
-            listOf(MawaTab.HOME, MawaTab.FORDI),
-            listOf(MawaTab.BAKI, MawaTab.REPORTS)
-        )
-        AppMode.BOTH -> Pair(
-            listOf(MawaTab.HOME, MawaTab.FORDI, MawaTab.BAKI),
-            listOf(MawaTab.PERSONAL, MawaTab.HOME_ACCOUNTING, MawaTab.REPORTS)
-        )
-    }
+    // Exactly matching screenshot: 3 on left, center (+) খরচ, 3 on right
+    val leftTabs = listOf(MawaTab.HOME, MawaTab.FORDI, MawaTab.BAKI)
+    val rightTabs = listOf(MawaTab.PERSONAL, MawaTab.HOME_ACCOUNTING, MawaTab.REPORTS)
 
     Box(
         modifier = modifier
@@ -158,33 +147,35 @@ fun MawaBottomBar(
             .windowInsetsPadding(WindowInsets.navigationBars),
         contentAlignment = Alignment.BottomCenter
     ) {
-        // Main Navigation Bar Surface with subtle curved top and modern elevation
+        // Main Navigation Bar Surface with clean, modern elevated rounded edge
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
-                .shadow(elevation = 12.dp, shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp), spotColor = Color.Black.copy(alpha = 0.08f)),
+                .shadow(
+                    elevation = 8.dp,
+                    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+                    spotColor = Color.Black.copy(alpha = 0.08f)
+                ),
             color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-            tonalElevation = 4.dp
+            shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+            tonalElevation = 2.dp
         ) {
             Column {
-                // Top subtle accent border line
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(1.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant)
+                // Subtle top border divider
+                HorizontalDivider(
+                    thickness = 0.8.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
                 )
 
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(66.dp)
-                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                        .height(64.dp)
+                        .padding(horizontal = 2.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Left Tabs
+                    // Left 3 Tabs: হোম, ফর্দ, বাকি
                     Row(
                         modifier = Modifier.weight(1f),
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -203,10 +194,10 @@ fun MawaBottomBar(
                         }
                     }
 
-                    // Spacer for the center elevated floating action button
-                    Spacer(modifier = Modifier.width(62.dp))
+                    // Clear Center Cradle Spacer for Floating Action Button
+                    Spacer(modifier = Modifier.width(54.dp))
 
-                    // Right Tabs
+                    // Right 3 Tabs: ব্যক্তিগত, বাড়ির হিসাব, রিপোর্ট
                     Row(
                         modifier = Modifier.weight(1f),
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -228,12 +219,12 @@ fun MawaBottomBar(
             }
         }
 
-        // Center Elevated Floating Action Button with Tactile Click Beat & Spring Bounce
+        // Center Elevated Floating Action Button with [খরচ] label directly underneath it
         val centerInteractionSource = remember { MutableInteractionSource() }
         val isCenterPressed by centerInteractionSource.collectIsPressedAsState()
 
         val centerScale by animateFloatAsState(
-            targetValue = if (isCenterPressed) 0.86f else 1.0f,
+            targetValue = if (isCenterPressed) 0.90f else 1.0f,
             animationSpec = spring(
                 dampingRatio = Spring.DampingRatioMediumBouncy,
                 stiffness = Spring.StiffnessMediumLow
@@ -251,34 +242,18 @@ fun MawaBottomBar(
         )
 
         val primaryColor = MaterialTheme.colorScheme.primary
-        val secondaryColor = MaterialTheme.colorScheme.secondary
-        val isDark = androidx.compose.foundation.isSystemInDarkTheme()
 
         Column(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = (-15).dp)
+                .offset(y = (-18).dp)
                 .scale(centerScale),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(
+            Surface(
                 modifier = Modifier
-                    .size(54.dp)
-                    .shadow(
-                        elevation = 6.dp,
-                        shape = CircleShape,
-                        spotColor = primaryColor.copy(alpha = 0.4f),
-                        ambientColor = primaryColor.copy(alpha = 0.2f)
-                    )
+                    .size(50.dp)
                     .clip(CircleShape)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                primaryColor,
-                                secondaryColor
-                            )
-                        )
-                    )
                     .clickable(
                         interactionSource = centerInteractionSource,
                         indication = null,
@@ -288,36 +263,31 @@ fun MawaBottomBar(
                         }
                     )
                     .testTag("btn_center_quick_expense"),
-                contentAlignment = Alignment.Center
+                shape = CircleShape,
+                color = primaryColor,
+                shadowElevation = 8.dp,
+                border = BorderStroke(2.5.dp, MaterialTheme.colorScheme.surface)
             ) {
-                // Inner subtle ring highlight
-                Box(
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.10f)),
-                    contentAlignment = Alignment.Center
-                ) {
+                Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "খরচ এন্ট্রি",
+                        contentDescription = "খরচ যোগ করুন",
                         tint = MaterialTheme.colorScheme.onPrimary,
                         modifier = Modifier
-                            .size(28.dp)
+                            .size(26.dp)
                             .rotate(centerRotation)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
             Text(
                 text = "খরচ",
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 color = primaryColor,
-                fontSize = 10.5.sp,
-                letterSpacing = 0.3.sp
+                fontSize = 11.sp
             )
         }
     }
@@ -345,13 +315,13 @@ private fun MawaTabItem(
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val brandPrimary = MaterialTheme.colorScheme.primary
-    val neutralUnselected = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.70f)
+    val neutralUnselected = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.80f)
 
     // Tactile Spring Bounce Animation on Click & Selection
     val itemScale by animateFloatAsState(
         targetValue = when {
-            isPressed -> 0.82f
-            isSelected -> 1.05f
+            isPressed -> 0.88f
+            isSelected -> 1.04f
             else -> 1.0f
         },
         animationSpec = spring(
@@ -368,33 +338,33 @@ private fun MawaTabItem(
     )
 
     val textColor by animateColorAsState(
-        targetValue = if (isSelected) brandPrimary else neutralUnselected,
+        targetValue = if (isSelected) brandPrimary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.78f),
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "tab_text_color"
     )
 
     val pillBgColor by animateColorAsState(
-        targetValue = if (isSelected) brandPrimary.copy(alpha = 0.12f) else Color.Transparent,
+        targetValue = if (isSelected) brandPrimary.copy(alpha = 0.14f) else Color.Transparent,
         animationSpec = spring(stiffness = Spring.StiffnessMedium),
         label = "pill_bg_color"
     )
 
     val pillWidth by animateDpAsState(
-        targetValue = if (isSelected) 36.dp else 26.dp,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = Spring.StiffnessMediumLow),
+        targetValue = if (isSelected) 40.dp else 26.dp,
+        animationSpec = spring(dampingRatio = 0.65f, stiffness = Spring.StiffnessMediumLow),
         label = "pill_width"
     )
 
     Column(
         modifier = modifier
             .scale(itemScale)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(12.dp))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
                 onClick = onClick
             )
-            .padding(vertical = 3.dp)
+            .padding(vertical = 1.dp)
             .testTag(tab.testTag),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -403,8 +373,8 @@ private fun MawaTabItem(
         Box(
             modifier = Modifier
                 .width(pillWidth)
-                .height(28.dp)
-                .clip(RoundedCornerShape(14.dp))
+                .height(26.dp)
+                .clip(RoundedCornerShape(13.dp))
                 .background(pillBgColor),
             contentAlignment = Alignment.Center
         ) {
@@ -412,7 +382,7 @@ private fun MawaTabItem(
                 imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
                 contentDescription = tab.titleBangla,
                 tint = iconColor,
-                modifier = Modifier.size(if (isSelected) 20.dp else 18.5.dp)
+                modifier = Modifier.size(if (isSelected) 19.dp else 18.dp)
             )
         }
 
@@ -421,14 +391,14 @@ private fun MawaTabItem(
         Text(
             text = tab.titleBangla,
             style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
             color = textColor,
-            fontSize = 9.5.sp,
+            fontSize = 10.5.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
 
-        Spacer(modifier = Modifier.height(1.dp))
+        Spacer(modifier = Modifier.height(2.dp))
 
         // Animated Active Dot Indicator
         Box(

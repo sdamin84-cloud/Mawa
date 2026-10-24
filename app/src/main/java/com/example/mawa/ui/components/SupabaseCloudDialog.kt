@@ -247,35 +247,7 @@ fun SupabaseCloudDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Tab Switcher
-                if (currentUser != null) {
-                    TabRow(
-                        selectedTabIndex = selectedTab,
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = Color(0xFF10B981),
-                        indicator = { tabPositions ->
-                            TabRowDefaults.Indicator(
-                                modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                                color = Color(0xFF10B981)
-                            )
-                        }
-                    ) {
-                        Tab(
-                            selected = selectedTab == 0,
-                            onClick = { selectedTab = 0 },
-                            text = { Text("ক্লাউড ব্যাকআপ ও রিস্টোর", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal) }
-                        )
-                        Tab(
-                            selected = selectedTab == 1,
-                            onClick = { selectedTab = 1 },
-                            text = { Text("টেবিল সিঙ্ক ও প্রোফাইল", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal) }
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 // Content body
                 if (currentUser == null) {
@@ -298,41 +270,24 @@ fun SupabaseCloudDialog(
                         }
                     )
                 } else {
-                    if (selectedTab == 0) {
-                        SupabaseBackupRestoreSection(
-                            cloudBackups = cloudBackups,
-                            isSyncing = isSyncing,
-                            lastSyncTime = lastSyncTime,
-                            onFetchAndRestore = {
-                                viewModel.syncAndRestoreFromCloud { success, msg ->
-                                    actionStatusMessage = msg
-                                }
-                            },
-                            onUploadBackup = { customName ->
-                                viewModel.uploadBackupToSupabase(customName) { success, msg ->
-                                    actionStatusMessage = msg
-                                }
-                            },
-                            onRefreshBackups = { viewModel.loadCloudBackups() },
-                            onRestoreClick = { showRestoreConfirmBackup = it },
-                            onDeleteClick = { showDeleteConfirmBackup = it }
-                        )
-                    } else {
-                        SupabaseTableSyncSection(
-                            currentUser = currentUser!!,
-                            isSyncing = isSyncing,
-                            onFetchAndSync = {
-                                viewModel.syncAndRestoreFromCloud { success, msg ->
-                                    actionStatusMessage = msg
-                                }
-                            },
-                            onSyncAll = {
-                                viewModel.syncAllLocalRecordsToSupabase { success, msg ->
-                                    actionStatusMessage = msg
-                                }
+                    SupabaseBackupRestoreSection(
+                        cloudBackups = cloudBackups,
+                        isSyncing = isSyncing,
+                        lastSyncTime = lastSyncTime,
+                        onFetchAndRestore = {
+                            viewModel.syncAndRestoreFromCloud { success, msg ->
+                                actionStatusMessage = msg
                             }
-                        )
-                    }
+                        },
+                        onUploadBackup = { customName ->
+                            viewModel.uploadBackupToSupabase(customName) { success, msg ->
+                                actionStatusMessage = msg
+                            }
+                        },
+                        onRefreshBackups = { viewModel.loadCloudBackups() },
+                        onRestoreClick = { showRestoreConfirmBackup = it },
+                        onDeleteClick = { showDeleteConfirmBackup = it }
+                    )
                 }
 
                 if (actionStatusMessage != null) {

@@ -416,14 +416,27 @@ fun QuickExpenseDrawer(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 1. Amount input
+            // 1. Amount input (টাকা বা একসাথে নাম ও মূল্য লিখুন, যেমন: মাছ ৩৫০)
             MawaAmountInput(
                 amount = amount,
                 onAmountChange = {
                     amount = it
                     successNotice = null
                 },
-                label = "কত টাকা?",
+                onSmartInput = { smartName, smartAmount ->
+                    description = smartName
+                    amount = smartAmount
+                    successNotice = null
+                    if (!isManualSelection && smartName.isNotBlank()) {
+                        when (ExpenseClassifier.autoClassifyType(smartName)) {
+                            ExpenseClassifier.TYPE_PURCHASE -> expenseTarget = QuickExpenseTarget.PURCHASE
+                            ExpenseClassifier.TYPE_HOME -> expenseTarget = QuickExpenseTarget.HOME
+                            ExpenseClassifier.TYPE_OPERATING_EXPENSE -> expenseTarget = QuickExpenseTarget.SHOP
+                            else -> {}
+                        }
+                    }
+                },
+                label = "কত টাকা? (বা যেমন: মাছ ৩৫০)",
                 imeAction = if (description.isNotBlank()) ImeAction.Done else ImeAction.Next,
                 onNext = {
                     if (description.isNotBlank()) {
@@ -601,16 +614,30 @@ fun QuickExpenseDrawer(
 
             OutlinedTextField(
                 value = description,
-                onValueChange = {
-                    description = it
+                onValueChange = { input ->
                     successNotice = null
-                    // Smart Auto-Classification
-                    if (!isManualSelection && it.isNotBlank()) {
-                        when (ExpenseClassifier.autoClassifyType(it)) {
-                            ExpenseClassifier.TYPE_PURCHASE -> expenseTarget = QuickExpenseTarget.PURCHASE
-                            ExpenseClassifier.TYPE_HOME -> expenseTarget = QuickExpenseTarget.HOME
-                            ExpenseClassifier.TYPE_OPERATING_EXPENSE -> expenseTarget = QuickExpenseTarget.SHOP
-                            else -> {}
+                    val parsed = com.example.mawa.util.SmartExpenseInputParser.parse(input)
+                    if (parsed != null) {
+                        description = parsed.name
+                        amount = parsed.amountString
+                        if (!isManualSelection && parsed.name.isNotBlank()) {
+                            when (ExpenseClassifier.autoClassifyType(parsed.name)) {
+                                ExpenseClassifier.TYPE_PURCHASE -> expenseTarget = QuickExpenseTarget.PURCHASE
+                                ExpenseClassifier.TYPE_HOME -> expenseTarget = QuickExpenseTarget.HOME
+                                ExpenseClassifier.TYPE_OPERATING_EXPENSE -> expenseTarget = QuickExpenseTarget.SHOP
+                                else -> {}
+                            }
+                        }
+                    } else {
+                        description = input
+                        // Smart Auto-Classification
+                        if (!isManualSelection && input.isNotBlank()) {
+                            when (ExpenseClassifier.autoClassifyType(input)) {
+                                ExpenseClassifier.TYPE_PURCHASE -> expenseTarget = QuickExpenseTarget.PURCHASE
+                                ExpenseClassifier.TYPE_HOME -> expenseTarget = QuickExpenseTarget.HOME
+                                ExpenseClassifier.TYPE_OPERATING_EXPENSE -> expenseTarget = QuickExpenseTarget.SHOP
+                                else -> {}
+                            }
                         }
                     }
                 },
@@ -627,15 +654,9 @@ fun QuickExpenseDrawer(
                         }
                     }
                     .testTag("expense_description_input"),
-                label = { Text("কী জন্য? (বিবরণ / পণ্যের নাম বা বারকোড)") },
+                label = { Text("কী জন্য? (পণ্যের নাম বা যেমন: মাছ ৩৫০)") },
                 placeholder = {
-                    Text(
-                        when (expenseTarget) {
-                            QuickExpenseTarget.HOME -> "যেমন: বাজার, বিদ্যুৎ বিল, পড়াশোনা"
-                            QuickExpenseTarget.PURCHASE -> "যেমন: চাল, ডাল, চিনি, তেল (স্টক ক্রয়)"
-                            QuickExpenseTarget.SHOP -> "যেমন: চা-নাস্তা, পরিবহন, দোকান ভাড়া, কারেন্ট বিল"
-                        }
-                    )
+                    Text("যেমন: মাছ ৩৫০, চাল ১২০০ বা চা ২০")
                 },
                 trailingIcon = {
                     IconButton(onClick = { showBarcodeScanner = true }) {

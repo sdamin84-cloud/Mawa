@@ -813,7 +813,8 @@ fun ScheduledDeliveryOrdersCard(
         }
     }
 
-    if (scheduledItems.isEmpty()) return
+    val displayList = if (todayDeliveries.isNotEmpty()) todayDeliveries else scheduledItems.filter { it.deliveryDay.isNotBlank() || it.orderDay.isNotBlank() }
+    if (displayList.isEmpty()) return
 
     Card(
         modifier = modifier
@@ -880,7 +881,6 @@ fun ScheduledDeliveryOrdersCard(
             Spacer(modifier = Modifier.height(10.dp))
 
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                val displayList = if (todayDeliveries.isNotEmpty()) todayDeliveries else scheduledItems.take(5)
 
                 displayList.forEach { item ->
                     val estTotal = (if (item.actualQuantity > 0) item.actualQuantity else item.plannedQuantity) *

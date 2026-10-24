@@ -700,17 +700,6 @@ private fun PersonalLedgerView(
             )
         }
 
-        // Monthly Budget Card
-        item {
-            PersonalMonthlyBudgetCard(
-                budget = personalMonthlyBudget,
-                totalExpense = summary.totalExpense,
-                remainingDays = remainingDays,
-                dailyBurnAllowance = personalDailyBurn,
-                onOpenBudgetDialog = onOpenBudgetDialog
-            )
-        }
-
         // Fast Entry Action Bar
         item {
             PersonalFastEntryBanner(
@@ -718,15 +707,6 @@ private fun PersonalLedgerView(
                 onAddIncome = { onQuickAdd(PersonalTransactionType.INCOME) },
                 onAddSavings = { onQuickAdd(PersonalTransactionType.SAVINGS) },
                 onOpenReport = onOpenReportDialog
-            )
-        }
-
-        // Savings Goals Section
-        item {
-            SavingsGoalsSection(
-                onAddSavingsTransaction = { amount, title ->
-                    onRecordSavings(amount, title)
-                }
             )
         }
 

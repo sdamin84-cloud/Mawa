@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Calculate
@@ -72,6 +73,7 @@ import com.example.mawa.ui.screens.CashTallyScreen
 import com.example.mawa.ui.screens.FordiScreen
 import com.example.mawa.ui.screens.HomeAccountingScreen
 import com.example.mawa.ui.screens.HomeScreen
+import com.example.mawa.ui.screens.OrderKhataScreen
 import com.example.mawa.ui.screens.PersonalScreen
 import com.example.mawa.ui.screens.ProductsScreen
 import com.example.mawa.ui.screens.PurchaseScreen
@@ -92,7 +94,8 @@ enum class AppSubScreen {
     DIRECT_PURCHASES,
     PRODUCTS,
     CASH_TALLY,
-    AUTH
+    AUTH,
+    ORDER_KHATA
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -292,6 +295,15 @@ fun MawaApp(
                             }
                         )
                     }
+                    AppSubScreen.ORDER_KHATA -> {
+                        OrderKhataScreen(
+                            viewModel = viewModel,
+                            onBack = { currentSubScreen = AppSubScreen.NONE },
+                            onOpenDrawer = {
+                                coroutineScope.launch { drawerState.open() }
+                            }
+                        )
+                    }
                     AppSubScreen.NONE -> {
                         when (currentTab) {
                             MawaTab.HOME -> {
@@ -304,13 +316,18 @@ fun MawaApp(
                                         expenseDrawerInitialTarget = QuickExpenseTarget.SHOP
                                         showExpenseDrawer = true
                                     },
-                                    onOpenFordi = { currentTab = MawaTab.FORDI },
+                                    onOpenOrderKhata = { currentSubScreen = AppSubScreen.ORDER_KHATA },
                                     onOpenReports = { currentTab = MawaTab.REPORTS },
+                                    onOpenProducts = { currentSubScreen = AppSubScreen.PRODUCTS },
+                                    onOpenProfile = { showSettingsDialog = true },
                                     onOpenDrawer = {
                                         coroutineScope.launch { drawerState.open() }
                                     },
                                     onOpenSupabaseCloud = {
                                         showSupabaseCloudDialog = true
+                                    },
+                                    onOpenCalculator = {
+                                        showCalculatorSheet = true
                                     },
                                     onLockApp = {
                                         isAppLocked = true
@@ -318,13 +335,11 @@ fun MawaApp(
                                 )
                             }
                             MawaTab.FORDI -> {
-                                FordiScreen(
+                                OrderKhataScreen(
                                     viewModel = viewModel,
+                                    onBack = { currentTab = MawaTab.HOME },
                                     onOpenDrawer = {
                                         coroutineScope.launch { drawerState.open() }
-                                    },
-                                    onOpenProducts = {
-                                        currentSubScreen = AppSubScreen.PRODUCTS
                                     }
                                 )
                             }
@@ -338,13 +353,18 @@ fun MawaApp(
                                         expenseDrawerInitialTarget = QuickExpenseTarget.SHOP
                                         showExpenseDrawer = true
                                     },
-                                    onOpenFordi = { currentTab = MawaTab.FORDI },
+                                    onOpenOrderKhata = { currentSubScreen = AppSubScreen.ORDER_KHATA },
                                     onOpenReports = { currentTab = MawaTab.REPORTS },
+                                    onOpenProducts = { currentSubScreen = AppSubScreen.PRODUCTS },
+                                    onOpenProfile = { showSettingsDialog = true },
                                     onOpenDrawer = {
                                         coroutineScope.launch { drawerState.open() }
                                     },
                                     onOpenSupabaseCloud = {
                                         showSupabaseCloudDialog = true
+                                    },
+                                    onOpenCalculator = {
+                                        showCalculatorSheet = true
                                     },
                                     onLockApp = {
                                         isAppLocked = true
@@ -404,72 +424,28 @@ fun MawaApp(
                     }
                 }
 
-                // Floating Calculator Button (ভাসমান ক্যালকুলেটর বাটন - বর্ণিল ও ডায়নামিক)
+                // Floating Calculator Button on the Right Side (ক্যালকুলেটর ছিল ফ্লোটিং ডান দিকে)
                 if (currentSubScreen == AppSubScreen.NONE) {
-                    val calcInteractionSource = remember { MutableInteractionSource() }
-                    val isCalcPressed by calcInteractionSource.collectIsPressedAsState()
-                    val calcScale by animateFloatAsState(
-                        targetValue = if (isCalcPressed) 0.88f else 1.0f,
-                        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
-                        label = "calc_fab_scale"
-                    )
-
-                    val fabPrimary = MaterialTheme.colorScheme.primary
-                    val fabSecondary = MaterialTheme.colorScheme.secondary
-
-                    Surface(
+                    FloatingActionButton(
+                        onClick = { showCalculatorSheet = true },
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .padding(end = 16.dp, bottom = 16.dp)
-                            .scale(calcScale)
-                            .shadow(
-                                elevation = if (isCalcPressed) 2.dp else 6.dp,
-                                shape = RoundedCornerShape(18.dp),
-                                spotColor = fabPrimary.copy(alpha = 0.40f),
-                                ambientColor = fabPrimary.copy(alpha = 0.20f)
-                            )
-                            .clip(RoundedCornerShape(18.dp))
-                            .clickable(
-                                interactionSource = calcInteractionSource,
-                                indication = null,
-                                onClick = { showCalculatorSheet = true }
-                            )
-                            .testTag("floating_calculator_fab"),
-                        shape = RoundedCornerShape(18.dp),
-                        color = Color.Transparent
+                            .padding(end = 18.dp, bottom = 22.dp)
+                            .size(56.dp)
+                            .testTag("floating_calculator_btn"),
+                        containerColor = Color(0xFF0F766E),
+                        contentColor = Color.White,
+                        shape = CircleShape,
+                        elevation = FloatingActionButtonDefaults.elevation(
+                            defaultElevation = 8.dp,
+                            pressedElevation = 12.dp
+                        )
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .background(
-                                    Brush.horizontalGradient(
-                                        listOf(
-                                            fabPrimary,
-                                            fabSecondary
-                                        )
-                                    )
-                                )
-                                .padding(horizontal = 15.dp, vertical = 10.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Calculate,
-                                    contentDescription = "ভাসমান ক্যালকুলেটর",
-                                    tint = MaterialTheme.colorScheme.onPrimary,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = "হিসাব",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    fontSize = 13.sp
-                                )
-                            }
-                        }
+                        Icon(
+                            imageVector = Icons.Default.Calculate,
+                            contentDescription = "ক্যালকুলেটর",
+                            modifier = Modifier.size(28.dp)
+                        )
                     }
                 }
             }

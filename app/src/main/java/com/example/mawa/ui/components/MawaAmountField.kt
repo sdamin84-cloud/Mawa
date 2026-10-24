@@ -48,7 +48,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mawa.util.BengaliUtils
+import com.example.mawa.util.VoiceParsedResult
 import com.example.ui.theme.MawaPrimary
+import androidx.compose.material.icons.filled.AutoAwesome
 
 @Composable
 fun MawaAmountInput(
@@ -62,15 +64,28 @@ fun MawaAmountInput(
     keyboardActions: KeyboardActions? = null,
     focusRequester: FocusRequester? = null,
     quickAmounts: List<Int> = listOf(50, 100, 500, 1000, 2000, 5000),
-    testTag: String = "amount_input"
+    testTag: String = "amount_input",
+    onSmartInput: ((name: String, amount: String) -> Unit)? = null,
+    onVoiceInput: ((VoiceParsedResult) -> Unit)? = null
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         OutlinedTextField(
             value = amount,
             onValueChange = { newVal ->
-                // Allow only digits and optional decimal point
-                if (newVal.isEmpty() || newVal.matches(Regex("^\\d*\\.?\\d*$"))) {
+                if (onSmartInput != null) {
+                    val parsed = com.example.mawa.util.SmartExpenseInputParser.parse(newVal)
+                    if (parsed != null) {
+                        onSmartInput(parsed.name, parsed.amountString)
+                        return@OutlinedTextField
+                    }
+                    // Allow typing numbers, text, letters, spaces freely when smart input is enabled
                     onAmountChange(newVal)
+                } else {
+                    val converted = BengaliUtils.toEnglishDigits(newVal)
+                    // Allow only digits and optional decimal point for purely numeric amount input
+                    if (converted.isEmpty() || converted.matches(Regex("^\\d*\\.?\\d*$"))) {
+                        onAmountChange(converted)
+                    }
                 }
             },
             modifier = Modifier
@@ -78,6 +93,12 @@ fun MawaAmountInput(
                 .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier)
                 .onKeyEvent { event ->
                     if (event.type == KeyEventType.KeyUp && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                        if (onSmartInput != null) {
+                            val parsed = com.example.mawa.util.SmartExpenseInputParser.parse(amount)
+                            if (parsed != null) {
+                                onSmartInput(parsed.name, parsed.amountString)
+                            }
+                        }
                         if (imeAction == ImeAction.Done) onDone() else onNext()
                         true
                     } else {
@@ -86,7 +107,7 @@ fun MawaAmountInput(
                 }
                 .testTag(testTag),
             label = { Text(label) },
-            placeholder = { Text("0") },
+            placeholder = { Text(if (onSmartInput != null) "টাকা বা যেমন: মাছ ৩৫০" else "0") },
             leadingIcon = {
                 Text(
                     text = "৳",
@@ -97,29 +118,63 @@ fun MawaAmountInput(
                 )
             },
             trailingIcon = {
-                if (amount.isNotEmpty()) {
-                    IconButton(onClick = { onAmountChange("") }) {
-                        Icon(
-                            imageVector = Icons.Default.Clear,
-                            contentDescription = "মুছুন",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.padding(end = 4.dp)
+                ) {
+                    if (amount.isNotEmpty()) {
+                        IconButton(
+                            onClick = { onAmountChange("") },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Clear,
+                                contentDescription = "মুছুন",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    if (onVoiceInput != null) {
+                        VoiceInputButton(
+                            onVoiceResult = onVoiceInput,
+                            isPillStyle = false,
+                            modifier = Modifier.size(36.dp),
+                            testTag = "amount_field_voice_mic_btn"
                         )
                     }
                 }
             },
             textStyle = TextStyle(
-                fontSize = 24.sp,
+                fontSize = if (amount.any { it.isLetter() }) 18.sp else 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
             ),
             singleLine = true,
             keyboardOptions = KeyboardOptions(
-                keyboardType = KeyboardType.Number,
+                keyboardType = if (onSmartInput != null) KeyboardType.Text else KeyboardType.Number,
                 imeAction = imeAction
             ),
             keyboardActions = keyboardActions ?: KeyboardActions(
-                onDone = { onDone() },
-                onNext = { onNext() }
+                onDone = {
+                    if (onSmartInput != null) {
+                        val parsed = com.example.mawa.util.SmartExpenseInputParser.parse(amount)
+                        if (parsed != null) {
+                            onSmartInput(parsed.name, parsed.amountString)
+                        }
+                    }
+                    onDone()
+                },
+                onNext = {
+                    if (onSmartInput != null) {
+                        val parsed = com.example.mawa.util.SmartExpenseInputParser.parse(amount)
+                        if (parsed != null) {
+                            onSmartInput(parsed.name, parsed.amountString)
+                        }
+                    }
+                    onNext()
+                }
             ),
             shape = RoundedCornerShape(12.dp),
             colors = OutlinedTextFieldDefaults.colors(
@@ -129,6 +184,52 @@ fun MawaAmountInput(
                 unfocusedContainerColor = MaterialTheme.colorScheme.surface
             )
         )
+
+        // Smart Detected Badge Chip
+        if (onSmartInput != null) {
+            val smartDetected = com.example.mawa.util.SmartExpenseInputParser.parse(amount)
+            if (smartDetected != null) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MawaPrimary.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.35f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onSmartInput(smartDetected.name, smartDetected.amountString)
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.AutoAwesome,
+                                contentDescription = null,
+                                tint = MawaPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "শনাক্ত হয়েছে: ${smartDetected.name} ➔ ৳${BengaliUtils.toBanglaDigits(smartDetected.amountString)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MawaPrimary
+                            )
+                        }
+                        Text(
+                            text = "সেট করুন ➔",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MawaPrimary
+                        )
+                    }
+                }
+            }
+        }
 
         // Quick amount chip buttons
         if (quickAmounts.isNotEmpty()) {

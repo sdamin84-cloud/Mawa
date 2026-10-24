@@ -110,6 +110,7 @@ fun MawaSideDrawer(
     val currentUser by viewModel.currentUser.collectAsStateWithLifecycle()
     val currentFirebaseUser by viewModel.currentFirebaseUser.collectAsStateWithLifecycle()
     val themeMode by viewModel.themeMode.collectAsStateWithLifecycle()
+    val summary by viewModel.selectedDateAccountingSummary.collectAsStateWithLifecycle()
     var showThemeDialog by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
@@ -144,7 +145,7 @@ fun MawaSideDrawer(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .size(46.dp)
+                                    .size(44.dp)
                                     .clip(CircleShape)
                                     .background(MawaPrimary),
                                 contentAlignment = Alignment.Center
@@ -157,60 +158,13 @@ fun MawaSideDrawer(
                                 )
                             }
                             Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "MAWA",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Black,
-                                    color = MawaPrimary,
-                                    letterSpacing = 1.sp
-                                )
-                                Text(
-                                    text = "ডিজিটাল ক্যাশ খাতা",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        IconButton(
-                            onClick = onClose,
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.6f))
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "বন্ধ করুন",
-                                tint = MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
                             val shopDisplayName = settings?.shopName?.takeIf { it.isNotBlank() && it != "মাওয়া ডিজিটাল খাতা" } ?: "আমার দোকান"
                             Text(
                                 text = shopDisplayName,
-                                style = MaterialTheme.typography.titleLarge,
+                                style = MaterialTheme.typography.titleMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
-                            if (!settings?.ownerName.isNullOrBlank()) {
-                                Text(
-                                    text = "মালিক: ${settings?.ownerName}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
                         }
 
                         Surface(
@@ -240,52 +194,6 @@ fun MawaSideDrawer(
                             }
                         }
                     }
-
-                    if (!settings?.phone.isNullOrBlank()) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(top = 2.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Phone,
-                                contentDescription = null,
-                                modifier = Modifier.size(14.dp),
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = settings?.phone ?: "",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    // Opening balance chip
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surface,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "সাবেক ক্যাশ: ",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = BengaliUtils.formatTaka(settings?.openingBalance ?: 0.0),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MawaPrimary
-                            )
-                        }
-                    }
                 }
             }
 
@@ -294,79 +202,68 @@ fun MawaSideDrawer(
                 color = MaterialTheme.colorScheme.outlineVariant
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(6.dp))
 
-            // Navigation and Actions Section
+            // Navigation and Actions Section (সংক্ষিপ্ত, এক লাইনে ফিচার নাম)
             DrawerNavMenuItem(
                 icon = Icons.Default.PointOfSale,
                 iconTint = MawaPrimary,
                 iconBg = MawaPrimaryContainer,
-                title = "ক্যাশ হিসাব ও টালি রিপোর্ট",
-                subtitle = "ক্যাশবক্স মিলানো, জমা-খরচ ও নোট গণনা",
+                title = "ক্যাশ হিসাব ও টালি",
                 onClick = onNavigateCashTally,
                 testTag = "drawer_cash_tally"
             )
 
             DrawerNavMenuItem(
                 icon = Icons.Default.CloudSync,
-                iconTint = Color(0xFFFF9100),
-                iconBg = Color(0xFFFF9100).copy(alpha = 0.15f),
-                title = "গুগল ফায়ারবেস ক্লাউড 🔥",
-                subtitle = if (currentFirebaseUser != null) "লগইন: ${currentFirebaseUser?.displayName?.ifBlank { currentFirebaseUser?.email }}" else "Google Cloud Firestore ব্যাকআপ ও রিস্টোর",
-                onClick = onOpenFirebaseCloud,
-                testTag = "drawer_firebase_cloud"
+                iconTint = Color(0xFF10B981),
+                iconBg = Color(0xFF3ECF8E).copy(alpha = 0.18f),
+                title = "ক্লাউড সিঙ্ক ও ব্যাকআপ",
+                onClick = onOpenBackupRestore,
+                testTag = "drawer_backup_cloud_hub"
             )
 
             DrawerNavMenuItem(
-                icon = Icons.Default.CloudSync,
-                iconTint = Color(0xFF10B981),
-                iconBg = Color(0xFF3ECF8E).copy(alpha = 0.18f),
-                title = "ক্লাউড সিঙ্ক ও ডাটা ব্যাকআপ হাব ☁️",
-                subtitle = if (currentUser != null) "লগইন: ${currentUser?.displayName?.ifBlank { currentUser?.email }} · সিঙ্ক, রিস্টোর ও লোকাল JSON" else "সুপাবেজ লগইন, ক্লাউড সিঙ্ক, মোবাইলে JSON সেভ ও রিস্টোর",
-                onClick = onOpenBackupRestore,
-                testTag = "drawer_backup_cloud_hub"
+                icon = Icons.Default.Inventory,
+                iconTint = FinancialPositive,
+                iconBg = FinancialPositiveContainer,
+                title = "পণ্য ও স্টক খাতা",
+                onClick = onNavigateProducts,
+                testTag = "drawer_products"
+            )
+
+            DrawerNavMenuItem(
+                icon = Icons.Default.ShoppingCart,
+                iconTint = FinancialNeutral,
+                iconBg = MaterialTheme.colorScheme.surfaceVariant,
+                title = "সরাসরি পণ্য ক্রয় খাতা",
+                onClick = onNavigateDirectPurchases,
+                testTag = "drawer_direct_purchases"
+            )
+
+            DrawerNavMenuItem(
+                icon = Icons.Default.Home,
+                iconTint = FinancialWarning,
+                iconBg = FinancialWarningContainer,
+                title = "বাড়ির খরচের খাতা",
+                onClick = onNavigateHomeAccounting,
+                testTag = "drawer_home_accounting"
             )
 
             DrawerNavMenuItem(
                 icon = Icons.Default.AccountBalanceWallet,
                 iconTint = Color(0xFF00796B),
                 iconBg = Color(0xFFE0F2F1),
-                title = "ব্যক্তিগত খরচের খাতা",
-                subtitle = "দৈনন্দিন খরচ, আয় ও সঞ্চয়ের ডায়েরি",
+                title = "ব্যক্তিগত খাতা",
                 onClick = onNavigatePersonal,
                 testTag = "drawer_personal"
-            )
-
-            DrawerNavMenuItem(
-                icon = Icons.Default.Dashboard,
-                iconTint = Color(0xFF6750A4),
-                iconBg = Color(0xFFEDE7F6),
-                title = "ব্যবহারকারী মোড নির্বাচন",
-                subtitle = "ব্যবসা, ব্যক্তিগত বা উভয় মোড পরিবর্তন করুন",
-                onClick = onOpenModePreference,
-                testTag = "drawer_mode_preference"
-            )
-
-            DrawerNavMenuItem(
-                icon = when (themeMode) {
-                    AppThemeMode.LIGHT -> Icons.Default.LightMode
-                    AppThemeMode.DARK -> Icons.Default.DarkMode
-                    AppThemeMode.SYSTEM -> Icons.Default.BrightnessAuto
-                },
-                iconTint = MaterialTheme.colorScheme.primary,
-                iconBg = MaterialTheme.colorScheme.primaryContainer,
-                title = "অ্যাপ থিম পরিবর্তন",
-                subtitle = "বর্তমান: ${themeMode.banglaTitle}",
-                onClick = { showThemeDialog = true },
-                testTag = "drawer_theme_toggle"
             )
 
             DrawerNavMenuItem(
                 icon = Icons.Default.QrCode2,
                 iconTint = Color(0xFFE2136E),
                 iconBg = Color(0xFFFCE7F3),
-                title = "ডিজিটাল পেমেন্ট QR ও একাউন্ট",
-                subtitle = "bKash, Nagad নম্বর ও গ্রাহক স্ক্যান কিউআর",
+                title = "ডিজিটাল পেমেন্ট QR",
                 onClick = onOpenPaymentQr,
                 testTag = "drawer_payment_qr"
             )
@@ -375,8 +272,7 @@ fun MawaSideDrawer(
                 icon = Icons.Default.Security,
                 iconTint = Color(0xFF0D9488),
                 iconBg = Color(0xFFCCFBF1),
-                title = "অ্যাপ নিরাপত্তা ও ৪ সংখ্যার পিন",
-                subtitle = if (AppLockManager.isLockEnabled(context)) "পিন সক্রিয় রয়েছে · নিরাপত্তা সেটিংস" else "ক্যাশ ও খাতার সুরক্ষায় গোপন পিন সেট করুন",
+                title = "অ্যাপ নিরাপত্তা ও পিন",
                 onClick = onOpenSecuritySettings,
                 testTag = "drawer_security_settings"
             )
@@ -386,8 +282,7 @@ fun MawaSideDrawer(
                     icon = Icons.Default.Lock,
                     iconTint = FinancialPositive,
                     iconBg = FinancialPositiveContainer,
-                    title = "এখনই অ্যাপ লক করুন",
-                    subtitle = "দোকানের ক্যাশ ও খাতা তাৎক্ষণিক লক করুন",
+                    title = "অ্যাপ লক করুন",
                     onClick = {
                         AppLockManager.lockNow()
                         onLockApp()
@@ -400,48 +295,29 @@ fun MawaSideDrawer(
                 icon = Icons.Default.Settings,
                 iconTint = MawaPrimary,
                 iconBg = MawaPrimaryContainer,
-                title = "দোকানের সেটিংস ও ক্যাশ",
-                subtitle = "দোকানের নাম, ঠিকানা ও সাবেক ক্যাশ বদলান",
+                title = "দোকানের সেটিংস",
                 onClick = onOpenSettings,
                 testTag = "drawer_settings"
             )
 
             DrawerNavMenuItem(
-                icon = Icons.Default.Inventory,
-                iconTint = FinancialPositive,
-                iconBg = FinancialPositiveContainer,
-                title = "পণ্য তালিকা ও স্টক ব্যবস্থাপনা",
-                subtitle = "দোকানের পণ্য, বিক্রয় মূল্য ও মজুদ পরিচালনা",
-                onClick = onNavigateProducts,
-                testTag = "drawer_products"
-            )
-
-            DrawerNavMenuItem(
-                icon = Icons.Default.ShoppingCart,
-                iconTint = FinancialNeutral,
-                iconBg = MaterialTheme.colorScheme.surfaceVariant,
-                title = "সরাসরি পণ্য ক্রয় খাতা",
-                subtitle = "পাইকারি বাজার থেকে নগদ মাল কেনা",
-                onClick = onNavigateDirectPurchases,
-                testTag = "drawer_direct_purchases"
-            )
-
-            DrawerNavMenuItem(
-                icon = Icons.Default.Home,
-                iconTint = FinancialWarning,
-                iconBg = FinancialWarningContainer,
-                title = "বাড়ির খরচের খাতা",
-                subtitle = "দোকান থেকে সংসার ও পরিবারের খরচের হিসাব",
-                onClick = onNavigateHomeAccounting,
-                testTag = "drawer_home_accounting"
+                icon = when (themeMode) {
+                    AppThemeMode.LIGHT -> Icons.Default.LightMode
+                    AppThemeMode.DARK -> Icons.Default.DarkMode
+                    AppThemeMode.SYSTEM -> Icons.Default.BrightnessAuto
+                },
+                iconTint = MaterialTheme.colorScheme.primary,
+                iconBg = MaterialTheme.colorScheme.primaryContainer,
+                title = "অ্যাপ থিম পরিবর্তন",
+                onClick = { showThemeDialog = true },
+                testTag = "drawer_theme_toggle"
             )
 
             DrawerNavMenuItem(
                 icon = Icons.Default.HelpOutline,
                 iconTint = MawaPrimary,
                 iconBg = MawaPrimaryContainer,
-                title = "হিসাব মেলানোর নিয়ম ও সহায়িকা",
-                subtitle = "দোকানের ক্যাশ ও খাতা মেলানোর ঐতিহ্যবাহী নিয়ম",
+                title = "সহায়িকা ও নিয়মাবলী",
                 onClick = onOpenAccountingGuide,
                 testTag = "drawer_accounting_guide"
             )
@@ -476,13 +352,6 @@ fun MawaSideDrawer(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = "১০০% অফলাইন এবং নিরাপদ ডিজিটাল খাতা",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp
-                )
             }
         }
     }
@@ -504,7 +373,6 @@ private fun DrawerNavMenuItem(
     iconTint: Color,
     iconBg: Color,
     title: String,
-    subtitle: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     testTag: String = ""
@@ -518,13 +386,13 @@ private fun DrawerNavMenuItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .background(iconBg),
                 contentAlignment = Alignment.Center
             ) {
@@ -536,36 +404,27 @@ private fun DrawerNavMenuItem(
                 )
             }
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(14.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 11.sp,
-                    maxLines = 1
-                )
-            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
 
             Icon(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.outlineVariant,
+                tint = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
                 modifier = Modifier.size(18.dp)
             )
         }
 
         HorizontalDivider(
             thickness = 0.5.dp,
-            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.25f),
             modifier = Modifier.padding(start = 68.dp, end = 16.dp)
         )
     }

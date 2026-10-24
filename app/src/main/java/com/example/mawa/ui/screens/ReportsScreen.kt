@@ -156,11 +156,18 @@ fun ReportsScreen(
         }
 
         groups.entries.map { (dayMillis, txList) ->
-            val sales = txList.filter { it.type == TransactionType.SALE_CASH || it.type == TransactionType.SALE_BAKI }.sumOf { it.amount }
+            val cashSales = txList.filter { it.type == TransactionType.SALE_CASH }.sumOf { it.amount }
+            val bakiSales = txList.filter { it.type == TransactionType.SALE_BAKI }.sumOf { it.amount }
+            val bakiCol = txList.filter { it.type == TransactionType.BAKI_COLLECTION }.sumOf { it.amount }
             val purchases = txList.filter { it.type == TransactionType.PURCHASE_FORDI || it.type == TransactionType.PURCHASE_DIRECT }.sumOf { it.amount }
             val shopExp = txList.filter { it.type == TransactionType.EXPENSE_SHOP }.sumOf { it.amount }
             val homeExp = txList.filter { it.type == TransactionType.EXPENSE_HOME }.sumOf { it.amount }
-            val profit = sales - purchases - shopExp
+            val totalExpenses = purchases + shopExp + homeExp
+
+            val autoSales = if (totalExpenses > (cashSales + bakiCol)) (totalExpenses - bakiCol) else 0.0
+            val effectiveCashSales = maxOf(cashSales, autoSales)
+            val sales = effectiveCashSales + bakiSales
+            val profit = (sales * 0.10).coerceAtLeast(0.0)
 
             cal.timeInMillis = dayMillis
             val dateLabel = BengaliUtils.getFormattedTodayDate(dayMillis)
