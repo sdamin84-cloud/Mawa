@@ -9,6 +9,7 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
+import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
@@ -18,8 +19,26 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.tasks.await
 
 class FirebaseAuthManager(private val context: Context) {
-    private val auth: FirebaseAuth by lazy { FirebaseAuth.getInstance() }
-    private val credentialManager: CredentialManager by lazy { CredentialManager.create(context) }
+    private val auth: FirebaseAuth? by lazy {
+        try {
+            if (FirebaseApp.getApps(context).isEmpty()) {
+                FirebaseApp.initializeApp(context)
+            }
+            FirebaseAuth.getInstance()
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to get FirebaseAuth instance gracefully", e)
+            null
+        }
+    }
+
+    private val credentialManager: CredentialManager? by lazy {
+        try {
+            CredentialManager.create(context)
+        } catch (e: Throwable) {
+            Log.e(TAG, "Failed to create CredentialManager gracefully", e)
+            null
+        }
+    }
 
     private val _currentUser = MutableStateFlow<FirebaseUserProfile?>(null)
     val currentUser: StateFlow<FirebaseUserProfile?> = _currentUser.asStateFlow()
@@ -34,18 +53,27 @@ class FirebaseAuthManager(private val context: Context) {
     }
 
     init {
-        auth.addAuthStateListener { firebaseAuth ->
-            val user = firebaseAuth.currentUser
-            _currentUser.value = user?.toProfile()
+        try {
+            val a = auth
+            if (a != null) {
+                a.addAuthStateListener { firebaseAuth ->
+                    val user = firebaseAuth.currentUser
+                    _currentUser.value = user?.toProfile()
+                }
+                _currentUser.value = a.currentUser?.toProfile()
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "FirebaseAuthManager init error gracefully handled", e)
         }
-        _currentUser.value = auth.currentUser?.toProfile()
     }
 
-    fun isLoggedIn(): Boolean = auth.currentUser != null
+    fun isLoggedIn(): Boolean = auth?.currentUser != null
 
-    fun getUserId(): String? = auth.currentUser?.uid
+    fun getUserId(): String? = auth?.currentUser?.uid
 
     suspend fun signInWithGoogle(activityContext: Context): FirebaseAuthResult {
+        val a = auth ?: return FirebaseAuthResult.Error("ফায়ারবেজ ইনিশিয়ালাইজেশন সম্পন্ন হয়নি")
+        val cm = credentialManager ?: return FirebaseAuthResult.Error("ক্রেডেনশিয়াল সার্ভিস অনুপলব্ধ")
         _isLoading.value = true
         return try {
             val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(WEB_CLIENT_ID)
@@ -55,7 +83,7 @@ class FirebaseAuthManager(private val context: Context) {
                 .addCredentialOption(signInWithGoogleOption)
                 .build()
 
-            val result = credentialManager.getCredential(
+            val result = cm.getCredential(
                 request = request,
                 context = activityContext
             )
@@ -67,7 +95,7 @@ class FirebaseAuthManager(private val context: Context) {
                 val googleIdTokenCredential = GoogleIdTokenCredential.createFrom(credential.data)
                 val idToken = googleIdTokenCredential.idToken
                 val authCredential = GoogleAuthProvider.getCredential(idToken, null)
-                val authResult = auth.signInWithCredential(authCredential).await()
+                val authResult = a.signInWithCredential(authCredential).await()
                 val user = authResult.user
                 if (user != null) {
                     val profile = user.toProfile()
@@ -93,9 +121,10 @@ class FirebaseAuthManager(private val context: Context) {
     }
 
     suspend fun signInWithEmail(email: String, pass: String): FirebaseAuthResult {
+        val a = auth ?: return FirebaseAuthResult.Error("ফায়ারবেজ ইনিশিয়ালাইজেশন সম্পন্ন হয়নি")
         _isLoading.value = true
         return try {
-            val result = auth.signInWithEmailAndPassword(email.trim(), pass.trim()).await()
+            val result = a.signInWithEmailAndPassword(email.trim(), pass.trim()).await()
             val user = result.user
             if (user != null) {
                 val profile = user.toProfile()
@@ -113,9 +142,10 @@ class FirebaseAuthManager(private val context: Context) {
     }
 
     suspend fun signUpWithEmail(email: String, pass: String, displayName: String = ""): FirebaseAuthResult {
+        val a = auth ?: return FirebaseAuthResult.Error("ফায়ারবেজ ইনিশিয়ালাইজেশন সম্পন্ন হয়নি")
         _isLoading.value = true
         return try {
-            val result = auth.createUserWithEmailAndPassword(email.trim(), pass.trim()).await()
+            val result = a.createUserWithEmailAndPassword(email.trim(), pass.trim()).await()
             val user = result.user
             if (user != null) {
                 if (displayName.isNotBlank()) {
@@ -143,7 +173,11 @@ class FirebaseAuthManager(private val context: Context) {
     }
 
     fun signOut() {
-        auth.signOut()
+        try {
+            auth?.signOut()
+        } catch (e: Throwable) {
+            Log.e(TAG, "signOut error", e)
+        }
         _currentUser.value = null
     }
 

@@ -576,23 +576,6 @@ fun HomeScreen(
                                 }
                             }
 
-                            // Calculator Quick Button
-                            IconButton(
-                                onClick = onOpenCalculator,
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f))
-                                    .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), CircleShape)
-                                    .testTag("header_calculator_btn")
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Calculate,
-                                    contentDescription = "ক্যালকুলেটর",
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
 
                             IconButton(
                                 onClick = onOpenDrawer,

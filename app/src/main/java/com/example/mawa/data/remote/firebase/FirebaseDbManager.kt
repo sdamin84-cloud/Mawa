@@ -18,21 +18,29 @@ class FirebaseDbManager(
     private val context: Context,
     private val authManager: FirebaseAuthManager
 ) {
-    private val db: FirebaseFirestore by lazy {
-        val dbId = try {
-            context.getString(R.string.firestore_database_id)
-        } catch (e: Exception) {
-            ""
-        }
-        if (dbId.isNotBlank()) {
-            try {
-                FirebaseFirestore.getInstance(FirebaseApp.getInstance(), dbId)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to get named database $dbId, falling back to default", e)
+    private val db: FirebaseFirestore? by lazy {
+        try {
+            if (FirebaseApp.getApps(context).isEmpty()) {
+                FirebaseApp.initializeApp(context)
+            }
+            val dbId = try {
+                context.getString(R.string.firestore_database_id)
+            } catch (e: Throwable) {
+                ""
+            }
+            if (dbId.isNotBlank()) {
+                try {
+                    FirebaseFirestore.getInstance(FirebaseApp.getInstance(), dbId)
+                } catch (e: Throwable) {
+                    Log.w(TAG, "Failed to get named database $dbId, falling back to default", e)
+                    FirebaseFirestore.getInstance()
+                }
+            } else {
                 FirebaseFirestore.getInstance()
             }
-        } else {
-            FirebaseFirestore.getInstance()
+        } catch (e: Throwable) {
+            Log.e(TAG, "FirebaseFirestore init failed gracefully", e)
+            null
         }
     }
 
@@ -46,6 +54,7 @@ class FirebaseDbManager(
         backupName: String,
         backupData: FullBackupData
     ): FirebaseOperationResult<FirebaseBackupItem> {
+        val database = db ?: return FirebaseOperationResult.Error("ফায়ারবেজ ডাটাবেজ ইনিশিয়ালাইজেশন সম্পন্ন হয়নি")
         val uid = authManager.getUserId()
             ?: return FirebaseOperationResult.Error("ব্যবহারকারী লগইন করা নেই। অনুগ্রহ করে প্রথমে সাইন-ইন করুন।")
 
@@ -84,7 +93,7 @@ class FirebaseDbManager(
             )
 
             // Save to Firestore subcollection: users/{uid}/cloud_backups/{backupId}
-            db.collection(COLLECTION_USERS)
+            database.collection(COLLECTION_USERS)
                 .document(uid)
                 .collection(COLLECTION_BACKUPS)
                 .document(backupId)
@@ -104,7 +113,7 @@ class FirebaseDbManager(
                 "totalTransactions" to item.transactionCount,
                 "totalProducts" to item.productCount
             )
-            db.collection(COLLECTION_USERS)
+            database.collection(COLLECTION_USERS)
                 .document(uid)
                 .set(userMeta, SetOptions.merge())
                 .await()
@@ -120,17 +129,18 @@ class FirebaseDbManager(
     }
 
     suspend fun syncAllRecordsToFirebase(backupData: FullBackupData): FirebaseOperationResult<Int> {
+        val database = db ?: return FirebaseOperationResult.Error("ফায়ারবেজ ডাটাবেজ ইনিশিয়ালাইজেশন সম্পন্ন হয়নি")
         val uid = authManager.getUserId()
             ?: return FirebaseOperationResult.Error("ব্যবহারকারী লগইন করা নেই")
 
         return try {
-            val userDoc = db.collection(COLLECTION_USERS).document(uid)
+            val userDoc = database.collection(COLLECTION_USERS).document(uid)
             var totalCount = 0
 
             // 1. Customers batch
             val customerChunks = backupData.customers.chunked(450)
             for (chunk in customerChunks) {
-                val batch = db.batch()
+                val batch = database.batch()
                 for (c in chunk) {
                     val docRef = userDoc.collection("customers").document(c.id.toString())
                     val map = hashMapOf(
@@ -141,9 +151,9 @@ class FirebaseDbManager(
                         "openingBalance" to c.openingBalance,
                         "creditLimit" to c.creditLimit,
                         "categoryTag" to c.categoryTag,
+                        "promisedPaymentDate" to c.promisedPaymentDate,
                         "nidOrGuarantor" to c.nidOrGuarantor,
                         "note" to c.note,
-                        "promisedPaymentDate" to c.promisedPaymentDate,
                         "createdAt" to c.createdAt,
                         "updatedAt" to System.currentTimeMillis()
                     )
@@ -156,25 +166,27 @@ class FirebaseDbManager(
             // 2. Transactions batch
             val txChunks = backupData.transactions.chunked(450)
             for (chunk in txChunks) {
-                val batch = db.batch()
-                for (tx in chunk) {
-                    val docRef = userDoc.collection("transactions").document(tx.id.toString())
+                val batch = database.batch()
+                for (t in chunk) {
+                    val docRef = userDoc.collection("transactions").document(t.id.toString())
                     val map = hashMapOf(
-                        "id" to tx.id,
-                        "type" to tx.type.name,
-                        "amount" to tx.amount,
-                        "customerId" to tx.customerId,
-                        "customerName" to tx.customerName,
-                        "note" to tx.note,
-                        "productName" to tx.productName,
-                        "quantity" to tx.quantity,
-                        "unit" to tx.unit,
-                        "rate" to tx.rate,
-                        "category" to tx.category,
-                        "paymentStatus" to tx.paymentStatus,
-                        "promisedPaymentDate" to tx.promisedPaymentDate,
-                        "timestamp" to tx.timestamp,
-                        "updatedAt" to System.currentTimeMillis()
+                        "id" to t.id,
+                        "customerId" to (t.customerId ?: 0L),
+                        "customerName" to (t.customerName ?: ""),
+                        "amount" to t.amount,
+                        "type" to t.type.name,
+                        "productId" to (t.productId ?: 0L),
+                        "productName" to (t.productName ?: ""),
+                        "quantity" to t.quantity,
+                        "unit" to t.unit,
+                        "rate" to t.rate,
+                        "category" to t.category,
+                        "note" to t.note,
+                        "paymentStatus" to t.paymentStatus,
+                        "promisedPaymentDate" to t.promisedPaymentDate,
+                        "timestamp" to t.timestamp,
+                        "isSynced" to true,
+                        "syncTimestamp" to System.currentTimeMillis()
                     )
                     batch.set(docRef, map, SetOptions.merge())
                     totalCount++
@@ -185,19 +197,20 @@ class FirebaseDbManager(
             // 3. Products batch
             val productChunks = backupData.products.chunked(450)
             for (chunk in productChunks) {
-                val batch = db.batch()
+                val batch = database.batch()
                 for (p in chunk) {
                     val docRef = userDoc.collection("products").document(p.id.toString())
                     val map = hashMapOf(
                         "id" to p.id,
                         "name" to p.name,
                         "banglaName" to p.banglaName,
-                        "defaultPurchasePrice" to p.defaultPurchasePrice,
-                        "defaultSellingPrice" to p.defaultSellingPrice,
-                        "stockQuantity" to p.stockQuantity,
-                        "unit" to p.unit,
                         "category" to p.category,
                         "barcode" to p.barcode,
+                        "stockQuantity" to p.stockQuantity,
+                        "unit" to p.unit,
+                        "defaultSellingPrice" to p.defaultSellingPrice,
+                        "defaultPurchasePrice" to p.defaultPurchasePrice,
+                        "isActive" to p.isActive,
                         "updatedAt" to System.currentTimeMillis()
                     )
                     batch.set(docRef, map, SetOptions.merge())
@@ -206,17 +219,29 @@ class FirebaseDbManager(
                 batch.commit().await()
             }
 
-            // 4. Daily Cash Records
-            val cashChunks = backupData.dailyCashRecords.chunked(450)
-            for (chunk in cashChunks) {
-                val batch = db.batch()
-                for (dc in chunk) {
-                    val docRef = userDoc.collection("daily_cash").document(dc.dateKey)
+            // 4. Fordi / Pre-Orders batch
+            val fordiChunks = backupData.fordiItems.chunked(450)
+            for (chunk in fordiChunks) {
+                val batch = database.batch()
+                for (f in chunk) {
+                    val docRef = userDoc.collection("fordi_items").document(f.id.toString())
                     val map = hashMapOf(
-                        "dateKey" to dc.dateKey,
-                        "dateMillis" to dc.dateMillis,
-                        "sabekCash" to dc.sabekCash,
-                        "closingCash" to dc.closingCash,
+                        "id" to f.id,
+                        "productId" to (f.productId ?: 0L),
+                        "productName" to f.productName,
+                        "plannedQuantity" to f.plannedQuantity,
+                        "unit" to f.unit,
+                        "purchaseRate" to f.purchaseRate,
+                        "sellingRate" to f.sellingRate,
+                        "isPurchased" to f.isPurchased,
+                        "actualQuantity" to f.actualQuantity,
+                        "actualRate" to f.actualRate,
+                        "actualTotal" to f.actualTotal,
+                        "companyName" to f.companyName,
+                        "orderDay" to f.orderDay,
+                        "deliveryDay" to f.deliveryDay,
+                        "createdAt" to f.createdAt,
+                        "purchaseDate" to (f.purchaseDate ?: 0L),
                         "updatedAt" to System.currentTimeMillis()
                     )
                     batch.set(docRef, map, SetOptions.merge())
@@ -225,19 +250,22 @@ class FirebaseDbManager(
                 batch.commit().await()
             }
 
-            // 5. Supplier Companies
-            val supplierChunks = backupData.supplierCompanies.chunked(450)
-            for (chunk in supplierChunks) {
-                val batch = db.batch()
-                for (sc in chunk) {
-                    val docRef = userDoc.collection("supplier_companies").document(sc.id.toString())
+            // 5. Supplier Companies batch
+            val companyChunks = backupData.supplierCompanies.chunked(450)
+            for (chunk in companyChunks) {
+                val batch = database.batch()
+                for (s in chunk) {
+                    val docRef = userDoc.collection("supplier_companies").document(s.id.toString())
                     val map = hashMapOf(
-                        "id" to sc.id,
-                        "companyName" to sc.companyName,
-                        "srName" to sc.srName,
-                        "srPhone" to sc.srPhone,
-                        "orderDay" to sc.orderDay,
-                        "deliveryDay" to sc.deliveryDay,
+                        "id" to s.id,
+                        "companyName" to s.companyName,
+                        "srName" to s.srName,
+                        "srPhone" to s.srPhone,
+                        "orderDay" to s.orderDay,
+                        "deliveryDay" to s.deliveryDay,
+                        "address" to s.address,
+                        "note" to s.note,
+                        "createdAt" to s.createdAt,
                         "updatedAt" to System.currentTimeMillis()
                     )
                     batch.set(docRef, map, SetOptions.merge())
@@ -246,17 +274,24 @@ class FirebaseDbManager(
                 batch.commit().await()
             }
 
-            // 6. Shop Profile Settings
-            backupData.shopSettings?.let { s ->
+            // 6. Shop Settings singleton document
+            val settings = backupData.shopSettings
+            if (settings != null) {
                 val docRef = userDoc.collection("settings").document("shop_profile")
                 val map = hashMapOf(
-                    "shopName" to s.shopName,
-                    "ownerName" to s.ownerName,
-                    "phone" to s.phone,
-                    "openingBalance" to s.openingBalance,
-                    "bkashNumber" to s.bkashNumber,
-                    "nagadNumber" to s.nagadNumber,
-                    "bankDetails" to s.bankDetails,
+                    "id" to settings.id,
+                    "shopName" to settings.shopName,
+                    "ownerName" to settings.ownerName,
+                    "openingBalance" to settings.openingBalance,
+                    "currencySymbol" to settings.currencySymbol,
+                    "phone" to settings.phone,
+                    "bkashNumber" to settings.bkashNumber,
+                    "nagadNumber" to settings.nagadNumber,
+                    "bankDetails" to settings.bankDetails,
+                    "qrCodeData" to settings.qrCodeData,
+                    "appMode" to settings.appMode,
+                    "isModeConfigured" to settings.isModeConfigured,
+                    "createdAt" to settings.createdAt,
                     "updatedAt" to System.currentTimeMillis()
                 )
                 docRef.set(map, SetOptions.merge()).await()
@@ -274,11 +309,12 @@ class FirebaseDbManager(
     }
 
     suspend fun fetchBackupsFromFirebase(): FirebaseOperationResult<List<FirebaseBackupItem>> {
+        val database = db ?: return FirebaseOperationResult.Error("ফায়ারবেজ ডাটাবেজ ইনিশিয়ালাইজেশন সম্পন্ন হয়নি")
         val uid = authManager.getUserId()
             ?: return FirebaseOperationResult.Error("ব্যবহারকারী লগইন করা নেই")
 
         return try {
-            val snapshot = db.collection(COLLECTION_USERS)
+            val snapshot = database.collection(COLLECTION_USERS)
                 .document(uid)
                 .collection(COLLECTION_BACKUPS)
                 .orderBy("timestamp", Query.Direction.DESCENDING)
@@ -321,11 +357,12 @@ class FirebaseDbManager(
     }
 
     suspend fun restoreBackupFromFirebase(backupId: String): FirebaseOperationResult<FullBackupData> {
+        val database = db ?: return FirebaseOperationResult.Error("ফায়ারবেজ ডাটাবেজ ইনিশিয়ালাইজেশন সম্পন্ন হয়নি")
         val uid = authManager.getUserId()
             ?: return FirebaseOperationResult.Error("ব্যবহারকারী লগইন করা নেই")
 
         return try {
-            val doc = db.collection(COLLECTION_USERS)
+            val doc = database.collection(COLLECTION_USERS)
                 .document(uid)
                 .collection(COLLECTION_BACKUPS)
                 .document(backupId)
@@ -350,11 +387,12 @@ class FirebaseDbManager(
     }
 
     suspend fun deleteBackupFromFirebase(backupId: String): FirebaseOperationResult<Unit> {
+        val database = db ?: return FirebaseOperationResult.Error("ফায়ারবেজ ডাটাবেজ ইনিশিয়ালাইজেশন সম্পন্ন হয়নি")
         val uid = authManager.getUserId()
             ?: return FirebaseOperationResult.Error("ব্যবহারকারী লগইন করা নেই")
 
         return try {
-            db.collection(COLLECTION_USERS)
+            database.collection(COLLECTION_USERS)
                 .document(uid)
                 .collection(COLLECTION_BACKUPS)
                 .document(backupId)

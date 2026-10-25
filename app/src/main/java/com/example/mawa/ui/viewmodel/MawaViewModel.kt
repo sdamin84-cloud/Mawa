@@ -128,29 +128,41 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
-            repository.seedInitialDataIfEmpty()
-            repository.seedInitialCompanyOrdersIfEmpty()
-        }
-        viewModelScope.launch {
-            currentUser.collect { user ->
-                if (user != null) {
-                    loadCloudBackups()
-                    // Instant live sync upon session detection
-                    mawaSyncManager.syncImmediatelyOnLogin { _, _ ->
-                        loadCloudBackups()
-                    }
-                } else {
-                    _cloudBackups.value = emptyList()
-                }
+            try {
+                repository.seedInitialDataIfEmpty()
+                repository.seedInitialCompanyOrdersIfEmpty()
+            } catch (e: Throwable) {
+                android.util.Log.e("MawaViewModel", "Seed error", e)
             }
         }
         viewModelScope.launch {
-            currentFirebaseUser.collect { user ->
-                if (user != null) {
-                    loadFirebaseBackups()
-                } else {
-                    _firebaseBackups.value = emptyList()
+            try {
+                currentUser.collect { user ->
+                    if (user != null) {
+                        loadCloudBackups()
+                        // Instant live sync upon session detection
+                        mawaSyncManager.syncImmediatelyOnLogin { _, _ ->
+                            loadCloudBackups()
+                        }
+                    } else {
+                        _cloudBackups.value = emptyList()
+                    }
                 }
+            } catch (e: Throwable) {
+                android.util.Log.e("MawaViewModel", "Cloud backups collect error", e)
+            }
+        }
+        viewModelScope.launch {
+            try {
+                currentFirebaseUser.collect { user ->
+                    if (user != null) {
+                        loadFirebaseBackups()
+                    } else {
+                        _firebaseBackups.value = emptyList()
+                    }
+                }
+            } catch (e: Throwable) {
+                android.util.Log.e("MawaViewModel", "Firebase user collect error", e)
             }
         }
     }

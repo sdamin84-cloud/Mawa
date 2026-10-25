@@ -154,43 +154,85 @@ fun QuickExpenseDrawer(
     val focusManager = LocalFocusManager.current
     val descriptionFocusRequester = remember { FocusRequester() }
 
-    val amountNum = amount.toDoubleOrNull() ?: 0.0
+    val activeSmartParsed = remember(amount, description) {
+        com.example.mawa.util.SmartExpenseInputParser.parse(amount)
+            ?: com.example.mawa.util.SmartExpenseInputParser.parse(description)
+    }
+
+    val effectiveAmount = activeSmartParsed?.amount
+        ?: amount.toDoubleOrNull()
+        ?: BengaliUtils.toEnglishDigits(amount).toDoubleOrNull()
+        ?: 0.0
+
+    val handleVoiceResult: (com.example.mawa.util.VoiceParsedResult) -> Unit = { parsed ->
+        if (parsed.amount != null && parsed.amount > 0) {
+            amount = if (parsed.amount % 1.0 == 0.0) parsed.amount.toLong().toString() else parsed.amount.toString()
+        }
+        if (parsed.note.isNotBlank()) {
+            description = parsed.note
+        }
+        when (parsed.detectedType) {
+            com.example.mawa.data.local.entity.TransactionType.PURCHASE_DIRECT,
+            com.example.mawa.data.local.entity.TransactionType.PURCHASE_FORDI -> {
+                expenseTarget = QuickExpenseTarget.PURCHASE
+                isManualSelection = true
+            }
+            com.example.mawa.data.local.entity.TransactionType.EXPENSE_HOME -> {
+                expenseTarget = QuickExpenseTarget.HOME
+                isManualSelection = true
+            }
+            else -> {
+                expenseTarget = QuickExpenseTarget.SHOP
+                isManualSelection = true
+            }
+        }
+    }
 
     val performSaveExpense: () -> Unit = {
-        if (amountNum > 0) {
-            val savedAmount = amountNum
+        val finalAmount = effectiveAmount
+        val finalDescription = if (activeSmartParsed != null && description.isBlank()) {
+            activeSmartParsed.name
+        } else if (description.isNotBlank()) {
+            activeSmartParsed?.name ?: description
+        } else {
+            when (expenseTarget) {
+                QuickExpenseTarget.PURCHASE -> "পণ্য ক্রয় (স্টক)"
+                QuickExpenseTarget.HOME -> "বাড়ির খরচ"
+                QuickExpenseTarget.SHOP -> "দোকান পরিচালনা খরচ"
+            }
+        }
+
+        if (finalAmount > 0) {
+            val savedAmount = finalAmount
             val savedTargetName: String
 
             when (expenseTarget) {
                 QuickExpenseTarget.PURCHASE -> {
                     savedTargetName = "পণ্য ক্রয়"
-                    val note = description.ifBlank { "পণ্য ক্রয় (স্টক)" }
                     viewModel.recordDirectPurchase(
-                        productName = note,
+                        productName = finalDescription,
                         quantity = 1.0,
                         unit = "পিস",
                         rate = savedAmount,
                         total = savedAmount,
-                        note = note,
+                        note = finalDescription,
                         timestamp = selectedTimestamp
                     )
                 }
                 QuickExpenseTarget.HOME -> {
                     savedTargetName = "সংসার / বাড়ি"
-                    val note = description.ifBlank { "বাড়ির খরচ" }
                     viewModel.recordExpense(
                         amount = savedAmount,
-                        description = note,
+                        description = finalDescription,
                         isHome = true,
                         timestamp = selectedTimestamp
                     )
                 }
                 QuickExpenseTarget.SHOP -> {
                     savedTargetName = "দোকান খরচ"
-                    val note = description.ifBlank { "দোকান পরিচালনা খরচ" }
                     viewModel.recordExpense(
                         amount = savedAmount,
-                        description = note,
+                        description = finalDescription,
                         isHome = false,
                         timestamp = selectedTimestamp
                     )
@@ -267,29 +309,7 @@ fun QuickExpenseDrawer(
                     Spacer(modifier = Modifier.width(4.dp))
 
                     VoiceInputButton(
-                        onVoiceResult = { parsed ->
-                            if (parsed.amount != null && parsed.amount > 0) {
-                                amount = if (parsed.amount % 1.0 == 0.0) parsed.amount.toLong().toString() else parsed.amount.toString()
-                            }
-                            if (parsed.note.isNotBlank()) {
-                                description = parsed.note
-                            }
-                            when (parsed.detectedType) {
-                                com.example.mawa.data.local.entity.TransactionType.PURCHASE_DIRECT,
-                                com.example.mawa.data.local.entity.TransactionType.PURCHASE_FORDI -> {
-                                    expenseTarget = QuickExpenseTarget.PURCHASE
-                                    isManualSelection = true
-                                }
-                                com.example.mawa.data.local.entity.TransactionType.EXPENSE_HOME -> {
-                                    expenseTarget = QuickExpenseTarget.HOME
-                                    isManualSelection = true
-                                }
-                                else -> {
-                                    expenseTarget = QuickExpenseTarget.SHOP
-                                    isManualSelection = true
-                                }
-                            }
-                        },
+                        onVoiceResult = handleVoiceResult,
                         buttonText = "মুখে বলুন",
                         isPillStyle = true,
                         testTag = "voice_btn_expense_drawer"
@@ -449,7 +469,8 @@ fun QuickExpenseDrawer(
                     performSaveExpense()
                 },
                 quickAmounts = listOf(20, 50, 100, 200, 500, 1000),
-                testTag = "expense_amount_input"
+                testTag = "expense_amount_input",
+                onVoiceInput = handleVoiceResult
             )
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -659,12 +680,28 @@ fun QuickExpenseDrawer(
                     Text("যেমন: মাছ ৩৫০, চাল ১২০০ বা চা ২০")
                 },
                 trailingIcon = {
-                    IconButton(onClick = { showBarcodeScanner = true }) {
-                        Icon(
-                            imageVector = Icons.Default.QrCodeScanner,
-                            contentDescription = "বারকোড স্ক্যান",
-                            tint = MawaPrimary
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        VoiceInputButton(
+                            onVoiceResult = handleVoiceResult,
+                            isPillStyle = false,
+                            modifier = Modifier.size(36.dp),
+                            testTag = "desc_field_voice_mic_btn"
                         )
+                        IconButton(
+                            onClick = { showBarcodeScanner = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "বারকোড স্ক্যান",
+                                tint = MawaPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 },
                 singleLine = true,
@@ -904,7 +941,7 @@ fun QuickExpenseDrawer(
                     performSaveExpense()
                     focusManager.clearFocus()
                 },
-                enabled = amountNum > 0,
+                enabled = effectiveAmount > 0,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(50.dp)
