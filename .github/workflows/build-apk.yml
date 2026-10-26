@@ -27,6 +27,12 @@ jobs:
           rm -rf .gradle
           rm -rf app/build
 
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Accept Android SDK Licenses
+        run: yes | sdkmanager --licenses || true
+
       - name: Grant execute permission for gradlew
         run: |
           if [ -f gradlew ]; then
