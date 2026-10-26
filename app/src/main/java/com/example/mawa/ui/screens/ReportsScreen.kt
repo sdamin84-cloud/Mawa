@@ -6,10 +6,13 @@ import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.graphics.Brush
@@ -32,6 +36,8 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Call
 import androidx.compose.material.icons.filled.Chat
+import androidx.compose.material.icons.filled.ChevronLeft
+import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Download
@@ -132,6 +138,7 @@ fun ReportsScreen(
     val clipboardManager = LocalClipboardManager.current
 
     val currentFilter by viewModel.reportTimeFilter.collectAsStateWithLifecycle()
+    val customDateMillis by viewModel.reportCustomDateMillis.collectAsStateWithLifecycle()
     val transactions by viewModel.filteredTransactionsForReport.collectAsStateWithLifecycle()
     val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
     val shopSettings by viewModel.shopSettings.collectAsStateWithLifecycle()
@@ -260,6 +267,52 @@ fun ReportsScreen(
             .take(5)
     }
 
+    val activeDateMillis = customDateMillis ?: System.currentTimeMillis()
+    val isToday = remember(activeDateMillis) {
+        val cal1 = Calendar.getInstance().apply { timeInMillis = activeDateMillis }
+        val cal2 = Calendar.getInstance()
+        cal1.get(Calendar.YEAR) == cal2.get(Calendar.YEAR) &&
+        cal1.get(Calendar.DAY_OF_YEAR) == cal2.get(Calendar.DAY_OF_YEAR)
+    }
+
+    val activeDateLabel = remember(activeDateMillis) {
+        val dateStr = SimpleDateFormat("dd MMMM yyyy", Locale("bn", "BD")).format(Date(activeDateMillis))
+        val dayOfWeek = SimpleDateFormat("EEEE", Locale("bn", "BD")).format(Date(activeDateMillis))
+        "$dateStr, $dayOfWeek"
+    }
+
+    val displayPeriodLabel = remember(currentFilter, customDateMillis, activeDateLabel, isToday) {
+        if (customDateMillis != null) {
+            if (isToday) "আজ ($activeDateLabel)" else activeDateLabel
+        } else {
+            currentFilter.banglaLabel
+        }
+    }
+
+    val currentCal = Calendar.getInstance()
+    currentCal.timeInMillis = activeDateMillis
+
+    val datePickerDialog = remember(context, activeDateMillis) {
+        android.app.DatePickerDialog(
+            context,
+            { _, year, month, dayOfMonth ->
+                val selCal = Calendar.getInstance().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, dayOfMonth)
+                    set(Calendar.HOUR_OF_DAY, 12)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                viewModel.setReportCustomDate(selCal.timeInMillis)
+            },
+            currentCal.get(Calendar.YEAR),
+            currentCal.get(Calendar.MONTH),
+            currentCal.get(Calendar.DAY_OF_MONTH)
+        )
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -268,7 +321,7 @@ fun ReportsScreen(
         // Top Header
         MawaTopBar(
             title = "রিপোর্ট ও লাভ-ক্ষতি",
-            subtitle = "${currentFilter.banglaLabel}-এর পূর্ণাঙ্গ বিবরণী",
+            subtitle = "$displayPeriodLabel-এর পূর্ণাঙ্গ বিবরণী",
             onMenuClick = onOpenDrawer
         )
 
@@ -322,7 +375,7 @@ fun ReportsScreen(
                                     color = Color.White
                                 )
                                 Text(
-                                    text = "${currentFilter.banglaLabel} · মোট লেনদেন: ${BengaliUtils.toBengaliDigits(transactions.size.toString())}টি",
+                                    text = "$displayPeriodLabel · মোট লেনদেন: ${BengaliUtils.toBengaliDigits(transactions.size.toString())}টি",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontSize = 11.5.sp,
                                     color = Color.White.copy(alpha = 0.85f)
@@ -347,7 +400,7 @@ fun ReportsScreen(
                 }
             }
 
-            // 1. Time Filter Selector (Daily, Weekly, Monthly, All-time)
+            // 1. Time Filter Selector (Daily, Weekly, Monthly, All-time, Custom Date)
             item {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -356,11 +409,12 @@ fun ReportsScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState())
                             .padding(horizontal = 16.dp, vertical = 10.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         TimeFilter.values().forEach { filter ->
-                            val isSelected = currentFilter == filter
+                            val isSelected = currentFilter == filter && customDateMillis == null
                             Box(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
@@ -378,6 +432,157 @@ fun ReportsScreen(
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        // Custom Single Day Filter Chip
+                        val isCustomSelected = customDateMillis != null
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(
+                                    if (isCustomSelected) MawaPrimary
+                                    else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                                )
+                                .clickable {
+                                    if (customDateMillis == null) {
+                                        viewModel.setReportCustomDate(System.currentTimeMillis())
+                                    }
+                                    datePickerDialog.show()
+                                }
+                                .padding(horizontal = 14.dp, vertical = 6.dp)
+                                .testTag("report_filter_custom_day"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.CalendarMonth,
+                                    contentDescription = null,
+                                    tint = if (isCustomSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = "যেকোনো দিন",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isCustomSelected) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (isCustomSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 1.1 Single Day Navigator Bar (আজকের দিন সহ যেকোনো পেছনের দিন দেখার কন্ট্রোল)
+            item {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            // Previous Day
+                            OutlinedButton(
+                                onClick = {
+                                    val prevCal = Calendar.getInstance().apply {
+                                        timeInMillis = activeDateMillis
+                                        add(Calendar.DAY_OF_MONTH, -1)
+                                    }
+                                    viewModel.setReportCustomDate(prevCal.timeInMillis)
+                                },
+                                modifier = Modifier.height(34.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Icon(Icons.Default.ChevronLeft, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Text("আগের দিন", fontSize = 11.5.sp)
+                            }
+
+                            // Selected Date Picker Button
+                            Surface(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .clickable { datePickerDialog.show() }
+                                    .border(
+                                        width = 1.dp,
+                                        color = if (customDateMillis != null) MawaPrimary else MaterialTheme.colorScheme.outlineVariant,
+                                        shape = RoundedCornerShape(10.dp)
+                                    ),
+                                color = if (customDateMillis != null) MawaPrimary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surface
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CalendarMonth,
+                                        contentDescription = "তারিখ বাছুন",
+                                        tint = if (customDateMillis != null) MawaPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Text(
+                                        text = if (customDateMillis == null && isToday) "আজকের দিন (ক্যালেন্ডার 📅)" else activeDateLabel,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (customDateMillis != null) MawaPrimary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            // Next Day
+                            OutlinedButton(
+                                onClick = {
+                                    val nextCal = Calendar.getInstance().apply {
+                                        timeInMillis = activeDateMillis
+                                        add(Calendar.DAY_OF_MONTH, 1)
+                                    }
+                                    viewModel.setReportCustomDate(nextCal.timeInMillis)
+                                },
+                                modifier = Modifier.height(34.dp),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                enabled = !isToday || customDateMillis != null
+                            ) {
+                                Text("পরের দিন", fontSize = 11.5.sp)
+                                Icon(Icons.Default.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        }
+
+                        if (customDateMillis != null) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "নির্দিষ্ট দিনের রিপোর্ট দেখছেন",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "আজকের হিসেবে ফিরুন ↺",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MawaPrimary,
+                                    modifier = Modifier
+                                        .clickable { viewModel.setReportTimeFilter(TimeFilter.TODAY) }
+                                        .padding(4.dp)
                                 )
                             }
                         }

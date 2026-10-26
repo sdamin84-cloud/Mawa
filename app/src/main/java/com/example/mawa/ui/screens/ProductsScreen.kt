@@ -97,7 +97,7 @@ import com.example.mawa.ui.components.BarcodeScannerDialog
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
-import com.example.mawa.data.local.entity.CompanyScheduleEntity
+import com.example.mawa.data.local.entity.SupplierCompanyEntity
 
 @Composable
 fun ProductsScreen(
@@ -1017,7 +1017,7 @@ fun ProductDetailScreen(
 @Composable
 fun AddProductDialog(
     initialBarcode: String = "",
-    supplierCompanies: List<CompanyScheduleEntity> = emptyList(),
+    supplierCompanies: List<SupplierCompanyEntity> = emptyList(),
     onDismiss: () -> Unit,
     onAdd: (name: String, banglaName: String, unit: String, purchasePrice: Double, sellingPrice: Double, category: String, barcode: String, stockQuantity: Double, companyName: String) -> Unit
 ) {
@@ -1180,7 +1180,7 @@ fun AddProductDialog(
 @Composable
 fun EditProductDialog(
     product: ProductEntity,
-    supplierCompanies: List<CompanyScheduleEntity> = emptyList(),
+    supplierCompanies: List<SupplierCompanyEntity> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (ProductEntity) -> Unit,
     onDelete: () -> Unit

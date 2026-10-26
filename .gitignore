@@ -16,3 +16,6 @@
 local.properties
 .env
 debug.keystore
+
+# Ensure public APK is committed for web downloads and Netlify
+!public/*.apk

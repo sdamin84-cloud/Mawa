@@ -966,15 +966,7 @@ private fun EmptyScheduleState(
         }
     }
 }
-                shape = RoundedCornerShape(10.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("নিজে নতুন কোম্পানি যুক্ত করুন")
-            }
-        }
-    }
-}
+
 
 @Composable
 private fun EmptyDaySectionNote(

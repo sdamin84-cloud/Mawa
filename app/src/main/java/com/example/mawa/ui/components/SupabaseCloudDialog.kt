@@ -147,12 +147,12 @@ fun SupabaseCloudDialog(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column {
                             Text(
-                                text = "সুপাবেজ ক্লাউড সিঙ্ক",
+                                text = "অনলাইন ব্যাকআপ (সার্ভার)",
                                 style = MaterialTheme.typography.titleLarge,
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = if (lastSyncTime != null) "সর্বশেষ সিঙ্ক: $lastSyncTime" else "সুপাবেজে সম্পূর্ণ নিরাপদ ব্যাকআপ ও পুনরুদ্ধার",
+                                text = if (lastSyncTime != null) "সর্বশেষ সিঙ্ক: $lastSyncTime" else "সার্ভারে সম্পূর্ণ নিরাপদ ব্যাকআপ ও পুনরুদ্ধার",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (lastSyncTime != null) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -309,7 +309,7 @@ fun SupabaseCloudDialog(
         AlertDialog(
             onDismissRequest = { showDeleteConfirmBackup = null },
             title = { Text("ক্লাউড ব্যাকআপ মুছে ফেলবেন?") },
-            text = { Text("'${item.backupName}' ব্যাকআপটি সুপাবেজ ক্লাউড থেকে স্থায়ীভাবে মুছে যাবে।") },
+            text = { Text("'${item.backupName}' ব্যাকআপটি অনলাইন সার্ভার থেকে স্থায়ীভাবে মুছে যাবে।") },
             confirmButton = {
                 Button(
                     onClick = {
@@ -491,7 +491,7 @@ fun SupabaseAuthSection(
                     0 -> {
                         Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("সুপাবেজে লগইন করুন", fontWeight = FontWeight.Bold)
+                        Text("সার্ভারে লগইন করুন", fontWeight = FontWeight.Bold)
                     }
                     1 -> {
                         Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -544,13 +544,13 @@ fun SupabaseBackupRestoreSection(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "📥 সুপাবেজ থেকে ডাটা এপে আনুন",
+                            text = "📥 সার্ভার থেকে ডাটা আনুন",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                             color = Color(0xFF047857)
                         )
                         Text(
-                            text = "সুপাবেজে থাকা সবশেষ ব্যাকআপ ও রেকর্ডগুলো নামিয়ে অ্যাপের সকল খতিয়ান আপডেট করুন",
+                            text = "অনলাইন সার্ভার থেকে ব্যাকআপ এনে ফোনের খাতা আপডেট করুন",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -592,13 +592,13 @@ fun SupabaseBackupRestoreSection(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "📤 ক্লাউডে সম্পূর্ণ ব্যাকআপ রাখুন",
+                            text = "📤 সার্ভারে ব্যাকআপ রাখুন",
                             fontWeight = FontWeight.Bold,
                             fontSize = 15.sp,
                             color = Color(0xFF047857)
                         )
                         Text(
-                            text = "বর্তমান দোকান, কাস্টমার, বাকি ও খরচের ডাটা Supabase user_backups টেবিলে জমা হবে",
+                            text = "দোকানের সকল খাতা নিরাপদ অনলাইন সার্ভারে সংরক্ষিত থাকবে",
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -790,14 +790,14 @@ fun SupabaseTableSyncSection(
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text(
-                    text = "📥 ক্লাউড থেকে ডাটা নামিয়ে এপে আনুন",
+                    text = "📥 সার্ভার থেকে ডাটা নামিয়ে আনুন",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                     color = Color(0xFF047857)
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "সুপাবেজের mawa_cloud_records টেবিল থেকে আপনার সকল রেকর্ড নামিয়ে অ্যাপের ডাটাবেজে আপডেট করুন।",
+                    text = "অনলাইন সার্ভার থেকে আপনার সকল রেকর্ড নামিয়ে অ্যাপের ডাটাবেজে আপডেট করুন।",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -816,7 +816,7 @@ fun SupabaseTableSyncSection(
                     } else {
                         Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("সুপাবেজ থেকে ডাটা নামিয়ে নিন")
+                        Text("সার্ভার থেকে ডাটা আনুন")
                     }
                 }
             }
@@ -832,14 +832,14 @@ fun SupabaseTableSyncSection(
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text(
-                    text = "📤 সরাসরি রেকর্ড পুশ (mawa_cloud_records)",
+                    text = "📤 সার্ভারে সব রেকর্ড সিঙ্ক করুন",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp,
                     color = Color(0xFF047857)
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "আপনার ফোনের সকল লেনদেন, কাস্টমার, ফর্দ ও খরচের আইটেম সরাসরি সুপাবেজের mawa_cloud_records টেবিলে আপলোড করুন।",
+                    text = "আপনার ফোনের সকল লেনদেন, কাস্টমার, ফর্দ ও খরচের আইটেম সরাসরি অনলাইন সার্ভারে ব্যাকআপ রাখুন।",
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -854,11 +854,11 @@ fun SupabaseTableSyncSection(
                     if (isSyncing) {
                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("ক্লাউডে আপলোড হচ্ছে...")
+                        Text("সার্ভারে সিঙ্ক হচ্ছে...")
                     } else {
                         Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("ফোনের সব ডাটা সুপাবেজে পাঠান")
+                        Text("ফোনের সব ডাটা সার্ভারে পাঠান")
                     }
                 }
             }
@@ -866,7 +866,7 @@ fun SupabaseTableSyncSection(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Table info cards
+        // Clean status summary card
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
@@ -874,30 +874,21 @@ fun SupabaseTableSyncSection(
         ) {
             Column(modifier = Modifier.padding(14.dp)) {
                 Text(
-                    text = "সুপাবেজ ডাটাবেজ কনফিগারেশন",
+                    text = "সার্ভার সংযোগ স্ট্যাটাস",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
-                    text = "• হোস্ট: ${SupabaseConfig.SUPABASE_URL}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    text = "• স্ট্যাটাস: অনলাইন ও নিরাপদ 🟢",
+                    fontSize = 12.sp,
+                    color = Color(0xFF059669),
+                    fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = "• ব্যাকআপ টেবিল: ${SupabaseConfig.TABLE_USER_BACKUPS}",
+                    text = "• ইউজার আইডি: ${currentUser.id.take(8)}***",
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "• ক্লাউড রেকর্ড টেবিল: ${SupabaseConfig.TABLE_CLOUD_RECORDS}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "• ইউজার আইডি (UID): ${currentUser.id}",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }

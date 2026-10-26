@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+  <url>
+    <loc>https://ais-dev-2szb66pky3nhg4o27zmnhj-169169147327.asia-east1.run.app/</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+    <image:image>
+      <image:loc>https://ais-dev-2szb66pky3nhg4o27zmnhj-169169147327.asia-east1.run.app/assets/aistudio/Screenshot_2026_1024_204428_bd465f7d.png</image:loc>
+      <image:title>মাওয়া ডিজিটাল খাতা - ড্যাশবোর্ড ও বাকির হিসাব</image:title>
+      <image:caption>দোকানের সমস্ত বাকি ও ক্যাশবুক হিসাব রাখুন নিশ্চিন্তে</image:caption>
+    </image:image>
+  </url>
+  <url>
+    <loc>https://ais-dev-2szb66pky3nhg4o27zmnhj-169169147327.asia-east1.run.app/mawa-digital-khata.apk</loc>
+    <lastmod>2026-10-26</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+  </url>
+</urlset>

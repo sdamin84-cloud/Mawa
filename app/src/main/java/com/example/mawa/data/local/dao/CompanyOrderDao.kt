@@ -22,6 +22,9 @@ interface CompanyOrderDao {
     @Query("SELECT * FROM company_orders ORDER BY id DESC")
     fun getAllOrders(): Flow<List<CompanyOrderEntity>>
 
+    @Query("SELECT * FROM company_orders ORDER BY id DESC")
+    suspend fun getAllOrdersDirect(): List<CompanyOrderEntity>
+
     @Query("SELECT * FROM company_orders WHERE status = :status ORDER BY id DESC")
     fun getOrdersByStatus(status: String): Flow<List<CompanyOrderEntity>>
 

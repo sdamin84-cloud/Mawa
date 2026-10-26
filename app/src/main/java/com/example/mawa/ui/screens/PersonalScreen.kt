@@ -1313,7 +1313,7 @@ private fun BudgetAndAnalyticsView(
                     ) {
                         Icon(Icons.Default.Print, null, modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(6.dp))
-                        Text("পূর্ণাঙ্গ রিপোর্ট তৈরি ও PDF প্রিন্ট", fontWeight = FontWeight.Bold)
+                        Text("রিপোর্ট ও PDF প্রিন্ট", fontWeight = FontWeight.Bold)
                     }
                 }
             }

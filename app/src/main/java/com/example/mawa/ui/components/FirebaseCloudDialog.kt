@@ -99,7 +99,7 @@ fun FirebaseCloudDialog(
                         }
                         Column {
                             Text(
-                                text = "গুগল ফায়ারবেস ক্লাউড",
+                                text = "অনলাইন ব্যাকআপ (গুগল ড্রাইভ)",
                                 style = MaterialTheme.typography.titleMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 19.sp
@@ -107,7 +107,7 @@ fun FirebaseCloudDialog(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                             Text(
-                                text = "Google Cloud Firestore সুরক্ষিত ব্যাকআপ",
+                                text = "গুগল অ্যাকাউন্টে সুরক্ষিত ক্লাউড ব্যাকআপ",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -242,7 +242,7 @@ fun FirebaseCloudDialog(
                                     }
 
                                     Text(
-                                        text = "আপনার সমস্ত কাস্টমার, বাকি, লেনদেন, পণ্য ও ক্যাশ খাতার তথ্য সরাসরি আপনার সুরক্ষিত ফায়ারবেস ক্লাউডে সংরক্ষণ করুন। মোবাইল হারালেও যেকোনো সময় পুনরুদ্ধার করা যাবে।",
+                                        text = "আপনার সমস্ত কাস্টমার, বাকি, লেনদেন, পণ্য ও ক্যাশ খাতার তথ্য সরাসরি আপনার সুরক্ষিত গুগল ড্রাইভে সংরক্ষণ করুন। মোবাইল হারালেও যেকোনো সময় এক ক্লিকে ফিরে পাবেন।",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -271,7 +271,7 @@ fun FirebaseCloudDialog(
                                                 modifier = Modifier.size(18.dp)
                                             )
                                             Spacer(modifier = Modifier.width(8.dp))
-                                            Text("এখনই ফায়ারবেসে ব্যাকআপ নিন", fontWeight = FontWeight.SemiBold)
+                                            Text("ড্রাইভ ব্যাকআপ নিন", fontWeight = FontWeight.SemiBold)
                                         }
                                     }
                                 }
@@ -557,12 +557,12 @@ private fun FirebaseUserCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "ফায়ারবেস ক্লাউড ডাটাবেস:",
+                    text = "ক্লাউড ব্যাকআপ স্টোরেজ:",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    text = "Google Cloud Firestore",
+                    text = "Google Cloud Drive / Firestore",
                     style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
                     color = MaterialTheme.colorScheme.primary
                 )

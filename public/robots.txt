@@ -1,0 +1,18 @@
+# Robots.txt for Mawa Digital Khata (মাওয়া ডিজিটাল খাতা)
+# Optimized for Google Search Console & Googlebot indexing
+
+User-agent: *
+Allow: /
+Allow: /assets/
+Allow: /mawa-digital-khata.apk
+Disallow: /cdn-cgi/
+
+# Search Engine Specific
+User-agent: Googlebot
+Allow: /
+
+User-agent: Googlebot-Image
+Allow: /assets/
+
+# Sitemap location (Update with your custom domain or default host)
+Sitemap: https://ais-dev-2szb66pky3nhg4o27zmnhj-169169147327.asia-east1.run.app/sitemap.xml
