@@ -1,0 +1,5 @@
+[build]
+  # The website (index.html and its assets) lives in the public/ folder.
+  # The rest of the repo is the Android app, which Netlify doesn't need to build.
+  publish = "public"
+  command = ""
