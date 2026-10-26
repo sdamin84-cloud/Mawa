@@ -473,13 +473,13 @@ fun BackupRestoreDialog(
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Column {
                                             Text(
-                                                text = "গুগল ফায়ারবেস ক্লাউড 🔥",
+                                                text = "অনলাইন ব্যাকআপ (গুগল ড্রাইভ) ☁️",
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFFE65100)
                                             )
                                             Text(
-                                                text = "Google Firestore ব্যাকআপ ও এক ক্লিকে রিস্টোর",
+                                                text = "গুগল অ্যাকাউন্টে সুরক্ষিত ক্লাউড ব্যাকআপ ও রিস্টোর",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -494,7 +494,7 @@ fun BackupRestoreDialog(
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF9100)),
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Text("ফায়ারবেস ➔", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                        Text("ড্রাইভ ব্যাকআপ ➔", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                                     }
                                 }
                             }
@@ -525,7 +525,7 @@ fun BackupRestoreDialog(
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Box(
-                                            modifier = Modifier
+                                             modifier = Modifier
                                                 .size(38.dp)
                                                 .clip(CircleShape)
                                                 .background(Color(0xFF10B981).copy(alpha = 0.2f)),
@@ -541,13 +541,13 @@ fun BackupRestoreDialog(
                                         Spacer(modifier = Modifier.width(10.dp))
                                         Column {
                                             Text(
-                                                text = "সুপাবেজ ক্লাউড থেকে রিস্টোর ☁️",
+                                                text = "অনলাইন ব্যাকআপ (সার্ভার) ⚡",
                                                 style = MaterialTheme.typography.titleMedium,
                                                 fontWeight = FontWeight.Bold,
                                                 color = Color(0xFF047857)
                                             )
                                             Text(
-                                                text = "অনলাইন ডাটাবেজে সংরক্ষিত ব্যাকআপ দেখুন",
+                                                text = "সার্ভারে সংরক্ষিত ক্লাউড ব্যাকআপ দেখুন ও রিস্টোর করুন",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -562,7 +562,7 @@ fun BackupRestoreDialog(
                                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
                                         shape = RoundedCornerShape(8.dp)
                                     ) {
-                                        Text("ক্লাউড দেখুন ➔", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text("সার্ভার ব্যাকআপ ➔", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                                     }
                                 }
                             }

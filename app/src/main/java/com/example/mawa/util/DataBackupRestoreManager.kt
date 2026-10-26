@@ -243,6 +243,7 @@ object DataBackupRestoreManager {
             obj.put("defaultSellingPrice", p.defaultSellingPrice)
             obj.put("sellingPrice", p.defaultSellingPrice)
             obj.put("category", p.category)
+            obj.put("companyName", p.companyName)
             obj.put("createdAt", p.createdAt)
             obj.put("updatedAt", p.createdAt)
             obj.put("isActive", p.isActive)
@@ -1195,6 +1196,7 @@ object DataBackupRestoreManager {
             defaultPurchasePrice = p.optDouble("defaultPurchasePrice", p.optDouble("default_purchase_price", p.optDouble("purchase_price", 0.0))),
             defaultSellingPrice = p.optDouble("defaultSellingPrice", p.optDouble("default_selling_price", p.optDouble("selling_price", 0.0))),
             category = p.optString("category", "মুদি"),
+            companyName = p.optString("companyName", p.optString("company", "")).trim(),
             createdAt = p.optLong("createdAt", p.optLong("created_at", System.currentTimeMillis())),
             isActive = p.optBoolean("isActive", p.optBoolean("is_active", true))
         )

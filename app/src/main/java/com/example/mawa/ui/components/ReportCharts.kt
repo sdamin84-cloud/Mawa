@@ -71,8 +71,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.mawa.data.local.entity.DailyCashEntity
+import com.example.mawa.data.local.entity.ShopSettingsEntity
 import com.example.mawa.data.local.entity.TransactionEntity
 import com.example.mawa.data.local.entity.TransactionType
+import com.example.mawa.data.repository.MawaRepository
 import com.example.mawa.util.BengaliUtils
 import com.example.ui.theme.FinancialNegative
 import com.example.ui.theme.FinancialPositive
@@ -136,12 +139,14 @@ private val CHART_COLORS = listOf(
 @Composable
 fun InteractiveTrendChart(
     transactions: List<TransactionEntity>,
+    dailyCashList: List<DailyCashEntity> = emptyList(),
+    shopSettings: ShopSettingsEntity? = null,
     modifier: Modifier = Modifier
 ) {
     var selectedMetric by remember { mutableStateOf(TrendMetric.SALES) }
 
     // Group transactions by calendar day
-    val dailyPoints = remember(transactions) {
+    val dailyPoints = remember(transactions, dailyCashList, shopSettings) {
         val grouped = transactions.groupBy { tx ->
             val cal = Calendar.getInstance().apply { timeInMillis = tx.timestamp }
             "${cal.get(Calendar.YEAR)}-${cal.get(Calendar.MONTH)}-${cal.get(Calendar.DAY_OF_MONTH)}"
@@ -156,6 +161,8 @@ fun InteractiveTrendChart(
                 val cal = Calendar.getInstance().apply { timeInMillis = firstTs }
                 val dayFormat = SimpleDateFormat("dd MMM", Locale.getDefault())
                 val dayOfWeekFormat = SimpleDateFormat("EEE", Locale.getDefault())
+                val targetDateKey = SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(firstTs))
+                val startOfTargetDay = MawaRepository.getStartOfDayMillis(firstTs)
 
                 val cashSales = txList.filter { it.type == TransactionType.SALE_CASH }.sumOf { it.amount }
                 val bakiSales = txList.filter { it.type == TransactionType.SALE_BAKI }.sumOf { it.amount }
@@ -164,9 +171,25 @@ fun InteractiveTrendChart(
                 val expenses = txList.filter { it.type == TransactionType.EXPENSE_SHOP || it.type == TransactionType.EXPENSE_HOME }.sumOf { it.amount }
                 val totalExp = purchases + expenses
 
-                // If shop paid expenses exceeding recorded cash, the money came from today's sales
-                val autoSales = if (totalExp > (cashSales + bakiCol)) (totalExp - bakiCol) else 0.0
-                val effectiveCashSales = maxOf(cashSales, autoSales)
+                // Look up closing cash & sabek from dailyCashList if closed/reconciled on that day
+                val dayRecord = dailyCashList.find { it.dateKey == targetDateKey }
+                val sabekCash = if (dayRecord != null && dayRecord.sabekCash > 0) {
+                    dayRecord.sabekCash
+                } else {
+                    val prevRecord = dailyCashList.filter { it.dateMillis < startOfTargetDay && it.closingCash > 0 }.maxByOrNull { it.dateMillis }
+                    prevRecord?.closingCash ?: (shopSettings?.openingBalance ?: 0.0)
+                }
+
+                // If daily closing cash was recorded on that day:
+                // Reconciled cash sale = closing cash + total expenses - sabek - baki collection
+                val reconciledCashSales = if (dayRecord != null && dayRecord.closingCash > 0) {
+                    (dayRecord.closingCash + totalExp - sabekCash - bakiCol).coerceAtLeast(0.0)
+                } else {
+                    0.0
+                }
+
+                // Effective cash sales: use actual recorded cash sales, or reconciled daily sale if closed
+                val effectiveCashSales = maxOf(cashSales, reconciledCashSales)
                 val totalSales = effectiveCashSales + bakiSales
                 // Estimated gross profit (at standard 10% retail margin or net)
                 val profit = (totalSales * 0.10).coerceAtLeast(0.0)

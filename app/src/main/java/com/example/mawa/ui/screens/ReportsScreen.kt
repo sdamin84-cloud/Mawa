@@ -135,6 +135,7 @@ fun ReportsScreen(
     val transactions by viewModel.filteredTransactionsForReport.collectAsStateWithLifecycle()
     val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
     val shopSettings by viewModel.shopSettings.collectAsStateWithLifecycle()
+    val allDailyCash by viewModel.allDailyCash.collectAsStateWithLifecycle()
     val customersWithBalance by viewModel.customersWithBalance.collectAsStateWithLifecycle()
     val allSupplierCompanies by viewModel.allSupplierCompanies.collectAsStateWithLifecycle()
 
@@ -144,7 +145,7 @@ fun ReportsScreen(
     var expandedDayMillis by remember { mutableStateOf<Long?>(null) }
 
     // Group historical transactions by day
-    val historicalDailyLedgers = remember(allTransactions) {
+    val historicalDailyLedgers = remember(allTransactions, allDailyCash, shopSettings) {
         val cal = Calendar.getInstance()
         val groups = allTransactions.groupBy { tx ->
             cal.timeInMillis = tx.timestamp
@@ -164,8 +165,23 @@ fun ReportsScreen(
             val homeExp = txList.filter { it.type == TransactionType.EXPENSE_HOME }.sumOf { it.amount }
             val totalExpenses = purchases + shopExp + homeExp
 
-            val autoSales = if (totalExpenses > (cashSales + bakiCol)) (totalExpenses - bakiCol) else 0.0
-            val effectiveCashSales = maxOf(cashSales, autoSales)
+            val targetDateKey = SimpleDateFormat("dd-MM-yyyy", Locale.US).format(Date(dayMillis))
+            val dayRecord = allDailyCash.find { it.dateKey == targetDateKey }
+            val sabekCash = if (dayRecord != null && dayRecord.sabekCash > 0) {
+                dayRecord.sabekCash
+            } else {
+                val prevRecord = allDailyCash.filter { it.dateMillis < dayMillis && it.closingCash > 0 }.maxByOrNull { it.dateMillis }
+                prevRecord?.closingCash ?: (shopSettings?.openingBalance ?: 0.0)
+            }
+
+            // Reconciled cash sale from closing cash only if day was closed with closing cash
+            val reconciledCashSales = if (dayRecord != null && dayRecord.closingCash > 0) {
+                (dayRecord.closingCash + totalExpenses - sabekCash - bakiCol).coerceAtLeast(0.0)
+            } else {
+                0.0
+            }
+
+            val effectiveCashSales = maxOf(cashSales, reconciledCashSales)
             val sales = effectiveCashSales + bakiSales
             val profit = (sales * 0.10).coerceAtLeast(0.0)
 
@@ -1183,7 +1199,11 @@ fun ReportsScreen(
             // 4. Interactive Trend Line Chart (আপ-ডাউন রেখা ও প্রতিটি পয়েন্টে ক্লিক করে তথ্য দেখা)
             item {
                 Spacer(modifier = Modifier.height(10.dp))
-                InteractiveTrendChart(transactions = transactions)
+                InteractiveTrendChart(
+                    transactions = transactions,
+                    dailyCashList = allDailyCash,
+                    shopSettings = shopSettings
+                )
             }
 
             // 5. Interactive Company / Supplier / Product Purchase & Sales Donut Chart (সকল পণ্য ও কোম্পানি ক্লিক করে ইতিহাস দেখা)

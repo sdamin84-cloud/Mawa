@@ -432,10 +432,10 @@ fun HomeAccountingScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            // 1. টাকা নিলাম (Cash)
+                            // 1. টাকা খরচ (Cash)
                             HomeActionTile(
-                                label = "টাকা নিলাম",
-                                subtitle = "বাজার/বিল খরচ",
+                                label = "টাকা খরচ",
+                                subtitle = "বাজার ও বিল",
                                 icon = Icons.Default.Add,
                                 color = FinancialWarning,
                                 onClick = onOpenAddExpense,
@@ -443,10 +443,10 @@ fun HomeAccountingScreen(
                                 testTag = "btn_home_cash_entry"
                             )
 
-                            // 2. দোকানের পণ্য নিলাম (Goods without cash shortage)
+                            // 2. দোকানের পণ্য (Goods)
                             HomeActionTile(
-                                label = "পণ্য নিলাম",
-                                subtitle = "দোকানের মালামাল",
+                                label = "দোকানের পণ্য",
+                                subtitle = "সংসারে নেওয়া",
                                 icon = Icons.Default.Store,
                                 color = MaterialTheme.colorScheme.primary,
                                 onClick = { showGoodsWithdrawalSheet = true },
@@ -457,7 +457,7 @@ fun HomeAccountingScreen(
                             // 3. রিপোর্ট ও প্রিন্ট
                             HomeActionTile(
                                 label = "রিপোর্ট",
-                                subtitle = "PDF ও শেয়ার",
+                                subtitle = "বিবরণী ও PDF",
                                 icon = Icons.Default.Print,
                                 color = FinancialPositive,
                                 onClick = { showReportDialog = true },

@@ -471,39 +471,26 @@ class MawaRepository(private val database: MawaDatabase) {
     }
 
     suspend fun seedInitialCompanyOrdersIfEmpty() = withContext(Dispatchers.IO) {
+        // No demo data - user will create their own orders
+        clearDemoScheduleData()
+    }
+
+    suspend fun clearDemoScheduleData() = withContext(Dispatchers.IO) {
         try {
-            val count = companyOrderDao.getOrderCount()
-            if (count == 0) {
-                val now = System.currentTimeMillis()
-                val todayStr = com.example.mawa.util.BengaliUtils.getFormattedTodayDate(now)
-                val sampleOrders = listOf(
-                    CompanyOrderEntity(
-                        companyName = "প্রাণ ফুডস",
-                        totalAmount = 7500.0,
-                        orderDate = now,
-                        orderDateString = todayStr,
-                        note = "কম স্টক",
-                        status = "PENDING"
-                    ),
-                    CompanyOrderEntity(
-                        companyName = "মেঘনা গ্রুপ",
-                        totalAmount = 4300.0,
-                        orderDate = now,
-                        orderDateString = todayStr,
-                        note = "কম স্টক",
-                        status = "PENDING"
-                    ),
-                    CompanyOrderEntity(
-                        companyName = "আকিজ বেকারি",
-                        totalAmount = 2900.0,
-                        orderDate = now,
-                        orderDateString = todayStr,
-                        note = "বিশেষ মাল",
-                        status = "PENDING"
-                    )
-                )
-                companyOrderDao.insertOrders(sampleOrders)
+            // 1. Clear any demo company orders
+            val allOrders = companyOrderDao.getAllOrdersDirect()
+            val dummyOrders = allOrders.filter {
+                (it.companyName == "প্রাণ ফুডস" || it.companyName == "মেঘনা গ্রুপ" || it.companyName == "আকিজ বেকারি") &&
+                (it.note == "কম স্টক" || it.note == "বিশেষ মাল")
             }
+            dummyOrders.forEach { companyOrderDao.deleteOrder(it.id) }
+
+            // 2. Clear any demo companies created with dummy phone numbers
+            val companies = supplierCompanyDao.getAllCompaniesDirect()
+            val demoCompanies = companies.filter {
+                it.srPhone.startsWith("0170000000") || it.srName.contains("(প্রাণ SR)")
+            }
+            demoCompanies.forEach { supplierCompanyDao.deleteCompany(it.id) }
         } catch (_: Exception) {}
     }
 

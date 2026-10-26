@@ -342,13 +342,7 @@ fun WeeklyCompanyScheduleCalendarDialog(
 
                 // Content View
                 if (supplierCompanies.isEmpty()) {
-                    // Empty State with 1-tap popular company setup
                     EmptyScheduleState(
-                        onAddDefaultCompanies = {
-                            val defaultList = getPopularBangladeshiCompanies()
-                            defaultList.forEach { onSaveCompany(it) }
-                            Toast.makeText(context, "জনপ্রিয় কোম্পানিগুলোর শিডিউল যুক্ত হয়েছে", Toast.LENGTH_SHORT).show()
-                        },
                         onAddNew = {
                             companyToEdit = SupplierCompanyEntity(companyName = "", orderDay = selectedDay)
                             showEditCompanyDialog = true
@@ -917,7 +911,6 @@ private fun DaySummaryMatrixCard(
 
 @Composable
 private fun EmptyScheduleState(
-    onAddDefaultCompanies: () -> Unit,
     onAddNew: () -> Unit
 ) {
     Card(
@@ -929,7 +922,7 @@ private fun EmptyScheduleState(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Box(
@@ -948,31 +941,31 @@ private fun EmptyScheduleState(
             }
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "কোনো কোম্পানির শিডিউল এখনো যোগ করা হয়নি",
+                text = "কোনো কোম্পানির শিডিউল নেই",
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "কোন দিন কোন কোম্পানির সেলসম্যান আসেন এবং কোন দিন ডেলিভারি নামবে তা সাজিয়ে রাখুন।",
+                text = "আপনার নিয়মিত কোম্পানির সেলসম্যান ও ডেলিভারির বার যুক্ত করুন।",
                 style = MaterialTheme.typography.bodySmall,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(16.dp))
             Button(
-                onClick = onAddDefaultCompanies,
+                onClick = onAddNew,
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 shape = RoundedCornerShape(10.dp)
             ) {
-                Icon(Icons.Default.Business, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("জনপ্রিয় কোম্পানিগুলোর শিডিউল লোড করুন")
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("নতুন কোম্পানি শিডিউল যোগ করুন", fontWeight = FontWeight.Bold)
             }
-            Spacer(modifier = Modifier.height(8.dp))
-            OutlinedButton(
-                onClick = onAddNew,
+        }
+    }
+}
                 shape = RoundedCornerShape(10.dp)
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -1023,68 +1016,4 @@ private fun getNextDayName(currentDay: String): String {
     val days = listOf("শনিবার", "রবিবার", "সোমবার", "মঙ্গলবার", "বুধবার", "বৃহস্পতিবার", "শুক্রবার")
     val idx = days.indexOf(currentDay)
     return if (idx >= 0 && idx < days.size - 1) days[idx + 1] else days.first()
-}
-
-/**
- * Standard FMCG companies in Bangladesh for 1-tap quick setup
- */
-private fun getPopularBangladeshiCompanies(): List<SupplierCompanyEntity> {
-    return listOf(
-        SupplierCompanyEntity(
-            companyName = "প্রাণ (PRAN)",
-            srName = "রফিক ভাই (প্রাণ SR)",
-            srPhone = "01700000001",
-            orderDay = "রবিবার",
-            deliveryDay = "সোমবার",
-            note = "জুস, চিপস, বিস্কুট"
-        ),
-        SupplierCompanyEntity(
-            companyName = "স্কয়ার (Square)",
-            srName = "জাকির হোসেন",
-            srPhone = "01700000002",
-            orderDay = "রবিবার",
-            deliveryDay = "মঙ্গলবার",
-            note = "রাধুনী মসলা, রুচি, সাবান"
-        ),
-        SupplierCompanyEntity(
-            companyName = "ইউনিলিভার (Unilever)",
-            srName = "মাহবুব আলম",
-            srPhone = "01700000003",
-            orderDay = "সোমবার",
-            deliveryDay = "বুধবার",
-            note = "লাক্স, হুইল, সার্ফ এক্সেল, সানসিল্ক"
-        ),
-        SupplierCompanyEntity(
-            companyName = "অলিম্পিক (Olympic)",
-            srName = "হাসান আলী",
-            srPhone = "01700000004",
-            orderDay = "শনিবার",
-            deliveryDay = "সোমবার",
-            note = "এনার্জি বিস্কুট, কুকিজ"
-        ),
-        SupplierCompanyEntity(
-            companyName = "আকিজ (Akij / Mojo)",
-            srName = "তানভীর",
-            srPhone = "01700000005",
-            orderDay = "মঙ্গলবার",
-            deliveryDay = "বৃহস্পতিবার",
-            note = "মোজো, ফ্রুটো, আকিজ আটা"
-        ),
-        SupplierCompanyEntity(
-            companyName = "ফ্রেশ (মেঘনা গ্রুপ)",
-            srName = "সাইফুল ইসলাম",
-            srPhone = "01700000006",
-            orderDay = "বুধবার",
-            deliveryDay = "শনিবার",
-            note = "ফ্রেশ সয়াবিন তেল, চিনি, ডাল"
-        ),
-        SupplierCompanyEntity(
-            companyName = "তীর (সিটি গ্রুপ)",
-            srName = "শামীম",
-            srPhone = "01700000007",
-            orderDay = "বৃহস্পতিবার",
-            deliveryDay = "রবিবার",
-            note = "তীর তেল, তীর আটা-ময়দা"
-        )
-    )
 }

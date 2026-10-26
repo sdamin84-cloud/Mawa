@@ -9,6 +9,7 @@ import com.example.mawa.data.local.MawaDatabase
 import com.example.mawa.data.local.entity.CashTallyEntity
 import com.example.mawa.data.local.entity.CompanyOrderEntity
 import com.example.mawa.data.local.entity.CustomerEntity
+import com.example.mawa.data.local.entity.DailyCashEntity
 import com.example.mawa.data.local.entity.FordiItemEntity
 import com.example.mawa.data.local.entity.PersonalTransactionEntity
 import com.example.mawa.data.local.entity.PersonalTransactionType
@@ -261,6 +262,13 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = emptyList()
         )
 
+    val allDailyCash: StateFlow<List<DailyCashEntity>> = repository.allDailyCash
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
     val activeProducts: StateFlow<List<ProductEntity>> = repository.activeProducts
         .stateIn(
             scope = viewModelScope,
@@ -438,35 +446,85 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         initialValue = PersonalSummary()
     )
 
-    // Time filter for Reports & Home accounting
+    // Time filter & Custom single-day date filter for Reports
     private val _reportTimeFilter = MutableStateFlow(TimeFilter.THIS_MONTH)
     val reportTimeFilter: StateFlow<TimeFilter> = _reportTimeFilter.asStateFlow()
+
+    private val _reportCustomDateMillis = MutableStateFlow<Long?>(null)
+    val reportCustomDateMillis: StateFlow<Long?> = _reportCustomDateMillis.asStateFlow()
 
     private val _homeExpenseTimeFilter = MutableStateFlow(TimeFilter.THIS_MONTH)
     val homeExpenseTimeFilter: StateFlow<TimeFilter> = _homeExpenseTimeFilter.asStateFlow()
 
-    val filteredTransactionsForReport: StateFlow<List<TransactionEntity>> = _reportTimeFilter
-        .flatMapLatest { filter -> repository.getTransactionsForPeriod(filter) }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
-
-    val filteredHomeExpenses: StateFlow<List<TransactionEntity>> = _homeExpenseTimeFilter
-        .flatMapLatest { filter -> repository.getHomeExpenses(filter) }
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
-
-    // User feedback message flow
-    private val _feedbackMessage = MutableSharedFlow<String>()
-    val feedbackMessage: SharedFlow<String> = _feedbackMessage.asSharedFlow()
+    val filteredTransactionsForReport: StateFlow<List<TransactionEntity>> = combine(
+        repository.allTransactions,
+        _reportTimeFilter,
+        _reportCustomDateMillis
+    ) { allTx, filter, customDate ->
+        if (customDate != null) {
+            val start = MawaRepository.getStartOfDayMillis(customDate)
+            val end = MawaRepository.getEndOfDayMillis(customDate)
+            allTx.filter { it.timestamp in start..end }.sortedByDescending { it.timestamp }
+        } else {
+            val start = when (filter) {
+                TimeFilter.TODAY -> MawaRepository.getStartOfDayMillis(System.currentTimeMillis())
+                TimeFilter.THIS_WEEK -> {
+                    val cal = Calendar.getInstance().apply {
+                        firstDayOfWeek = Calendar.SATURDAY
+                        set(Calendar.DAY_OF_WEEK, Calendar.SATURDAY)
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    cal.timeInMillis
+                }
+                TimeFilter.THIS_MONTH -> {
+                    val cal = Calendar.getInstance().apply {
+                        set(Calendar.DAY_OF_MONTH, 1)
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    cal.timeInMillis
+                }
+                TimeFilter.ALL_TIME -> 0L
+            }
+            if (start == 0L) allTx.sortedByDescending { it.timestamp }
+            else allTx.filter { it.timestamp >= start }.sortedByDescending { it.timestamp }
+        }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
     fun setReportTimeFilter(filter: TimeFilter) {
+        _reportCustomDateMillis.value = null
         _reportTimeFilter.value = filter
+    }
+
+    fun setReportCustomDate(dateMillis: Long?) {
+        _reportCustomDateMillis.value = dateMillis
+    }
+
+    fun goToPreviousReportDay() {
+        val current = _reportCustomDateMillis.value ?: System.currentTimeMillis()
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = current
+            add(Calendar.DAY_OF_YEAR, -1)
+        }
+        _reportCustomDateMillis.value = cal.timeInMillis
+    }
+
+    fun goToNextReportDay() {
+        val current = _reportCustomDateMillis.value ?: System.currentTimeMillis()
+        val cal = Calendar.getInstance().apply {
+            timeInMillis = current
+            add(Calendar.DAY_OF_YEAR, 1)
+        }
+        _reportCustomDateMillis.value = cal.timeInMillis
     }
 
     fun setHomeExpenseTimeFilter(filter: TimeFilter) {
@@ -886,6 +944,7 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         category: String,
         barcode: String = "",
         stockQuantity: Double = 0.0,
+        companyName: String = "",
         onSuccess: () -> Unit = {}
     ) {
         viewModelScope.launch {
@@ -898,7 +957,8 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
                 defaultPurchasePrice = purchasePrice,
                 defaultSellingPrice = sellingPrice,
                 stockQuantity = stockQuantity,
-                category = category.ifBlank { "সাধারণ" }.trim()
+                category = category.ifBlank { "সাধারণ" }.trim(),
+                companyName = companyName.trim()
             )
             repository.addProduct(product)
             mawaSyncManager.pushProductLive(product)

@@ -206,6 +206,7 @@ class FirebaseDbManager(
                         "banglaName" to p.banglaName,
                         "category" to p.category,
                         "barcode" to p.barcode,
+                        "companyName" to p.companyName,
                         "stockQuantity" to p.stockQuantity,
                         "unit" to p.unit,
                         "defaultSellingPrice" to p.defaultSellingPrice,

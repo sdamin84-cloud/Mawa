@@ -95,6 +95,10 @@ import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Sell
 import com.example.mawa.ui.components.BarcodeScannerDialog
 
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import com.example.mawa.data.local.entity.CompanyScheduleEntity
+
 @Composable
 fun ProductsScreen(
     viewModel: MawaViewModel,
@@ -103,9 +107,11 @@ fun ProductsScreen(
 ) {
     val allProducts by viewModel.allProducts.collectAsStateWithLifecycle()
     val allTransactions by viewModel.allTransactions.collectAsStateWithLifecycle()
+    val supplierCompanies by viewModel.supplierCompanies.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     var searchQuery by remember { mutableStateOf("") }
+    var selectedCompanyFilter by remember { mutableStateOf<String?>(null) }
     var selectedProductForDetail by remember { mutableStateOf<ProductEntity?>(null) }
     var showAddProductDialog by remember { mutableStateOf(false) }
     var initialBarcodeForNewProduct by remember { mutableStateOf("") }
@@ -126,14 +132,20 @@ fun ProductsScreen(
         return
     }
 
-    val filteredProducts = remember(allProducts, searchQuery) {
-        if (searchQuery.isBlank()) allProducts
-        else allProducts.filter {
-            it.name.contains(searchQuery, ignoreCase = true) ||
-                    it.banglaName.contains(searchQuery) ||
-                    it.category.contains(searchQuery, ignoreCase = true) ||
-                    it.barcode.contains(searchQuery, ignoreCase = true) ||
-                    it.id.toString() == searchQuery.trim()
+    val filteredProducts = remember(allProducts, searchQuery, selectedCompanyFilter) {
+        allProducts.filter { prod ->
+            val matchesSearch = if (searchQuery.isBlank()) true else {
+                prod.name.contains(searchQuery, ignoreCase = true) ||
+                        prod.banglaName.contains(searchQuery) ||
+                        prod.category.contains(searchQuery, ignoreCase = true) ||
+                        prod.companyName.contains(searchQuery, ignoreCase = true) ||
+                        prod.barcode.contains(searchQuery, ignoreCase = true) ||
+                        prod.id.toString() == searchQuery.trim()
+            }
+            val matchesCompany = if (selectedCompanyFilter == null) true else {
+                prod.companyName.equals(selectedCompanyFilter, ignoreCase = true)
+            }
+            matchesSearch && matchesCompany
         }
     }
 
@@ -213,6 +225,45 @@ fun ProductsScreen(
                                     .testTag("add_product_btn")
                             ) {
                                 Icon(imageVector = Icons.Default.Add, contentDescription = "নতুন পণ্য", tint = Color.White)
+                            }
+                        }
+
+                        // Company filter chips
+                        val distinctCompanies = remember(allProducts, supplierCompanies) {
+                            (allProducts.map { it.companyName } + supplierCompanies.map { it.companyName })
+                                .filter { it.isNotBlank() }
+                                .distinct()
+                        }
+                        if (distinctCompanies.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                FilterChip(
+                                    selected = selectedCompanyFilter == null,
+                                    onClick = { selectedCompanyFilter = null },
+                                    label = { Text("সব পণ্য", fontSize = 12.sp) }
+                                )
+                                distinctCompanies.forEach { comp ->
+                                    FilterChip(
+                                        selected = selectedCompanyFilter == comp,
+                                        onClick = {
+                                            selectedCompanyFilter = if (selectedCompanyFilter == comp) null else comp
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                imageVector = Icons.Default.Sell,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        },
+                                        label = { Text(comp, fontSize = 12.sp) }
+                                    )
+                                }
                             }
                         }
 
@@ -330,6 +381,32 @@ fun ProductsScreen(
                                         verticalAlignment = Alignment.CenterVertically,
                                         modifier = Modifier.padding(top = 2.dp)
                                     ) {
+                                        if (product.companyName.isNotBlank()) {
+                                            Surface(
+                                                color = MawaPrimary.copy(alpha = 0.12f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Sell,
+                                                        contentDescription = null,
+                                                        tint = MawaPrimary,
+                                                        modifier = Modifier.size(11.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text(
+                                                        text = product.companyName,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MawaPrimary,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                        }
                                         Text(
                                             text = "${product.category} · প্রতি ${product.unit}",
                                             style = MaterialTheme.typography.bodySmall,
@@ -486,8 +563,9 @@ fun ProductsScreen(
     if (showAddProductDialog) {
         AddProductDialog(
             initialBarcode = initialBarcodeForNewProduct,
+            supplierCompanies = supplierCompanies,
             onDismiss = { showAddProductDialog = false },
-            onAdd = { name, bangla, unit, pPrice, sPrice, category, barcode, stock ->
+            onAdd = { name, bangla, unit, pPrice, sPrice, category, barcode, stock, companyName ->
                 viewModel.addProduct(
                     name = name,
                     banglaName = bangla,
@@ -496,7 +574,8 @@ fun ProductsScreen(
                     sellingPrice = sPrice,
                     category = category,
                     barcode = barcode,
-                    stockQuantity = stock
+                    stockQuantity = stock,
+                    companyName = companyName
                 )
                 showAddProductDialog = false
             }
@@ -534,7 +613,7 @@ fun ProductDetailScreen(
         // Top Header
         MawaTopBar(
             title = product.name,
-            subtitle = "প্রতি ${product.unit} · ${product.category}",
+            subtitle = if (product.companyName.isNotBlank()) "${product.companyName} · প্রতি ${product.unit} · ${product.category}" else "প্রতি ${product.unit} · ${product.category}",
             navigationIcon = {
                 IconButton(onClick = onBack) {
                     Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "পেছনে")
@@ -917,8 +996,10 @@ fun ProductDetailScreen(
     }
 
     if (showEditDialog) {
+        val supplierCompanies by viewModel.supplierCompanies.collectAsStateWithLifecycle()
         EditProductDialog(
             product = product,
+            supplierCompanies = supplierCompanies,
             onDismiss = { showEditDialog = false },
             onSave = { updated ->
                 viewModel.updateProduct(updated)
@@ -936,10 +1017,12 @@ fun ProductDetailScreen(
 @Composable
 fun AddProductDialog(
     initialBarcode: String = "",
+    supplierCompanies: List<CompanyScheduleEntity> = emptyList(),
     onDismiss: () -> Unit,
-    onAdd: (name: String, banglaName: String, unit: String, purchasePrice: Double, sellingPrice: Double, category: String, barcode: String, stockQuantity: Double) -> Unit
+    onAdd: (name: String, banglaName: String, unit: String, purchasePrice: Double, sellingPrice: Double, category: String, barcode: String, stockQuantity: Double, companyName: String) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
+    var companyName by remember { mutableStateOf("") }
     var barcode by remember { mutableStateOf(initialBarcode) }
     var unit by remember { mutableStateOf("কেজি") }
     var purchasePrice by remember { mutableStateOf("") }
@@ -964,6 +1047,38 @@ fun AddProductDialog(
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
+                // Company assignment
+                OutlinedTextField(
+                    value = companyName,
+                    onValueChange = { companyName = it },
+                    label = { Text("কোম্পানি / ব্র্যান্ড (ঐচ্ছিক)") },
+                    placeholder = { Text("যেমন: প্রাণ, স্কয়ার, ফ্রেশ") },
+                    leadingIcon = {
+                        Icon(imageVector = Icons.Default.Sell, contentDescription = null, tint = MawaPrimary, modifier = Modifier.size(18.dp))
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (supplierCompanies.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        supplierCompanies.map { it.companyName }.filter { it.isNotBlank() }.distinct().take(6).forEach { comp ->
+                            FilterChip(
+                                selected = companyName == comp,
+                                onClick = { companyName = comp },
+                                label = { Text(comp, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
                 // Barcode / QR code field with auto-generate button
                 OutlinedTextField(
                     value = barcode,
@@ -973,7 +1088,6 @@ fun AddProductDialog(
                     trailingIcon = {
                         IconButton(
                             onClick = {
-                                // Auto generate an 8-digit unique product barcode
                                 val randomDigits = (10000000..99999999).random().toString()
                                 barcode = randomDigits
                             }
@@ -1048,7 +1162,7 @@ fun AddProductDialog(
                         val pPrice = purchasePrice.toDoubleOrNull() ?: 0.0
                         val sPrice = sellingPrice.toDoubleOrNull() ?: 0.0
                         val stock = stockQuantity.toDoubleOrNull() ?: 0.0
-                        onAdd(name.trim(), name.trim(), unit.trim(), pPrice, sPrice, category.trim(), barcode.trim(), stock)
+                        onAdd(name.trim(), name.trim(), unit.trim(), pPrice, sPrice, category.trim(), barcode.trim(), stock, companyName.trim())
                     }
                 },
                 enabled = name.isNotBlank(),
@@ -1066,11 +1180,13 @@ fun AddProductDialog(
 @Composable
 fun EditProductDialog(
     product: ProductEntity,
+    supplierCompanies: List<CompanyScheduleEntity> = emptyList(),
     onDismiss: () -> Unit,
     onSave: (ProductEntity) -> Unit,
     onDelete: () -> Unit
 ) {
     var name by remember { mutableStateOf(product.name) }
+    var companyName by remember { mutableStateOf(product.companyName) }
     var barcode by remember { mutableStateOf(product.barcode) }
     var unit by remember { mutableStateOf(product.unit) }
     var purchasePrice by remember { mutableStateOf(if (product.defaultPurchasePrice > 0) product.defaultPurchasePrice.toString() else "") }
@@ -1090,6 +1206,38 @@ fun EditProductDialog(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth()
                 )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Company
+                OutlinedTextField(
+                    value = companyName,
+                    onValueChange = { companyName = it },
+                    label = { Text("কোম্পানি / ব্র্যান্ড") },
+                    placeholder = { Text("যেমন: প্রাণ, স্কয়ার, ফ্রেশ") },
+                    leadingIcon = {
+                        Icon(imageVector = Icons.Default.Sell, contentDescription = null, tint = MawaPrimary, modifier = Modifier.size(18.dp))
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (supplierCompanies.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        supplierCompanies.map { it.companyName }.filter { it.isNotBlank() }.distinct().take(6).forEach { comp ->
+                            FilterChip(
+                                selected = companyName == comp,
+                                onClick = { companyName = comp },
+                                label = { Text(comp, fontSize = 11.sp) }
+                            )
+                        }
+                    }
+                }
                 Spacer(modifier = Modifier.height(8.dp))
 
                 OutlinedTextField(
@@ -1175,7 +1323,8 @@ fun EditProductDialog(
                                 defaultPurchasePrice = p,
                                 defaultSellingPrice = s,
                                 stockQuantity = stock,
-                                category = category.trim()
+                                category = category.trim(),
+                                companyName = companyName.trim()
                             )
                         )
                     }

@@ -421,7 +421,7 @@ fun HomeWithdrawalBottomSheet(
                             Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "ক্যাশ থেকে ৳${BengaliUtils.toBanglaDigits((cashAmount.toDoubleOrNull() ?: 0.0).toInt())} সংসারের খরচ সেভ করুন",
+                                text = "খরচ সেভ করুন",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold
                             )
@@ -634,7 +634,7 @@ fun HomeWithdrawalBottomSheet(
                             Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(
-                                text = "পণ্য উত্তোলন সংরক্ষণ করুন",
+                                text = "পণ্য সেভ করুন",
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold
                             )

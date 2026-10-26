@@ -15,6 +15,7 @@ data class ProductEntity(
     val defaultSellingPrice: Double = 0.0,
     val stockQuantity: Double = 0.0,
     val category: String = "মুদি",
+    val companyName: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val isActive: Boolean = true
 )

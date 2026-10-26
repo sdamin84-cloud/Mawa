@@ -305,24 +305,24 @@ fun MoreScreen(
                             testTag = "menu_theme_settings"
                         )
 
-                        // Google Firebase Cloud Card in More Menu
+                        // Google Cloud Card in More Menu
                         MoreMenuItem(
                             icon = Icons.Default.CloudSync,
                             iconTint = Color(0xFFFF9100),
                             iconBg = Color(0xFFFF9100).copy(alpha = 0.18f),
-                            title = "গুগল ফায়ারবেস ক্লাউড ব্যাকআপ 🔥",
-                            subtitle = if (currentFirebaseUser != null) "লগইন: ${currentFirebaseUser?.displayName?.ifBlank { currentFirebaseUser?.email }}" else "Google Cloud Firestore সুরক্ষিত ব্যাকআপ ও রিস্টোর",
+                            title = "অনলাইন ব্যাকআপ (গুগল ড্রাইভ) ☁️",
+                            subtitle = if (currentFirebaseUser != null) "লগইন: ${currentFirebaseUser?.displayName?.ifBlank { currentFirebaseUser?.email }}" else "গুগল অ্যাকাউন্টে সুরক্ষিত অনলাইন ব্যাকআপ",
                             onClick = onOpenFirebaseCloud,
                             testTag = "menu_firebase_cloud"
                         )
 
-                        // Supabase Cloud Card in More Menu
+                        // Server Cloud Card in More Menu
                         MoreMenuItem(
                             icon = Icons.Default.Sync,
                             iconTint = Color(0xFF10B981),
                             iconBg = Color(0xFF3ECF8E).copy(alpha = 0.18f),
-                            title = "সুপাবেজ ক্লাউড সিঙ্ক ও ব্যাকআপ ☁️",
-                            subtitle = if (currentUser != null) "লগইন আছে: ${currentUser?.displayName?.ifBlank { currentUser?.email }}" else "অনলাইন ব্যাকআপ, রিস্টোর ও ক্লাউড ডাটাবেজ",
+                            title = "অনলাইন ব্যাকআপ (সার্ভার) ⚡",
+                            subtitle = if (currentUser != null) "লগইন আছে: ${currentUser?.displayName?.ifBlank { currentUser?.email }}" else "সার্ভারে অনলাইন ব্যাকআপ ও রিস্টোর",
                             onClick = onOpenSupabaseCloud,
                             testTag = "menu_supabase_cloud"
                         )
