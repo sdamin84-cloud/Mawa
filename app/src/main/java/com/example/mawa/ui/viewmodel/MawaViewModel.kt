@@ -95,6 +95,10 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
         appPrefs.edit().putBoolean("is_backup_reminder_enabled", enabled).apply()
     }
 
+    // UI Feedback Message Flow
+    private val _feedbackMessage = MutableSharedFlow<String>()
+    val feedbackMessage: SharedFlow<String> = _feedbackMessage.asSharedFlow()
+
     // Supabase Cloud Integration
     val supabaseAuthManager = SupabaseAuthManager(application)
     val supabaseDbManager = SupabaseDbManager(supabaseAuthManager)
@@ -334,6 +338,8 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
             initialValue = emptyList()
         )
 
+    val supplierCompanies: StateFlow<List<SupplierCompanyEntity>> = allSupplierCompanies
+
     val allCashTallies: StateFlow<List<CashTallyEntity>> = repository.allCashTallies
         .stateIn(
             scope = viewModelScope,
@@ -455,6 +461,44 @@ class MawaViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _homeExpenseTimeFilter = MutableStateFlow(TimeFilter.THIS_MONTH)
     val homeExpenseTimeFilter: StateFlow<TimeFilter> = _homeExpenseTimeFilter.asStateFlow()
+
+    val filteredHomeExpenses: StateFlow<List<TransactionEntity>> = combine(
+        repository.allTransactions,
+        _homeExpenseTimeFilter
+    ) { allTx, filter ->
+        val homeTxs = allTx.filter { it.type == TransactionType.EXPENSE_HOME }
+        val start = when (filter) {
+            TimeFilter.TODAY -> MawaRepository.getStartOfDayMillis(System.currentTimeMillis())
+            TimeFilter.THIS_WEEK -> {
+                val cal = Calendar.getInstance().apply {
+                    firstDayOfWeek = Calendar.SATURDAY
+                    set(Calendar.DAY_OF_WEEK, Calendar.SATURDAY)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                cal.timeInMillis
+            }
+            TimeFilter.THIS_MONTH -> {
+                val cal = Calendar.getInstance().apply {
+                    set(Calendar.DAY_OF_MONTH, 1)
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                cal.timeInMillis
+            }
+            TimeFilter.ALL_TIME -> 0L
+        }
+        if (start == 0L) homeTxs.sortedByDescending { it.timestamp }
+        else homeTxs.filter { it.timestamp >= start }.sortedByDescending { it.timestamp }
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
 
     val filteredTransactionsForReport: StateFlow<List<TransactionEntity>> = combine(
         repository.allTransactions,

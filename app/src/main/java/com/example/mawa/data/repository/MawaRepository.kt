@@ -490,7 +490,7 @@ class MawaRepository(private val database: MawaDatabase) {
             val demoCompanies = companies.filter {
                 it.srPhone.startsWith("0170000000") || it.srName.contains("(প্রাণ SR)")
             }
-            demoCompanies.forEach { supplierCompanyDao.deleteCompany(it.id) }
+            demoCompanies.forEach { supplierCompanyDao.deleteCompanyById(it.id) }
         } catch (_: Exception) {}
     }
 
