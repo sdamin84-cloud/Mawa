@@ -3,6 +3,11 @@
   Content-Disposition: attachment; filename="mawa-digital-khata.apk"
   Cache-Control: public, max-age=86400
 
+/mawa-digital-khata.apk
+  Content-Type: application/vnd.android.package-archive
+  Content-Disposition: attachment; filename="mawa-digital-khata.apk"
+  Cache-Control: public, max-age=86400
+
 /sitemap.xml
   Content-Type: application/xml; charset=UTF-8
   Cache-Control: public, max-age=3600

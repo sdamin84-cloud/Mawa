@@ -1043,35 +1043,76 @@
         grid-template-columns: 1fr;
         text-align: center;
       }
+      .hero-badge-wrap {
+        margin: 0 auto 20px;
+      }
       .hero-desc {
-        margin: 0 auto 32px;
+        margin: 0 auto 30px;
       }
       .download-actions-card {
         margin: 0 auto 28px;
+      }
+      .security-badge {
+        justify-content: center;
       }
       .features-grid, .steps-grid {
         grid-template-columns: repeat(2, 1fr);
       }
       .stats-grid {
         grid-template-columns: repeat(2, 1fr);
-        gap: 28px;
+        gap: 20px;
       }
       .hero-phone-col {
-        margin-top: 40px;
+        margin-top: 36px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
       }
-      .floating-badge-1 { left: 0; }
-      .floating-badge-2 { right: 0; }
+      .phone-mockup-wrap {
+        transform: none !important;
+        width: min(290px, 85vw);
+        margin: 0 auto;
+        box-shadow: 0 16px 40px rgba(0, 109, 119, 0.22);
+      }
+      .floating-badges-wrap {
+        display: flex;
+        flex-direction: row;
+        justify-content: center;
+        align-items: center;
+        gap: 12px;
+        margin-top: 24px;
+        width: 100%;
+        max-width: 480px;
+        flex-wrap: wrap;
+      }
+      .floating-card-badge {
+        position: static;
+        box-shadow: var(--shadow-sm);
+        flex: 1 1 200px;
+        justify-content: center;
+        padding: 10px 14px;
+      }
+      .floating-badge-1, .floating-badge-2 {
+        left: auto;
+        right: auto;
+        top: auto;
+        bottom: auto;
+      }
     }
 
     @media (max-width: 768px) {
       .nav-menu { display: none; }
-      .hero-title { font-size: 32px; }
+      .hero-title { font-size: 30px; line-height: 1.3; }
       .features-grid, .steps-grid { grid-template-columns: 1fr; }
       .footer-grid { grid-template-columns: 1fr; gap: 30px; }
+      .shots-slider { padding: 10px 6px 26px; gap: 14px; }
+      .shot-card { flex: 0 0 215px; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
+      .stat-item { padding: 14px 10px; }
+      .stat-item h3 { font-size: 28px; }
       .mobile-sticky-bar { display: block; }
-      body { padding-bottom: 70px; }
-      .phone-mockup-wrap { width: 280px; }
-      .bottom-cta h2 { font-size: 28px; }
+      body { padding-bottom: 74px; }
+      .bottom-cta h2 { font-size: 26px; }
     }
   </style>
 </head>
@@ -1142,10 +1183,13 @@
               </div>
             </a>
 
-            <!-- Fallback direct link if browser doesn't trigger automatically -->
-            <div style="text-align: center; margin-top: 10px; font-size: 13px;">
-              <span style="color: var(--text-muted);">ডাউনলোড শুরু না হলে? </span>
-              <a href="mawa-digital-khata.apk" download="Mawa-Digital-Khata-v2.4.apk" style="color: var(--primary); font-weight: 700; text-decoration: underline;" onclick="triggerToast()">এখানে সরাসরি ক্লিক করুন (Direct Link)</a>
+            <!-- Fallback direct link container -->
+            <div class="direct-link-container">
+              <span class="direct-link-text">কোনো কারণে ডাউনলোড শুরু না হলে:</span>
+              <a href="mawa-digital-khata.apk" download="Mawa-Digital-Khata-v2.4.apk" class="direct-link-pill" onclick="triggerToast()">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                বিকল্প সরাসরি লিংক (Direct APK)
+              </a>
             </div>
 
             <div class="download-meta-chips">
@@ -1180,20 +1224,22 @@
             </div>
           </div>
 
-          <!-- Floating Badges -->
-          <div class="floating-card-badge floating-badge-1">
-            <div class="badge-icon-box bg-teal">🎙️</div>
-            <div class="floating-text">
-              <strong>ইন-ফিল্ড ভয়েস মাইক</strong>
-              <span>মুখে বললেই খরচ সেভ</span>
+          <!-- Floating Badges Wrapped for Mobile Cleanliness -->
+          <div class="floating-badges-wrap">
+            <div class="floating-card-badge floating-badge-1">
+              <div class="badge-icon-box bg-teal">🎙️</div>
+              <div class="floating-text">
+                <strong>ইন-ফিল্ড ভয়েস মাইক</strong>
+                <span>মুখে বললেই খরচ সেভ</span>
+              </div>
             </div>
-          </div>
 
-          <div class="floating-card-badge floating-badge-2">
-            <div class="badge-icon-box bg-orange">🧮</div>
-            <div class="floating-text">
-              <strong>ফ্লোটিং ক্যালকুলেটর</strong>
-              <span>যেকোনো স্ক্রিনে ১ ট্যাপে</span>
+            <div class="floating-card-badge floating-badge-2">
+              <div class="badge-icon-box bg-orange">🧮</div>
+              <div class="floating-text">
+                <strong>ফ্লোটিং ক্যালকুলেটর</strong>
+                <span>যেকোনো স্ক্রিনে ১ ট্যাপে</span>
+              </div>
             </div>
           </div>
         </div>
@@ -1308,6 +1354,7 @@
           <div class="shot-label">কোম্পানির ফর্দ ও অর্ডার খাতা</div>
         </div>
       </div>
+      <p class="shots-scroll-hint" style="text-align: center; color: var(--primary); font-size: 13px; font-weight: 600; margin-top: 10px;">👉 আরও স্ক্রিনশট দেখতে আঙুল দিয়ে ডানে-বামে টানুন 👈</p>
     </div>
   </section>
 
@@ -1440,26 +1487,28 @@
       </div>
 
       <div class="footer-bottom">
-        <p>© ২০২৬ মাওয়া ডিজিটাল খাতা। সর্বস্বত্ব সংরক্ষিত।</p>
-        <p>ডিজাইন ও ডেভেলপমেন্ট: Sdamin84</p>
+        <p>© ২০২৬ মাওয়া ডিজিটাল খাতা (Mawa) • সর্বস্বত্ব সংরক্ষিত।</p>
+        <p>১০০% নিরাপদ ও নির্ভরযোগ্য ডিজিটাল খাতা</p>
       </div>
     </div>
   </footer>
 
   <!-- Mobile Sticky Download Footer -->
   <div class="mobile-sticky-bar">
-    <div class="mobile-info">
-      <h4>মাওয়া ডিজিটাল খাতা</h4>
-      <span>v2.4 • সাইজ: ৩৬ MB</span>
+    <div class="mobile-sticky-inner">
+      <div class="mobile-info">
+        <h4>মাওয়া ডিজিটাল খাতা</h4>
+        <span>v2.4 • সাইজ: ৩৬ MB</span>
+      </div>
+      <a href="mawa-digital-khata.apk" download="Mawa-Digital-Khata-v2.4.apk" class="mobile-btn" onclick="triggerToast()">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="7 10 12 15 17 10"></polyline>
+          <line x1="12" y1="15" x2="12" y2="3"></line>
+        </svg>
+        ডাউনলোড APK
+      </a>
     </div>
-    <a href="mawa-digital-khata.apk" download="Mawa-Digital-Khata-v2.4.apk" class="mobile-btn" onclick="triggerToast()">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-        <polyline points="7 10 12 15 17 10"></polyline>
-        <line x1="12" y1="15" x2="12" y2="3"></line>
-      </svg>
-      ডাউনলোড APK
-    </a>
   </div>
 
   <!-- Download Toast -->

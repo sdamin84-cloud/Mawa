@@ -19,3 +19,4 @@ debug.keystore
 
 # Ensure public APK is committed for web downloads and Netlify
 !public/*.apk
+!public/mawa-digital-khata.apk

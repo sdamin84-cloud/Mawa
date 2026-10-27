@@ -17,6 +17,13 @@
     Cache-Control = "public, max-age=86400"
 
 [[headers]]
+  for = "/mawa-digital-khata.apk"
+  [headers.values]
+    Content-Type = "application/vnd.android.package-archive"
+    Content-Disposition = "attachment; filename=\"mawa-digital-khata.apk\""
+    Cache-Control = "public, max-age=86400"
+
+[[headers]]
   for = "/sitemap.xml"
   [headers.values]
     Content-Type = "application/xml; charset=UTF-8"
