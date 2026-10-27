@@ -90,6 +90,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mawa.data.local.entity.TransactionEntity
 import com.example.mawa.data.local.entity.TransactionType
 import com.example.mawa.data.model.TimeFilter
+import com.example.mawa.data.repository.MawaRepository
 import com.example.mawa.ui.components.DailyClosureDialog
 import com.example.mawa.ui.components.InteractiveCompanyPurchaseDonutChart
 import com.example.mawa.ui.components.InteractiveTrendChart
@@ -117,6 +118,9 @@ private data class DailyLedgerGroup(
     val dayStartMillis: Long,
     val dateLabel: String,
     val weekday: String,
+    val cashSales: Double,
+    val bakiSales: Double,
+    val bakiCollection: Double,
     val totalSales: Double,
     val purchases: Double,
     val shopExpenses: Double,
@@ -151,20 +155,74 @@ fun ReportsScreen(
     var showBluetoothPrinterDialog by remember { mutableStateOf(false) }
     var expandedDayMillis by remember { mutableStateOf<Long?>(null) }
 
-    // Group historical transactions by day
-    val historicalDailyLedgers = remember(allTransactions, allDailyCash, shopSettings) {
+    var profitMarginPercent by remember {
+        mutableStateOf(com.example.mawa.util.ProfitMarginManager.getProfitMargin(context))
+    }
+
+    val (reportStartMillis, reportEndMillis) = remember(currentFilter, customDateMillis) {
+        if (customDateMillis != null) {
+            Pair(
+                MawaRepository.getStartOfDayMillis(customDateMillis!!),
+                MawaRepository.getEndOfDayMillis(customDateMillis!!)
+            )
+        } else {
+            val start = when (currentFilter) {
+                TimeFilter.TODAY -> MawaRepository.getStartOfDayMillis(System.currentTimeMillis())
+                TimeFilter.THIS_WEEK -> {
+                    val cal = Calendar.getInstance().apply {
+                        firstDayOfWeek = Calendar.SATURDAY
+                        set(Calendar.DAY_OF_WEEK, Calendar.SATURDAY)
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    cal.timeInMillis
+                }
+                TimeFilter.THIS_MONTH -> {
+                    val cal = Calendar.getInstance().apply {
+                        set(Calendar.DAY_OF_MONTH, 1)
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    cal.timeInMillis
+                }
+                TimeFilter.ALL_TIME -> 0L
+            }
+            Pair(start, Long.MAX_VALUE)
+        }
+    }
+
+    // Group historical transactions & daily cash by day to compute true daily sales
+    val historicalDailyLedgers = remember(allTransactions, allDailyCash, shopSettings, profitMarginPercent) {
         val cal = Calendar.getInstance()
-        val groups = allTransactions.groupBy { tx ->
-            cal.timeInMillis = tx.timestamp
-            cal.set(Calendar.HOUR_OF_DAY, 0)
-            cal.set(Calendar.MINUTE, 0)
-            cal.set(Calendar.SECOND, 0)
-            cal.set(Calendar.MILLISECOND, 0)
-            cal.timeInMillis
+        val allDayStartMillis = buildSet {
+            allTransactions.forEach { tx ->
+                cal.timeInMillis = tx.timestamp
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                add(cal.timeInMillis)
+            }
+            allDailyCash.forEach { dc ->
+                cal.timeInMillis = dc.dateMillis
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                cal.set(Calendar.MILLISECOND, 0)
+                add(cal.timeInMillis)
+            }
         }
 
-        groups.entries.map { (dayMillis, txList) ->
-            val cashSales = txList.filter { it.type == TransactionType.SALE_CASH }.sumOf { it.amount }
+        allDayStartMillis.map { dayMillis ->
+            val dayStart = dayMillis
+            val dayEnd = dayMillis + 86400000L - 1L
+            val txList = allTransactions.filter { it.timestamp in dayStart..dayEnd }
+
+            val explicitCashSales = txList.filter { it.type == TransactionType.SALE_CASH }.sumOf { it.amount }
             val bakiSales = txList.filter { it.type == TransactionType.SALE_BAKI }.sumOf { it.amount }
             val bakiCol = txList.filter { it.type == TransactionType.BAKI_COLLECTION }.sumOf { it.amount }
             val purchases = txList.filter { it.type == TransactionType.PURCHASE_FORDI || it.type == TransactionType.PURCHASE_DIRECT }.sumOf { it.amount }
@@ -181,18 +239,20 @@ fun ReportsScreen(
                 prevRecord?.closingCash ?: (shopSettings?.openingBalance ?: 0.0)
             }
 
-            // Reconciled cash sale from closing cash only if day was closed with closing cash
+            // Reconciled cash sale from closing cash only if day was closed with closing cash,
+            // or if total expenses exceed available opening balance & collection
             val reconciledCashSales = if (dayRecord != null && dayRecord.closingCash > 0) {
                 (dayRecord.closingCash + totalExpenses - sabekCash - bakiCol).coerceAtLeast(0.0)
+            } else if (totalExpenses > (sabekCash + bakiCol)) {
+                (totalExpenses - (sabekCash + bakiCol)).coerceAtLeast(0.0)
             } else {
                 0.0
             }
 
-            val effectiveCashSales = maxOf(cashSales, reconciledCashSales)
+            val effectiveCashSales = maxOf(explicitCashSales, reconciledCashSales)
             val sales = effectiveCashSales + bakiSales
-            val profit = (sales * 0.10).coerceAtLeast(0.0)
+            val profit = com.example.mawa.util.ProfitMarginManager.calculateProfit(sales, profitMarginPercent)
 
-            cal.timeInMillis = dayMillis
             val dateLabel = BengaliUtils.getFormattedTodayDate(dayMillis)
             val weekday = SimpleDateFormat("EEEE", Locale("bn", "BD")).format(Date(dayMillis))
 
@@ -200,6 +260,9 @@ fun ReportsScreen(
                 dayStartMillis = dayMillis,
                 dateLabel = dateLabel,
                 weekday = weekday,
+                cashSales = effectiveCashSales,
+                bakiSales = bakiSales,
+                bakiCollection = bakiCol,
                 totalSales = sales,
                 purchases = purchases,
                 shopExpenses = shopExp,
@@ -212,37 +275,37 @@ fun ReportsScreen(
 
     val shopName = shopSettings?.shopName?.ifBlank { "মাওয়া স্মার্ট খাতা" } ?: "মাওয়া স্মার্ট খাতা"
 
-    // Real-time calculated metrics for the selected time filter
-    val periodCashSales = remember(transactions) {
-        transactions.filter { it.type == TransactionType.SALE_CASH }.sumOf { it.amount }
+    // Real-time calculated metrics for the selected time filter across all days
+    val periodDailyLedgers = remember(historicalDailyLedgers, reportStartMillis, reportEndMillis) {
+        historicalDailyLedgers.filter { it.dayStartMillis in reportStartMillis..reportEndMillis }
     }
-    val periodBakiSales = remember(transactions) {
-        transactions.filter { it.type == TransactionType.SALE_BAKI }.sumOf { it.amount }
+
+    val periodCashSales = remember(periodDailyLedgers) {
+        periodDailyLedgers.sumOf { it.cashSales }
+    }
+    val periodBakiSales = remember(periodDailyLedgers) {
+        periodDailyLedgers.sumOf { it.bakiSales }
     }
     val periodTotalSales = periodCashSales + periodBakiSales
 
-    val periodBakiCollection = remember(transactions) {
-        transactions.filter { it.type == TransactionType.BAKI_COLLECTION }.sumOf { it.amount }
+    val periodBakiCollection = remember(periodDailyLedgers) {
+        periodDailyLedgers.sumOf { it.bakiCollection }
     }
 
     val purchaseTransactions = remember(transactions) {
         transactions.filter { it.type == TransactionType.PURCHASE_FORDI || it.type == TransactionType.PURCHASE_DIRECT }
     }
 
-    val periodPurchases = remember(purchaseTransactions) {
-        purchaseTransactions.sumOf { it.amount }
+    val periodPurchases = remember(periodDailyLedgers) {
+        periodDailyLedgers.sumOf { it.purchases }
     }
 
-    val periodShopExpenses = remember(transactions) {
-        transactions.filter { it.type == TransactionType.EXPENSE_SHOP }.sumOf { it.amount }
+    val periodShopExpenses = remember(periodDailyLedgers) {
+        periodDailyLedgers.sumOf { it.shopExpenses }
     }
 
-    val periodHomeWithdrawals = remember(transactions) {
-        transactions.filter { it.type == TransactionType.EXPENSE_HOME }.sumOf { it.amount }
-    }
-
-    var profitMarginPercent by remember {
-        mutableStateOf(com.example.mawa.util.ProfitMarginManager.getProfitMargin(context))
+    val periodHomeWithdrawals = remember(periodDailyLedgers) {
+        periodDailyLedgers.sumOf { it.homeWithdrawals }
     }
 
     // Accounting Formulas (টাকার উপর শতকরা লাভ)
@@ -1960,23 +2023,17 @@ fun ReportsScreen(
 
         // Daily Closure Dialog
         if (showDailyClosureDialog) {
-            val closureTransactions by viewModel.selectedDateTransactions.collectAsStateWithLifecycle()
-            val closureCashSales = closureTransactions.filter { it.type == TransactionType.SALE_CASH }.sumOf { it.amount }
-            val closureBakiSales = closureTransactions.filter { it.type == TransactionType.SALE_BAKI }.sumOf { it.amount }
-            val closureBakiCollection = closureTransactions.filter { it.type == TransactionType.BAKI_COLLECTION }.sumOf { it.amount }
-            val closurePurchases = closureTransactions.filter { it.type == TransactionType.PURCHASE_FORDI || it.type == TransactionType.PURCHASE_DIRECT }.sumOf { it.amount }
-            val closureExpenses = closureTransactions.filter { it.type == TransactionType.EXPENSE_SHOP }.sumOf { it.amount }
-            val closureHome = closureTransactions.filter { it.type == TransactionType.EXPENSE_HOME }.sumOf { it.amount }
+            val closureSummary by viewModel.selectedDateAccountingSummary.collectAsStateWithLifecycle()
 
             DailyClosureDialog(
                 dateMillis = System.currentTimeMillis(),
-                openingBalance = shopSettings?.openingBalance ?: 0.0,
-                cashSales = closureCashSales,
-                bakiSales = closureBakiSales,
-                bakiCollection = closureBakiCollection,
-                purchases = closurePurchases,
-                shopExpenses = closureExpenses,
-                homeWithdrawals = closureHome,
+                openingBalance = closureSummary.openingBalance,
+                cashSales = closureSummary.todayCashSales,
+                bakiSales = closureSummary.todayBakiSales,
+                bakiCollection = closureSummary.todayBakiCollection,
+                purchases = closureSummary.todayPurchases,
+                shopExpenses = closureSummary.todayShopExpenses,
+                homeWithdrawals = closureSummary.todayHomeWithdrawals,
                 onDismiss = { showDailyClosureDialog = false }
             )
         }

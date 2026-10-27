@@ -184,6 +184,8 @@ fun InteractiveTrendChart(
                 // Reconciled cash sale = closing cash + total expenses - sabek - baki collection
                 val reconciledCashSales = if (dayRecord != null && dayRecord.closingCash > 0) {
                     (dayRecord.closingCash + totalExp - sabekCash - bakiCol).coerceAtLeast(0.0)
+                } else if (totalExp > (sabekCash + bakiCol)) {
+                    (totalExp - (sabekCash + bakiCol)).coerceAtLeast(0.0)
                 } else {
                     0.0
                 }

@@ -140,6 +140,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mawa.data.local.entity.CashTallyEntity
 import com.example.mawa.data.local.entity.ShopSettingsEntity
 import com.example.mawa.data.local.entity.SupplierCompanyEntity
+import com.example.mawa.data.local.entity.TransactionType
 import com.example.mawa.data.model.AccountingSummary
 import com.example.mawa.ui.components.Animated2DShopHeroBanner
 import com.example.mawa.ui.components.CompanySrProfileCard
@@ -1755,6 +1756,97 @@ fun HomeScreen(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                }
+            }
+
+            // যদি হিসাব অনুযায়ী নগদ বিক্রি পাওয়া যায় কিন্তু খতিয়ানে এখনও এন্ট্রি হিসেবে তোলা না হয়ে থাকে
+            if (effectiveCashSales > 0 && displayTransactions.none { it.type == TransactionType.SALE_CASH }) {
+                item {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = FinancialPositiveContainer.copy(alpha = 0.35f)
+                        ),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, FinancialPositive.copy(alpha = 0.35f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(FinancialPositive.copy(alpha = 0.15f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.TrendingUp,
+                                        contentDescription = null,
+                                        tint = FinancialPositive,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Column {
+                                    Text(
+                                        text = "নগদ বিক্রি (হিসাব থেকে নির্ণীত)",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = "+${BengaliUtils.formatTaka(effectiveCashSales)}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Black,
+                                        color = FinancialPositive
+                                    )
+                                    Text(
+                                        text = "রিপোর্টে স্বয়ংক্রিয়ভাবে মোট বিক্রিতে যুক্ত হচ্ছে",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 11.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Button(
+                                onClick = {
+                                    viewModel.recordSale(
+                                        isCash = true,
+                                        amount = effectiveCashSales,
+                                        note = if (isToday) "নগদ বিক্রি" else "নগদ বিক্রি (${BengaliUtils.getFormattedTodayDate(selectedHomeDateMillis)})",
+                                        timestamp = selectedHomeDateMillis
+                                    )
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = FinancialPositive,
+                                    contentColor = Color.White
+                                ),
+                                modifier = Modifier.testTag("btn_record_auto_cash_to_ledger")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("খতিয়ানে তুলুন", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
                 }
             }
 
