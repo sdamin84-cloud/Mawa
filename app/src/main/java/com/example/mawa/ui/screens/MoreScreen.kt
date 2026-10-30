@@ -1,5 +1,6 @@
 package com.example.mawa.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -28,6 +29,10 @@ import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.Home
+import com.example.mawa.util.AppLanguage
+import com.example.mawa.util.LanguageManager
+import com.example.mawa.util.LocalAppLanguage
+import com.example.mawa.util.tr
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.LightMode
@@ -672,9 +677,76 @@ fun ShopSettingsDialog(
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
             ) {
+                // Language Selection Section
+                val currentLang = LocalAppLanguage.current
+                Text(
+                    text = if (currentLang.isEnglish) "App Language" else "অ্যাপের ভাষা (Language)",
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                LanguageManager.setLanguage(context, AppLanguage.BANGLA)
+                            },
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (!currentLang.isEnglish) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(
+                            1.dp,
+                            if (!currentLang.isEnglish) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                        )
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "বাংলা (Bangla)",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (!currentLang.isEnglish) FontWeight.Bold else FontWeight.Normal,
+                                color = if (!currentLang.isEnglish) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                LanguageManager.setLanguage(context, AppLanguage.ENGLISH)
+                            },
+                        shape = RoundedCornerShape(8.dp),
+                        color = if (currentLang.isEnglish) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(
+                            1.dp,
+                            if (currentLang.isEnglish) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                        )
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text(
+                                text = "English",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = if (currentLang.isEnglish) FontWeight.Bold else FontWeight.Normal,
+                                color = if (currentLang.isEnglish) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                Spacer(modifier = Modifier.height(12.dp))
+
                 // Theme Toggle Section
                 Text(
-                    text = "অ্যাপ থিম (Theme)",
+                    text = tr("অ্যাপ থিম (Theme)", "App Theme"),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.primary

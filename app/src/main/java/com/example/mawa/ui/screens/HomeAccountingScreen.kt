@@ -31,6 +31,9 @@ import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.ShoppingBag
 import androidx.compose.material.icons.filled.Store
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -203,19 +206,40 @@ fun HomeAccountingScreen(
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // Top Header
-        MawaTopBar(
-            title = "বাড়ির হিসাব",
-            subtitle = "সংসার খরচ, বাজারসদাই ও দোকানের পণ্য উত্তোলন",
-            navigationIcon = if (onBack != null) {
-                {
-                    IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "পেছনে")
+        // Compact Header without redundant Bengali title/subtitle
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 1.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onBack != null) {
+                        IconButton(onClick = onBack) {
+                            Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "পেছনে")
+                        }
+                    } else if (onOpenDrawer != null) {
+                        IconButton(onClick = onOpenDrawer) {
+                            Icon(imageVector = Icons.Default.Menu, contentDescription = "মেনু")
+                        }
                     }
                 }
-            } else null,
-            onMenuClick = onOpenDrawer
-        )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { showBudgetDialog = true }) {
+                        Icon(imageVector = Icons.Default.AccountBalanceWallet, contentDescription = "বাজেট", tint = MaterialTheme.colorScheme.primary)
+                    }
+                    IconButton(onClick = { showReportDialog = true }) {
+                        Icon(imageVector = Icons.Default.Assessment, contentDescription = "রিপোর্ট", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        }
 
         LazyColumn(
             modifier = Modifier

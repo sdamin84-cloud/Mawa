@@ -32,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -306,7 +307,8 @@ fun InteractiveCategoryDonutChart(
     categories: List<CategorySpending>,
     totalExpense: Double,
     title: String = "খাত ভিত্তিক ব্যয়ের অ্যানালাইসিস",
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onCategorySelected: ((category: String) -> Unit)? = null
 ) {
     if (categories.isEmpty() || totalExpense <= 0) return
 
@@ -358,10 +360,16 @@ fun InteractiveCategoryDonutChart(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "${BengaliUtils.toBanglaDigits(categories.size.toLong())} টি খাতে মোট ${BengaliUtils.formatTaka(totalExpense)}",
+                            text = "রঙে বা তালিকায় চাপ দিয়ে খতিয়ান বিশ্লেষণ করুন",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium
                         )
+                    }
+                }
+                if (selectedIndex != null) {
+                    TextButton(onClick = { selectedIndex = null }) {
+                        Text("রিসেট", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -387,21 +395,28 @@ fun InteractiveCategoryDonutChart(
                                     val center = Offset(size.width / 2f, size.height / 2f)
                                     val dx = offset.x - center.x
                                     val dy = offset.y - center.y
-                                    var angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat()
-                                    if (angle < 0) angle += 360f
+                                    val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+                                    val r = kotlin.math.min(size.width, size.height) / 2f
+                                    if (dist in (r * 0.3f)..(r * 1.15f)) {
+                                        var angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f
+                                        if (angle < 0) angle += 360f
+                                        if (angle >= 360f) angle -= 360f
 
-                                    // Match angle to category slice
-                                    var currentAngle = 0f
-                                    var clickedIndex: Int? = null
-                                    for (i in categories.indices) {
-                                        val sweep = (categories[i].totalAmount / totalExpense).toFloat() * 360f
-                                        if (angle in currentAngle..(currentAngle + sweep)) {
-                                            clickedIndex = i
-                                            break
+                                        // Match angle to category slice
+                                        var currentAngle = 0f
+                                        var clickedIndex: Int? = null
+                                        for (i in categories.indices) {
+                                            val sweep = (categories[i].totalAmount / totalExpense).toFloat() * 360f
+                                            if (angle in currentAngle..(currentAngle + sweep)) {
+                                                clickedIndex = i
+                                                break
+                                            }
+                                            currentAngle += sweep
                                         }
-                                        currentAngle += sweep
+                                        val newIdx = if (selectedIndex == clickedIndex) null else clickedIndex
+                                        selectedIndex = newIdx
+                                        newIdx?.let { onCategorySelected?.invoke(categories[it].category) }
                                     }
-                                    selectedIndex = if (selectedIndex == clickedIndex) null else clickedIndex
                                 }
                             }
                     ) {
@@ -413,7 +428,7 @@ fun InteractiveCategoryDonutChart(
                             val isSelected = selectedIndex == index
 
                             drawArc(
-                                color = if (isSelected) color else color.copy(alpha = 0.85f),
+                                color = if (selectedIndex == null || isSelected) color else color.copy(alpha = 0.45f),
                                 startAngle = startAngle,
                                 sweepAngle = sweep,
                                 useCenter = false,
@@ -427,20 +442,32 @@ fun InteractiveCategoryDonutChart(
                     }
 
                     // Center text
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    ) {
                         val active = selectedIndex?.let { categories.getOrNull(it) }
                         if (active != null) {
                             Text(
                                 text = active.category,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 1
+                                color = colors[(selectedIndex ?: 0) % colors.size],
+                                maxLines = 1,
+                                textAlign = TextAlign.Center
                             )
                             Text(
                                 text = BengaliUtils.formatTaka(active.totalAmount),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold,
                                 color = colors[(selectedIndex ?: 0) % colors.size]
+                            )
+                            val pct = ((active.totalAmount / totalExpense) * 100).toInt()
+                            Text(
+                                text = "${BengaliUtils.toBanglaDigits(pct.toLong())}%",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         } else {
                             Text(
@@ -452,6 +479,12 @@ fun InteractiveCategoryDonutChart(
                                 text = BengaliUtils.formatTaka(totalExpense),
                                 style = MaterialTheme.typography.bodySmall,
                                 fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "ক্লিক করুন",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 8.5.sp,
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -471,13 +504,19 @@ fun InteractiveCategoryDonutChart(
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .clip(RoundedCornerShape(6.dp))
-                                .clickable { selectedIndex = if (isSelected) null else index }
+                                .clickable {
+                                    val newIdx = if (isSelected) null else index
+                                    selectedIndex = newIdx
+                                    if (newIdx != null) {
+                                        onCategorySelected?.invoke(cat.category)
+                                    }
+                                }
                                 .background(if (isSelected) color.copy(alpha = 0.15f) else Color.Transparent)
-                                .padding(horizontal = 4.dp, vertical = 2.dp)
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(10.dp)
+                                    .size(if (isSelected) 12.dp else 10.dp)
                                     .clip(CircleShape)
                                     .background(color)
                             )
@@ -485,9 +524,48 @@ fun InteractiveCategoryDonutChart(
                             Text(
                                 text = "${cat.category} (${BengaliUtils.toBanglaDigits(pct.toLong())}%)",
                                 style = MaterialTheme.typography.labelSmall,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Normal,
                                 color = if (isSelected) color else MaterialTheme.colorScheme.onSurface
                             )
+                        }
+                    }
+                }
+            }
+
+            // Bottom Selected Highlight Card
+            val activeCat = selectedIndex?.let { categories.getOrNull(it) }
+            if (activeCat != null) {
+                val color = colors[(selectedIndex ?: 0) % colors.size]
+                val pct = ((activeCat.totalAmount / totalExpense) * 100).toInt()
+                Spacer(modifier = Modifier.height(14.dp))
+                Surface(
+                    color = color.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, color.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "খাত: ${activeCat.category}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = color
+                            )
+                            Text(
+                                text = "ব্যয়: ${BengaliUtils.formatTaka(activeCat.totalAmount)} (${BengaliUtils.toBanglaDigits(pct.toLong())}% শেয়ার)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        TextButton(onClick = { selectedIndex = null }) {
+                            Text("মুছুন", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }

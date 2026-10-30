@@ -84,6 +84,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.mawa.data.model.AppMode
 import com.example.mawa.util.BengaliUtils
+import com.example.mawa.util.LocalAppLanguage
 import com.example.ui.theme.MawaPrimary
 
 /**
@@ -113,17 +114,20 @@ fun triggerClickBeat(context: Context, haptic: androidx.compose.ui.hapticfeedbac
 
 enum class MawaTab(
     val titleBangla: String,
+    val titleEnglish: String,
     val selectedIcon: ImageVector,
     val unselectedIcon: ImageVector,
     val testTag: String
 ) {
-    HOME("হোম", Icons.Filled.Store, Icons.Outlined.Store, "tab_home"),
-    FORDI("ফর্দ", Icons.Filled.Assignment, Icons.Outlined.Assignment, "tab_fordi"),
-    BAKI("বাকি", Icons.Filled.People, Icons.Outlined.People, "tab_baki"),
-    EXPENSE("খরচ", Icons.Filled.Receipt, Icons.Outlined.Receipt, "tab_expense"),
-    PERSONAL("ব্যক্তিগত", Icons.Filled.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet, "tab_personal"),
-    HOME_ACCOUNTING("বাড়ির হিসাব", Icons.Filled.Home, Icons.Outlined.Home, "tab_home_accounting"),
-    REPORTS("রিপোর্ট", Icons.Filled.Assessment, Icons.Outlined.Assessment, "tab_reports")
+    HOME("হোম", "Home", Icons.Filled.Store, Icons.Outlined.Store, "tab_home"),
+    FORDI("ফর্দ", "Fordi", Icons.Filled.Assignment, Icons.Outlined.Assignment, "tab_fordi"),
+    BAKI("বাকি", "Baki", Icons.Filled.People, Icons.Outlined.People, "tab_baki"),
+    EXPENSE("খরচ", "Expense", Icons.Filled.Receipt, Icons.Outlined.Receipt, "tab_expense"),
+    PERSONAL("ব্যক্তিগত", "Personal", Icons.Filled.AccountBalanceWallet, Icons.Outlined.AccountBalanceWallet, "tab_personal"),
+    HOME_ACCOUNTING("বাড়ির হিসাব", "Household", Icons.Filled.Home, Icons.Outlined.Home, "tab_home_accounting"),
+    REPORTS("রিপোর্ট", "Reports", Icons.Filled.Assessment, Icons.Outlined.Assessment, "tab_reports");
+
+    fun getTitle(isEnglish: Boolean): String = if (isEnglish) titleEnglish else titleBangla
 }
 
 @Composable
@@ -282,8 +286,9 @@ fun MawaBottomBar(
 
             Spacer(modifier = Modifier.height(2.dp))
 
+            val isEnglish = LocalAppLanguage.current.isEnglish
             Text(
-                text = "খরচ",
+                text = if (isEnglish) "Expense" else "খরচ",
                 style = MaterialTheme.typography.labelSmall,
                 fontWeight = FontWeight.Bold,
                 color = primaryColor,
@@ -316,6 +321,8 @@ private fun MawaTabItem(
     val isPressed by interactionSource.collectIsPressedAsState()
     val brandPrimary = MaterialTheme.colorScheme.primary
     val neutralUnselected = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.80f)
+    val isEnglish = LocalAppLanguage.current.isEnglish
+    val displayTitle = tab.getTitle(isEnglish)
 
     // Tactile Spring Bounce Animation on Click & Selection
     val itemScale by animateFloatAsState(
@@ -380,7 +387,7 @@ private fun MawaTabItem(
         ) {
             Icon(
                 imageVector = if (isSelected) tab.selectedIcon else tab.unselectedIcon,
-                contentDescription = tab.titleBangla,
+                contentDescription = displayTitle,
                 tint = iconColor,
                 modifier = Modifier.size(if (isSelected) 19.dp else 18.dp)
             )
@@ -389,7 +396,7 @@ private fun MawaTabItem(
         Spacer(modifier = Modifier.height(2.dp))
 
         Text(
-            text = tab.titleBangla,
+            text = displayTitle,
             style = MaterialTheme.typography.labelSmall,
             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
             color = textColor,

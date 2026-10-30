@@ -1,5 +1,7 @@
 package com.example.mawa.ui.screens
 
+import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -84,9 +86,15 @@ import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.TrendingDown
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Language
+import com.example.mawa.util.LanguageManager
+import com.example.mawa.util.LocalAppLanguage
+import com.example.mawa.util.tr
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
 import com.example.mawa.ui.components.AppSecuritySettingsDialog
 import com.example.mawa.ui.components.DailyBackupReminderCard
 import com.example.mawa.ui.components.FinancialHealthScoreCard
@@ -138,10 +146,15 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.mawa.data.local.entity.CashTallyEntity
+import com.example.mawa.data.local.entity.ProductEntity
 import com.example.mawa.data.local.entity.ShopSettingsEntity
 import com.example.mawa.data.local.entity.SupplierCompanyEntity
+import com.example.mawa.data.local.entity.TransactionEntity
 import com.example.mawa.data.local.entity.TransactionType
 import com.example.mawa.data.model.AccountingSummary
+import com.example.mawa.data.model.CustomerWithBalance
+import com.example.mawa.ui.components.DigitalReceiptDialog
+import com.example.mawa.util.InvoiceItem
 import com.example.mawa.ui.components.Animated2DShopHeroBanner
 import com.example.mawa.ui.components.CompanySrProfileCard
 import com.example.mawa.ui.components.DailyClosureDialog
@@ -190,6 +203,7 @@ fun HomeScreen(
     onOpenJoma: () -> Unit,
     onOpenExpenseDrawer: () -> Unit,
     onOpenOrderKhata: () -> Unit,
+    onOpenFordi: () -> Unit = {},
     onOpenReports: () -> Unit,
     onOpenDrawer: () -> Unit,
     onOpenProducts: () -> Unit = {},
@@ -229,6 +243,12 @@ fun HomeScreen(
     var companyToEditSr by remember { mutableStateOf<SupplierCompanyEntity?>(null) }
     var showWeeklyScheduleDialog by remember { mutableStateOf(false) }
     var showHomeWithdrawalSheet by remember { mutableStateOf(false) }
+
+    val customersWithBalance by viewModel.customersWithBalance.collectAsStateWithLifecycle()
+    var selectedCustomerForLedger by remember { mutableStateOf<CustomerWithBalance?>(null) }
+    var selectedTransactionForDetail by remember { mutableStateOf<TransactionEntity?>(null) }
+    var selectedProductForDetail by remember { mutableStateOf<ProductEntity?>(null) }
+    var showDigitalReceiptForTx by remember { mutableStateOf<TransactionEntity?>(null) }
 
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
@@ -412,6 +432,80 @@ fun HomeScreen(
         )
     }
 
+    if (selectedCustomerForLedger != null) {
+        BackHandler {
+            selectedCustomerForLedger = null
+        }
+        CustomerLedgerScreen(
+            customerWithBalance = selectedCustomerForLedger!!,
+            transactions = allTransactions.filter { it.customerId == selectedCustomerForLedger!!.customer.id },
+            viewModel = viewModel,
+            onBack = { selectedCustomerForLedger = null }
+        )
+        return
+    }
+
+    if (selectedTransactionForDetail != null) {
+        TransactionDetailDialog(
+            transaction = selectedTransactionForDetail!!,
+            shopName = settings?.shopName?.ifBlank { "মাওয়া ডিজিটাল খাতা" } ?: "মাওয়া ডিজিটাল খাতা",
+            onViewReceipt = {
+                showDigitalReceiptForTx = selectedTransactionForDetail
+                selectedTransactionForDetail = null
+            },
+            onDismiss = { selectedTransactionForDetail = null }
+        )
+    }
+
+    if (selectedProductForDetail != null) {
+        ProductDetailLedgerDialog(
+            product = selectedProductForDetail!!,
+            productTransactions = allTransactions.filter {
+                it.productId == selectedProductForDetail!!.id ||
+                (!it.productName.isNullOrBlank() && it.productName.equals(selectedProductForDetail!!.name, ignoreCase = true))
+            }.sortedByDescending { it.timestamp },
+            onOpenSales = onOpenSales,
+            onDismiss = { selectedProductForDetail = null }
+        )
+    }
+
+    showDigitalReceiptForTx?.let { tx ->
+        DigitalReceiptDialog(
+            shopName = settings?.shopName?.ifBlank { "মাওয়া ডিজিটাল খাতা" } ?: "মাওয়া ডিজিটাল খাতা",
+            shopPhone = settings?.phone ?: "",
+            shopAddress = "",
+            bkashNumber = settings?.bkashNumber ?: "",
+            nagadNumber = settings?.nagadNumber ?: "",
+            bankDetails = settings?.bankDetails ?: "",
+            customerName = tx.customerName,
+            customerPhone = null,
+            items = if (!tx.productName.isNullOrBlank()) listOf(
+                InvoiceItem(
+                    name = tx.productName,
+                    quantity = tx.quantity.coerceAtLeast(1.0),
+                    unit = tx.unit.ifBlank { "পিস" },
+                    rate = if (tx.rate > 0) tx.rate else tx.amount,
+                    amount = tx.amount
+                )
+            ) else listOf(
+                InvoiceItem(
+                    name = tx.note.ifBlank { tx.type.banglaLabel },
+                    quantity = 1.0,
+                    unit = "বিল",
+                    rate = tx.amount,
+                    amount = tx.amount
+                )
+            ),
+            subtotal = tx.amount,
+            discount = 0.0,
+            paidAmount = if (tx.paymentStatus == "PAID" || tx.type == TransactionType.SALE_CASH || tx.type == TransactionType.BAKI_COLLECTION) tx.amount else 0.0,
+            currentDue = if (tx.type == TransactionType.SALE_BAKI) tx.amount else 0.0,
+            note = tx.note,
+            timestamp = tx.timestamp,
+            onDismiss = { showDigitalReceiptForTx = null }
+        )
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         LazyColumn(
             modifier = Modifier
@@ -506,7 +600,7 @@ fun HomeScreen(
                                         )
                                     }
                                     Text(
-                                        text = "$greeting · দোকান খতিয়ান",
+                                        text = "$greeting · ${tr("দোকান খতিয়ান", "Shop Ledger")}",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
@@ -517,9 +611,39 @@ fun HomeScreen(
                         }
 
                         Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // Quick Language Switcher Toggle Pill [বাং | EN]
+                            Surface(
+                                onClick = { LanguageManager.toggleLanguage(context) },
+                                shape = RoundedCornerShape(20.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                border = androidx.compose.foundation.BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)),
+                                modifier = Modifier
+                                    .height(38.dp)
+                                    .testTag("header_lang_toggle_btn")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Language,
+                                        contentDescription = "Language",
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Text(
+                                        text = if (LocalAppLanguage.current.isEnglish) "EN" else "বাং",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
                             // Quick Lock Button (if PIN lock is configured)
                             if (AppLockManager.isLockEnabled(context)) {
                                 IconButton(
@@ -528,7 +652,7 @@ fun HomeScreen(
                                         onLockApp()
                                     },
                                     modifier = Modifier
-                                        .size(42.dp)
+                                        .size(38.dp)
                                         .clip(CircleShape)
                                         .background(Color(0xFF10B981).copy(alpha = 0.12f))
                                         .border(1.dp, Color(0xFF10B981).copy(alpha = 0.35f), CircleShape)
@@ -538,7 +662,7 @@ fun HomeScreen(
                                         imageVector = Icons.Default.Lock,
                                         contentDescription = "এখনই লক করুন",
                                         tint = Color(0xFF10B981),
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
@@ -553,7 +677,7 @@ fun HomeScreen(
                                     }
                                 },
                                 modifier = Modifier
-                                    .size(42.dp)
+                                    .size(38.dp)
                                     .clip(CircleShape)
                                     .background(
                                         if (currentUser != null) Color(0xFF10B981).copy(alpha = 0.15f)
@@ -565,23 +689,22 @@ fun HomeScreen(
                                     CircularProgressIndicator(
                                         color = Color(0xFF10B981),
                                         strokeWidth = 2.dp,
-                                        modifier = Modifier.size(20.dp)
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 } else {
                                     Icon(
                                         imageVector = if (currentUser != null) Icons.Default.CloudDone else Icons.Default.Cloud,
                                         contentDescription = "সুপাবেজ ক্লাউড সিঙ্ক",
                                         tint = if (currentUser != null) Color(0xFF10B981) else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.size(22.dp)
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
 
-
                             IconButton(
                                 onClick = onOpenDrawer,
                                 modifier = Modifier
-                                    .size(42.dp)
+                                    .size(38.dp)
                                     .clip(CircleShape)
                                     .background(MaterialTheme.colorScheme.surfaceVariant)
                                     .testTag("menu_drawer_btn")
@@ -590,7 +713,7 @@ fun HomeScreen(
                                     imageVector = Icons.Default.Menu,
                                     contentDescription = "মেনু ড্রয়ার",
                                     tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp)
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
@@ -768,21 +891,32 @@ fun HomeScreen(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .clickable { onOpenBaki() }
+                                                .clickable {
+                                                    val cwb = customersWithBalance.firstOrNull { it.customer.id == cust.id }
+                                                        ?: CustomerWithBalance(
+                                                            customer = cust,
+                                                            totalBakiGiven = allTransactions.filter { it.customerId == cust.id && it.type == TransactionType.SALE_BAKI }.sumOf { it.amount },
+                                                            totalJomaReceived = allTransactions.filter { it.customerId == cust.id && it.type == TransactionType.BAKI_COLLECTION }.sumOf { it.amount },
+                                                            currentBalance = allTransactions.filter { it.customerId == cust.id && it.type == TransactionType.SALE_BAKI }.sumOf { it.amount } - allTransactions.filter { it.customerId == cust.id && it.type == TransactionType.BAKI_COLLECTION }.sumOf { it.amount },
+                                                            lastTransaction = allTransactions.filter { it.customerId == cust.id }.maxByOrNull { it.timestamp },
+                                                            hasTransactionToday = false
+                                                        )
+                                                    selectedCustomerForLedger = cwb
+                                                }
                                                 .padding(vertical = 5.dp, horizontal = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                                 Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Text(cust.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                                Text(cust.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                 if (cust.phone.isNotBlank()) {
                                                     Spacer(modifier = Modifier.width(6.dp))
-                                                    Text("(${cust.phone})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                    Text("(${cust.phone})", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                                                 }
                                             }
-                                            Text("বাকি খাতা ➔", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                                            Text("খতিয়ান দেখুন ➔", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                     matchingProd.forEach { prod ->
@@ -790,19 +924,21 @@ fun HomeScreen(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .clickable { onOpenProducts() }
+                                                .clickable {
+                                                    selectedProductForDetail = prod
+                                                }
                                                 .padding(vertical = 5.dp, horizontal = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                                 Icon(Icons.Default.Storefront, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Text(if (prod.banglaName.isNotBlank()) prod.banglaName else prod.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold)
+                                                Text(if (prod.banglaName.isNotBlank()) prod.banglaName else prod.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                                 Spacer(modifier = Modifier.width(6.dp))
                                                 Text("স্টক: ${BengaliUtils.toBanglaDigits(prod.stockQuantity.toLong())}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
-                                            Text("৳ ${BengaliUtils.formatTaka(prod.defaultSellingPrice)}", style = MaterialTheme.typography.labelSmall, color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
+                                            Text("বিস্তারিত খতিয়ান ➔", style = MaterialTheme.typography.labelSmall, color = Color(0xFF0284C7), fontWeight = FontWeight.Bold)
                                         }
                                     }
                                     matchingTx.forEach { tx ->
@@ -810,17 +946,19 @@ fun HomeScreen(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(8.dp))
-                                                .clickable { onOpenSales() }
+                                                .clickable {
+                                                    selectedTransactionForDetail = tx
+                                                }
                                                 .padding(vertical = 5.dp, horizontal = 4.dp),
                                             verticalAlignment = Alignment.CenterVertically,
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                                                 Icon(Icons.Default.Receipt, contentDescription = null, tint = Color(0xFFE11D48), modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(6.dp))
-                                                Text(tx.note.ifBlank { tx.type.name }, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                                Text(tx.note.ifBlank { tx.customerName ?: tx.type.name }, style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
                                             }
-                                            Text("৳ ${BengaliUtils.formatTaka(tx.amount)}", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
+                                            Text("৳ ${BengaliUtils.formatTaka(tx.amount)} (রসিদ/বিস্তারিত) ➔", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFFE11D48))
                                         }
                                     }
                                 }
@@ -830,72 +968,35 @@ fun HomeScreen(
 
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // 6 CORE ACTION TILES GRID (সারাংশের উপরে - কোনো ব্যানার বা রিপিট বাটন ছাড়া)
-                    Column(
+                    // CORE ACTION TILES (খরচ, ক্রয়, রিপোর্ট, বাকির খাতা অলরেডি নেভিগেশনে থাকায় শুধু মূল ইউনিক ফিচারসমূহ রাখা হয়েছে)
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        // Row 1: নতুন বিক্রি, বাকি খাতা, অর্ডার খাতা
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            BigHomeActionTile(
-                                icon = Icons.Default.ShoppingCart,
-                                label = "নতুন বিক্রি",
-                                iconTint = Color(0xFF059669),
-                                containerTint = Color(0xFFECFDF5),
-                                modifier = Modifier.weight(1f),
-                                onClick = onOpenSales
-                            )
-                            BigHomeActionTile(
-                                icon = Icons.Default.Receipt,
-                                label = "বাকি খাতা",
-                                iconTint = Color(0xFFD97706),
-                                containerTint = Color(0xFFFEF3C7),
-                                modifier = Modifier.weight(1f),
-                                onClick = onOpenBaki
-                            )
-                            BigHomeActionTile(
-                                icon = Icons.Default.Assignment,
-                                label = "অর্ডার খাতা",
-                                iconTint = Color(0xFF0F766E),
-                                containerTint = Color(0xFFCCFBF1),
-                                modifier = Modifier.weight(1f),
-                                onClick = onOpenOrderKhata
-                            )
-                        }
-
-                        // Row 2: খরচ ও ক্রয়, পণ্য ও স্টক, হিসাব রিপোর্ট
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            BigHomeActionTile(
-                                icon = Icons.Default.Paid,
-                                label = "খরচ ও ক্রয়",
-                                iconTint = Color(0xFFE11D48),
-                                containerTint = Color(0xFFFFF1F2),
-                                modifier = Modifier.weight(1f),
-                                onClick = onOpenExpenseDrawer
-                            )
-                            BigHomeActionTile(
-                                icon = Icons.Default.Storefront,
-                                label = "পণ্য ও স্টক",
-                                iconTint = Color(0xFF0284C7),
-                                containerTint = Color(0xFFE0F2FE),
-                                modifier = Modifier.weight(1f),
-                                onClick = onOpenProducts
-                            )
-                            BigHomeActionTile(
-                                icon = Icons.Default.Assessment,
-                                label = "হিসাব রিপোর্ট",
-                                iconTint = Color(0xFF4F46E5),
-                                containerTint = Color(0xFFEEF2FF),
-                                modifier = Modifier.weight(1f),
-                                onClick = onOpenReports
-                            )
-                        }
+                        BigHomeActionTile(
+                            icon = Icons.Default.ShoppingCart,
+                            label = tr("নতুন বিক্রি", "New Sale"),
+                            iconTint = Color(0xFF059669),
+                            containerTint = Color(0xFFECFDF5),
+                            modifier = Modifier.weight(1f),
+                            onClick = onOpenSales
+                        )
+                        BigHomeActionTile(
+                            icon = Icons.Default.Assignment,
+                            label = tr("অর্ডার খাতা", "Orders"),
+                            iconTint = Color(0xFF0F766E),
+                            containerTint = Color(0xFFCCFBF1),
+                            modifier = Modifier.weight(1f),
+                            onClick = onOpenOrderKhata
+                        )
+                        BigHomeActionTile(
+                            icon = Icons.Default.Storefront,
+                            label = tr("পণ্য ও স্টক", "Stock"),
+                            iconTint = Color(0xFF0284C7),
+                            containerTint = Color(0xFFE0F2FE),
+                            modifier = Modifier.weight(1f),
+                            onClick = onOpenProducts
+                        )
                     }
 
                     // Historical Notice Banner if viewing past date
@@ -963,7 +1064,7 @@ fun HomeScreen(
                                 }
                                 Spacer(modifier = Modifier.width(10.dp))
                                 Text(
-                                    text = "আজকের হিসাব ও ক্যাশ",
+                                    text = tr("আজকের হিসাব ও ক্যাশ", "Today's Ledger & Cash"),
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
@@ -1246,7 +1347,7 @@ fun HomeScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = "মোট বিক্রি (বেচা)",
+                                                text = tr("মোট বিক্রি (বেচা)", "Total Sales"),
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 fontWeight = FontWeight.SemiBold
@@ -1295,7 +1396,7 @@ fun HomeScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = "মোট খরচ",
+                                                text = tr("মোট খরচ", "Total Expense"),
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 fontWeight = FontWeight.SemiBold
@@ -1351,7 +1452,7 @@ fun HomeScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = "সাবেক (শুরু)",
+                                                text = tr("সাবেক (শুরু)", "Opening Cash"),
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 fontWeight = FontWeight.SemiBold
@@ -1401,7 +1502,7 @@ fun HomeScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
-                                                text = "হাতে ক্যাশ",
+                                                text = tr("হাতে ক্যাশ", "Cash in Hand"),
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                                 fontWeight = FontWeight.SemiBold
@@ -1701,14 +1802,14 @@ fun HomeScreen(
                         ) {
                             Column {
                                 Text(
-                                    text = "সর্বমোট বকেয়া বাকি",
+                                    text = tr("সর্বমোট বকেয়া বাকি", "Total Outstanding Due"),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = "আজকের নতুন বাকি: ${BengaliUtils.formatTaka(summary.todayNewBaki)}",
+                                    text = "${tr("আজকের নতুন বাকি", "Today's New Due")}: ${BengaliUtils.formatTaka(summary.todayNewBaki)}",
                                     style = MaterialTheme.typography.bodySmall,
                                     fontSize = 11.5.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -1723,7 +1824,7 @@ fun HomeScreen(
                                     color = FinancialNegative
                                 )
                                 Text(
-                                    text = "খাতা দেখুন →",
+                                    text = tr("খাতা দেখুন →", "View Ledger →"),
                                     style = MaterialTheme.typography.labelSmall,
                                     color = MaterialTheme.colorScheme.primary,
                                     fontWeight = FontWeight.Bold
@@ -2297,7 +2398,7 @@ fun HomeScreen(
                 fordiItems = allFordiItems,
                 onDismiss = { showWeeklyScheduleDialog = false },
                 onSaveCompany = { comp -> viewModel.saveSupplierCompany(comp) },
-                onOpenFordi = onOpenOrderKhata,
+                onOpenFordi = onOpenFordi,
                 onConfirmDeliveryReceived = { item, isPaid ->
                     val qty = if (item.actualQuantity > 0) item.actualQuantity else item.plannedQuantity
                     val rate = if (item.actualRate > 0) item.actualRate else item.purchaseRate
@@ -2465,5 +2566,320 @@ private fun BigHomeWideActionTile(
                 overflow = TextOverflow.Ellipsis
             )
         }
+    }
+}
+
+/**
+ * Rich Dialog showing full details and ledger information for a selected transaction from search
+ */
+@Composable
+fun TransactionDetailDialog(
+    transaction: TransactionEntity,
+    shopName: String,
+    onViewReceipt: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    val dateStr = SimpleDateFormat("dd MMMM yyyy, hh:mm a", Locale.US).format(Date(transaction.timestamp))
+    val typeLabel = transaction.type.banglaLabel
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Receipt,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text("লেনদেনের বিস্তারিত খতিয়ান", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Type & Amount Header Box
+                Surface(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = typeLabel,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = BengaliUtils.formatTaka(transaction.amount),
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                // Details List
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    HomeDetailRow(label = "তারিখ ও সময়:", value = BengaliUtils.toBanglaDigits(dateStr))
+                    if (!transaction.customerName.isNullOrBlank()) {
+                        HomeDetailRow(label = "গ্রাহক:", value = transaction.customerName)
+                    }
+                    if (!transaction.productName.isNullOrBlank()) {
+                        HomeDetailRow(label = "পণ্য:", value = "${transaction.productName} (${BengaliUtils.toBanglaDigits(transaction.quantity.toLong())} ${transaction.unit})")
+                    }
+                    if (transaction.rate > 0) {
+                        HomeDetailRow(label = "দর / রেট:", value = "৳ ${BengaliUtils.formatTaka(transaction.rate)}")
+                    }
+                    if (transaction.note.isNotBlank()) {
+                        HomeDetailRow(label = "বিবরণ / নোট:", value = transaction.note)
+                    }
+                    HomeDetailRow(label = "পরিশোধ স্ট্যাটাস:", value = if (transaction.paymentStatus == "PAID") "পরিশোধিত" else "বকেয়া / পেন্ডিং")
+                }
+            }
+        },
+        confirmButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(
+                    onClick = {
+                        val shareText = "মাওয়া ডিজিটাল মেমো\n" +
+                                "প্রতিষ্ঠান: $shopName\n" +
+                                "ধরন: $typeLabel\n" +
+                                "পরিমাণ: ৳ ${BengaliUtils.formatTaka(transaction.amount)}\n" +
+                                "বিবরণ: ${transaction.note.ifBlank { transaction.productName ?: "লেনদেন" }}\n" +
+                                "তারিখ: $dateStr"
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, shareText)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "লেনদেন শেয়ার করুন"))
+                    }
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("শেয়ার")
+                }
+                Button(
+                    onClick = {
+                        onDismiss()
+                        onViewReceipt()
+                    }
+                ) {
+                    Icon(Icons.Default.Receipt, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("রসিদ")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("বন্ধ করুন")
+            }
+        }
+    )
+}
+
+/**
+ * Rich Dialog showing stock, margin, buying/selling price and recent transaction history for a product from search
+ */
+@Composable
+fun ProductDetailLedgerDialog(
+    product: ProductEntity,
+    productTransactions: List<TransactionEntity>,
+    onOpenSales: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val profitPerUnit = (product.defaultSellingPrice - product.defaultPurchasePrice).coerceAtLeast(0.0)
+    val totalStockVal = product.stockQuantity * product.defaultSellingPrice
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Inventory2,
+                    contentDescription = null,
+                    tint = Color(0xFF0284C7),
+                    modifier = Modifier.size(24.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = if (product.banglaName.isNotBlank()) product.banglaName else product.name,
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    if (product.name.isNotBlank() && product.banglaName.isNotBlank() && product.name != product.banglaName) {
+                        Text(
+                            text = product.name,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Stock & Profit Overview Card
+                Surface(
+                    color = Color(0xFF0284C7).copy(alpha = 0.08f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.25f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text("বর্তমান মজুত স্টক", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = "${BengaliUtils.toBanglaDigits(product.stockQuantity.toLong())} ${product.unit}",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = if (product.stockQuantity <= 5.0) FinancialNegative else Color(0xFF0284C7)
+                            )
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("একক প্রতি লাভ", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(
+                                text = "৳ ${BengaliUtils.formatTaka(profitPerUnit)}",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = FinancialPositive
+                            )
+                        }
+                    }
+                }
+
+                // Prices
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    HomeDetailRow(label = "ক্রয়মূল্য (কেনা রেট):", value = "৳ ${BengaliUtils.formatTaka(product.defaultPurchasePrice)}")
+                    HomeDetailRow(label = "বিক্রয়মূল্য (বিক্রি রেট):", value = "৳ ${BengaliUtils.formatTaka(product.defaultSellingPrice)}")
+                    HomeDetailRow(label = "মোট মজুত বিক্রয়মূল্য:", value = "৳ ${BengaliUtils.formatTaka(totalStockVal)}")
+                    HomeDetailRow(label = "ক্যাটাগরি:", value = product.category.ifBlank { "সাধারণ" })
+                }
+
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                // Recent Transactions Ledger for this Product
+                Text(
+                    text = "পণ্যের সাম্প্রতিক খতিয়ান / বিক্রি ইতিহাস:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (productTransactions.isEmpty()) {
+                    Text(
+                        text = "এই পণ্যের এখনও কোনো বিক্রয় বা ক্রয়ের ইতিহাস নেই।",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 4.dp)
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        productTransactions.take(4).forEach { tx ->
+                            val txDate = SimpleDateFormat("dd MMM, hh:mm a", Locale.US).format(Date(tx.timestamp))
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = tx.customerName ?: tx.note.ifBlank { "সাধারণ লেনদেন" },
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = BengaliUtils.toBanglaDigits(txDate),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 9.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        Text(
+                                            text = "৳ ${BengaliUtils.formatTaka(tx.amount)}",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (tx.type == TransactionType.SALE_CASH || tx.type == TransactionType.SALE_BAKI) FinancialPositive else FinancialNegative
+                                        )
+                                        if (tx.quantity > 0) {
+                                            Text(
+                                                text = "${BengaliUtils.toBanglaDigits(tx.quantity.toLong())} ${tx.unit}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 9.sp
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onDismiss()
+                    onOpenSales()
+                }
+            ) {
+                Icon(Icons.Default.ShoppingCart, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("বিক্রি করুন")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("বন্ধ করুন")
+            }
+        }
+    )
+}
+
+@Composable
+fun HomeDetailRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(text = label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text = value, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold)
     }
 }

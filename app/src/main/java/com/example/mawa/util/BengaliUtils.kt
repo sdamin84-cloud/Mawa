@@ -54,7 +54,7 @@ object BengaliUtils {
         return toBanglaDigits(format)
     }
 
-    fun formatTaka(amount: Double, useBanglaDigits: Boolean = true): String {
+    fun formatTaka(amount: Double, useBanglaDigits: Boolean = !LanguageManager.isEnglish): String {
         val isNegative = amount < 0
         val absAmount = Math.abs(amount)
         val format = if (absAmount % 1.0 == 0.0) {
@@ -67,21 +67,48 @@ object BengaliUtils {
         return if (isNegative) "−৳$formattedNumber" else "৳$formattedNumber"
     }
 
-    fun formatQuantity(quantity: Double, unit: String): String {
-        val formattedQty = if (quantity % 1.0 == 0.0) {
-            toBanglaDigits(quantity.toLong().toString())
+    fun formatNumber(number: Long, useBanglaDigits: Boolean = !LanguageManager.isEnglish): String {
+        return if (useBanglaDigits) toBanglaDigits(number) else number.toString()
+    }
+
+    fun formatNumber(number: Int, useBanglaDigits: Boolean = !LanguageManager.isEnglish): String {
+        return if (useBanglaDigits) toBanglaDigits(number) else number.toString()
+    }
+
+    fun formatNumber(number: Double, useBanglaDigits: Boolean = !LanguageManager.isEnglish): String {
+        val format = if (number % 1.0 == 0.0) {
+            DecimalFormat("#,##,##0").format(number.toLong())
         } else {
-            toBanglaDigits(String.format(Locale.US, "%.1f", quantity))
+            DecimalFormat("#,##,##0.00").format(number)
+        }
+        return if (useBanglaDigits) toBanglaDigits(format) else format
+    }
+
+    fun formatQuantity(quantity: Double, unit: String, isEnglish: Boolean = LanguageManager.isEnglish): String {
+        val formattedQty = if (quantity % 1.0 == 0.0) {
+            if (isEnglish) quantity.toLong().toString() else toBanglaDigits(quantity.toLong().toString())
+        } else {
+            val str = String.format(Locale.US, "%.1f", quantity)
+            if (isEnglish) str else toBanglaDigits(str)
         }
         return "$formattedQty $unit"
     }
 
-    fun getGreeting(cal: Calendar = Calendar.getInstance()): String {
-        return when (cal.get(Calendar.HOUR_OF_DAY)) {
-            in 5..11 -> "শুভ সকাল"
-            in 12..15 -> "শুভ দুপুর"
-            in 16..19 -> "শুভ সন্ধ্যা"
-            else -> "শুভ রাত্রি"
+    fun getGreeting(cal: Calendar = Calendar.getInstance(), isEnglish: Boolean = LanguageManager.isEnglish): String {
+        return if (isEnglish) {
+            when (cal.get(Calendar.HOUR_OF_DAY)) {
+                in 5..11 -> "Good Morning"
+                in 12..15 -> "Good Afternoon"
+                in 16..19 -> "Good Evening"
+                else -> "Good Night"
+            }
+        } else {
+            when (cal.get(Calendar.HOUR_OF_DAY)) {
+                in 5..11 -> "শুভ সকাল"
+                in 12..15 -> "শুভ দুপুর"
+                in 16..19 -> "শুভ সন্ধ্যা"
+                else -> "শুভ রাত্রি"
+            }
         }
     }
 
@@ -89,15 +116,30 @@ object BengaliUtils {
         return SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(timeMillis))
     }
 
-    fun getFormattedTodayDate(timeMillis: Long = System.currentTimeMillis()): String {
+    private val englishMonths = arrayOf(
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    )
+
+    private val englishWeekdays = arrayOf(
+        "", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+    )
+
+    fun getFormattedTodayDate(timeMillis: Long = System.currentTimeMillis(), isEnglish: Boolean = LanguageManager.isEnglish): String {
         val cal = Calendar.getInstance()
         cal.timeInMillis = timeMillis
 
-        val day = toBanglaDigits(cal.get(Calendar.DAY_OF_MONTH).toString())
-        val month = banglaMonths[cal.get(Calendar.MONTH)]
-        val weekday = banglaWeekdays[cal.get(Calendar.DAY_OF_WEEK)]
-
-        return "$day $month · $weekday"
+        return if (isEnglish) {
+            val day = cal.get(Calendar.DAY_OF_MONTH).toString()
+            val month = englishMonths[cal.get(Calendar.MONTH)]
+            val weekday = englishWeekdays[cal.get(Calendar.DAY_OF_WEEK)]
+            "$day $month · $weekday"
+        } else {
+            val day = toBanglaDigits(cal.get(Calendar.DAY_OF_MONTH).toString())
+            val month = banglaMonths[cal.get(Calendar.MONTH)]
+            val weekday = banglaWeekdays[cal.get(Calendar.DAY_OF_WEEK)]
+            "$day $month · $weekday"
+        }
     }
 
     fun getBengaliDayOfWeek(timeMillis: Long = System.currentTimeMillis()): String {
@@ -107,7 +149,7 @@ object BengaliUtils {
         return if (dayIndex in banglaWeekdays.indices) banglaWeekdays[dayIndex] else ""
     }
 
-    fun formatTransactionTime(timeMillis: Long): String {
+    fun formatTransactionTime(timeMillis: Long, isEnglish: Boolean = LanguageManager.isEnglish): String {
         val now = System.currentTimeMillis()
         val calNow = Calendar.getInstance()
         calNow.timeInMillis = now
@@ -117,15 +159,19 @@ object BengaliUtils {
 
         val timeFormat = SimpleDateFormat("hh:mm a", Locale.US)
         val timeStr = timeFormat.format(Date(timeMillis))
-        val banglaTime = toBanglaDigits(timeStr)
-            .replace("AM", "সকাল/দুপুর")
-            .replace("PM", "বিকাল/রাত")
+        val formattedTime = if (isEnglish) {
+            timeStr
+        } else {
+            toBanglaDigits(timeStr)
+                .replace("AM", "সকাল/দুপুর")
+                .replace("PM", "বিকাল/রাত")
+        }
 
         val isSameDay = calNow.get(Calendar.YEAR) == calTx.get(Calendar.YEAR) &&
                 calNow.get(Calendar.DAY_OF_YEAR) == calTx.get(Calendar.DAY_OF_YEAR)
 
         if (isSameDay) {
-            return "আজ, $banglaTime"
+            return if (isEnglish) "Today, $formattedTime" else "আজ, $formattedTime"
         }
 
         calNow.add(Calendar.DAY_OF_YEAR, -1)
@@ -133,22 +179,35 @@ object BengaliUtils {
                 calNow.get(Calendar.DAY_OF_YEAR) == calTx.get(Calendar.DAY_OF_YEAR)
 
         if (isYesterday) {
-            return "গতকাল, $banglaTime"
+            return if (isEnglish) "Yesterday, $formattedTime" else "গতকাল, $formattedTime"
         }
 
-        val day = toBanglaDigits(calTx.get(Calendar.DAY_OF_MONTH).toString())
-        val month = banglaMonths[calTx.get(Calendar.MONTH)]
-        return "$day $month, $banglaTime"
+        return if (isEnglish) {
+            val day = calTx.get(Calendar.DAY_OF_MONTH).toString()
+            val month = englishMonths[calTx.get(Calendar.MONTH)]
+            "$day $month, $formattedTime"
+        } else {
+            val day = toBanglaDigits(calTx.get(Calendar.DAY_OF_MONTH).toString())
+            val month = banglaMonths[calTx.get(Calendar.MONTH)]
+            "$day $month, $formattedTime"
+        }
     }
 
-    fun formatTransactionDateOnly(timeMillis: Long): String {
+    fun formatTransactionDateOnly(timeMillis: Long, isEnglish: Boolean = LanguageManager.isEnglish): String {
         if (timeMillis <= 0) return ""
         val cal = Calendar.getInstance()
         cal.timeInMillis = timeMillis
-        val day = toBanglaDigits(cal.get(Calendar.DAY_OF_MONTH).toString())
-        val month = banglaMonths[cal.get(Calendar.MONTH)]
-        val year = toBanglaDigits(cal.get(Calendar.YEAR).toString())
-        return "$day $month, $year"
+        return if (isEnglish) {
+            val day = cal.get(Calendar.DAY_OF_MONTH).toString()
+            val month = englishMonths[cal.get(Calendar.MONTH)]
+            val year = cal.get(Calendar.YEAR).toString()
+            "$day $month, $year"
+        } else {
+            val day = toBanglaDigits(cal.get(Calendar.DAY_OF_MONTH).toString())
+            val month = banglaMonths[cal.get(Calendar.MONTH)]
+            val year = toBanglaDigits(cal.get(Calendar.YEAR).toString())
+            "$day $month, $year"
+        }
     }
 
     fun toBengaliDigits(input: String): String = toBanglaDigits(input)

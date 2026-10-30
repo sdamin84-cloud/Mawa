@@ -83,6 +83,7 @@ import com.example.ui.theme.FinancialWarning
 import com.example.ui.theme.MawaPrimary
 import java.text.SimpleDateFormat
 import java.util.Calendar
+import kotlin.math.atan2
 import java.util.Date
 import java.util.Locale
 import kotlin.math.atan2
@@ -870,15 +871,50 @@ fun InteractiveCompanyPurchaseDonutChart(
                             .padding(6.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(allShares) {
+                                    detectTapGestures { offset ->
+                                        val center = Offset(size.width / 2f, size.height / 2f)
+                                        val dx = offset.x - center.x
+                                        val dy = offset.y - center.y
+                                        val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+                                        val r = kotlin.math.min(size.width, size.height) / 2f
+                                        if (dist in (r * 0.3f)..(r * 1.15f)) {
+                                            var angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f
+                                            if (angle < 0) angle += 360f
+                                            if (angle >= 360f) angle -= 360f
+
+                                            var currentAngle = 0f
+                                            var clickedShare: CompanyPurchaseShare? = null
+                                            for (share in allShares) {
+                                                val sweep = (share.percentage / 100f) * 360f
+                                                if (angle in currentAngle..(currentAngle + sweep)) {
+                                                    clickedShare = share
+                                                    break
+                                                }
+                                                currentAngle += sweep
+                                            }
+                                            if (clickedShare != null) {
+                                                selectedCenterShare = clickedShare
+                                                selectedCompanyForDrillDown = clickedShare
+                                            }
+                                        }
+                                    }
+                                }
+                        ) {
                             var startAngle = -90f
-                            val strokeWidth = 26.dp.toPx()
-                            val arcSize = size.width - strokeWidth
+                            val baseStrokeWidth = 26.dp.toPx()
 
                             allShares.forEach { share ->
                                 val sweep = (share.percentage / 100f) * 360f
+                                val isSelected = selectedCenterShare == share
+                                val strokeWidth = if (isSelected) baseStrokeWidth + 6.dp.toPx() else baseStrokeWidth
+                                val arcSize = size.width - strokeWidth
+
                                 drawArc(
-                                    color = share.color,
+                                    color = if (selectedCenterShare == null || isSelected) share.color else share.color.copy(alpha = 0.45f),
                                     startAngle = startAngle,
                                     sweepAngle = sweep.coerceAtLeast(1.5f),
                                     useCenter = false,

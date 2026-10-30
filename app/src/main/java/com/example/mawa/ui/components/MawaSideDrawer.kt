@@ -37,6 +37,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Inventory
 import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
@@ -48,6 +49,10 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material.icons.filled.Sync
+import com.example.mawa.util.AppLanguage
+import com.example.mawa.util.LanguageManager
+import com.example.mawa.util.LocalAppLanguage
+import com.example.mawa.util.tr
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -186,7 +191,7 @@ fun MawaSideDrawer(
                                     modifier = Modifier.size(13.dp)
                                 )
                                 Text(
-                                    text = "দোকান প্রোফাইল",
+                                    text = tr("দোকান প্রোফাইল", "Shop Profile"),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.primary
@@ -202,14 +207,82 @@ fun MawaSideDrawer(
                 color = MaterialTheme.colorScheme.outlineVariant
             )
 
-            Spacer(modifier = Modifier.height(6.dp))
+            val currentLang = LocalAppLanguage.current
+
+            // Language Switcher Banner
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                border = androidx.compose.foundation.BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Language,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (currentLang.isEnglish) "Language" else "ভাষা",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Surface(
+                            onClick = { LanguageManager.setLanguage(context, AppLanguage.BANGLA) },
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (!currentLang.isEnglish) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            border = if (!currentLang.isEnglish) null else androidx.compose.foundation.BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = "বাংলা",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (!currentLang.isEnglish) FontWeight.Bold else FontWeight.Normal,
+                                color = if (!currentLang.isEnglish) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                        Surface(
+                            onClick = { LanguageManager.setLanguage(context, AppLanguage.ENGLISH) },
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (currentLang.isEnglish) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            border = if (currentLang.isEnglish) null else androidx.compose.foundation.BorderStroke(0.6.dp, MaterialTheme.colorScheme.outlineVariant)
+                        ) {
+                            Text(
+                                text = "English",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = if (currentLang.isEnglish) FontWeight.Bold else FontWeight.Normal,
+                                color = if (currentLang.isEnglish) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(2.dp))
 
             // Navigation and Actions Section (সংক্ষিপ্ত, এক লাইনে ফিচার নাম)
             DrawerNavMenuItem(
                 icon = Icons.Default.PointOfSale,
                 iconTint = MawaPrimary,
                 iconBg = MawaPrimaryContainer,
-                title = "ক্যাশ হিসাব ও টালি",
+                title = tr("ক্যাশ হিসাব ও টালি", "Cash Tally & Drawer"),
                 onClick = onNavigateCashTally,
                 testTag = "drawer_cash_tally"
             )
@@ -218,7 +291,7 @@ fun MawaSideDrawer(
                 icon = Icons.Default.CloudSync,
                 iconTint = Color(0xFF10B981),
                 iconBg = Color(0xFF3ECF8E).copy(alpha = 0.18f),
-                title = "ক্লাউড সিঙ্ক ও ব্যাকআপ",
+                title = tr("ক্লাউড সিঙ্ক ও ব্যাকআপ", "Cloud Sync & Backup"),
                 onClick = onOpenBackupRestore,
                 testTag = "drawer_backup_cloud_hub"
             )
@@ -227,7 +300,7 @@ fun MawaSideDrawer(
                 icon = Icons.Default.Inventory,
                 iconTint = FinancialPositive,
                 iconBg = FinancialPositiveContainer,
-                title = "পণ্য ও স্টক খাতা",
+                title = tr("পণ্য ও স্টক খাতা", "Products & Stock"),
                 onClick = onNavigateProducts,
                 testTag = "drawer_products"
             )
@@ -236,7 +309,7 @@ fun MawaSideDrawer(
                 icon = Icons.Default.ShoppingCart,
                 iconTint = FinancialNeutral,
                 iconBg = MaterialTheme.colorScheme.surfaceVariant,
-                title = "সরাসরি পণ্য ক্রয় খাতা",
+                title = tr("সরাসরি পণ্য ক্রয় খাতা", "Wholesale Purchases"),
                 onClick = onNavigateDirectPurchases,
                 testTag = "drawer_direct_purchases"
             )
@@ -245,7 +318,7 @@ fun MawaSideDrawer(
                 icon = Icons.Default.Home,
                 iconTint = FinancialWarning,
                 iconBg = FinancialWarningContainer,
-                title = "বাড়ির খরচের খাতা",
+                title = tr("বাড়ির খরচের খাতা", "Household Ledger"),
                 onClick = onNavigateHomeAccounting,
                 testTag = "drawer_home_accounting"
             )
@@ -254,7 +327,7 @@ fun MawaSideDrawer(
                 icon = Icons.Default.AccountBalanceWallet,
                 iconTint = Color(0xFF00796B),
                 iconBg = Color(0xFFE0F2F1),
-                title = "ব্যক্তিগত খাতা",
+                title = tr("ব্যক্তিগত খাতা", "Personal Wallet"),
                 onClick = onNavigatePersonal,
                 testTag = "drawer_personal"
             )
@@ -263,7 +336,7 @@ fun MawaSideDrawer(
                 icon = Icons.Default.QrCode2,
                 iconTint = Color(0xFFE2136E),
                 iconBg = Color(0xFFFCE7F3),
-                title = "ডিজিটাল পেমেন্ট QR",
+                title = tr("ডিজিটাল পেমেন্ট QR", "Payment QR Code"),
                 onClick = onOpenPaymentQr,
                 testTag = "drawer_payment_qr"
             )
@@ -272,7 +345,7 @@ fun MawaSideDrawer(
                 icon = Icons.Default.Security,
                 iconTint = Color(0xFF0D9488),
                 iconBg = Color(0xFFCCFBF1),
-                title = "অ্যাপ নিরাপত্তা ও পিন",
+                title = tr("অ্যাপ নিরাপত্তা ও পিন", "App Security & PIN"),
                 onClick = onOpenSecuritySettings,
                 testTag = "drawer_security_settings"
             )
@@ -282,7 +355,7 @@ fun MawaSideDrawer(
                     icon = Icons.Default.Lock,
                     iconTint = FinancialPositive,
                     iconBg = FinancialPositiveContainer,
-                    title = "অ্যাপ লক করুন",
+                    title = tr("অ্যাপ লক করুন", "Lock App Now"),
                     onClick = {
                         AppLockManager.lockNow()
                         onLockApp()
@@ -295,7 +368,7 @@ fun MawaSideDrawer(
                 icon = Icons.Default.Settings,
                 iconTint = MawaPrimary,
                 iconBg = MawaPrimaryContainer,
-                title = "দোকানের সেটিংস",
+                title = tr("দোকানের সেটিংস", "Shop Settings"),
                 onClick = onOpenSettings,
                 testTag = "drawer_settings"
             )
@@ -308,7 +381,7 @@ fun MawaSideDrawer(
                 },
                 iconTint = MaterialTheme.colorScheme.primary,
                 iconBg = MaterialTheme.colorScheme.primaryContainer,
-                title = "অ্যাপ থিম পরিবর্তন",
+                title = tr("অ্যাপ থিম পরিবর্তন", "App Theme"),
                 onClick = { showThemeDialog = true },
                 testTag = "drawer_theme_toggle"
             )
@@ -317,7 +390,7 @@ fun MawaSideDrawer(
                 icon = Icons.Default.HelpOutline,
                 iconTint = MawaPrimary,
                 iconBg = MawaPrimaryContainer,
-                title = "সহায়িকা ও নিয়মাবলী",
+                title = tr("সহায়িকা ও নিয়মাবলী", "Accounting Guide"),
                 onClick = onOpenAccountingGuide,
                 testTag = "drawer_accounting_guide"
             )
@@ -346,7 +419,7 @@ fun MawaSideDrawer(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "MAWA সংস্করণ ২.০",
+                        text = tr("MAWA সংস্করণ ২.০", "MAWA Version 2.0"),
                         style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface

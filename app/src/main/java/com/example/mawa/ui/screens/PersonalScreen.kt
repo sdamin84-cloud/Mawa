@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.LocalHospital
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -57,6 +58,8 @@ import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.VolunteerActivism
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.CalendarToday
+import com.example.mawa.util.LocalAppLanguage
+import com.example.mawa.util.tr
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -131,11 +134,13 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-enum class PersonalSubTab(val label: String, val icon: ImageVector) {
-    PERSONAL("ব্যক্তিগত খাতা", Icons.Default.Person),
-    HOUSEHOLD("সংসার ও বাড়ি", Icons.Default.Home),
-    LOANS("ধার-দেনা", Icons.Default.Handshake),
-    BUDGET_REPORTS("বাজেট ও রিপোর্ট", Icons.Default.Analytics)
+enum class PersonalSubTab(val labelBn: String, val labelEn: String, val icon: ImageVector) {
+    PERSONAL("ব্যক্তিগত খাতা", "Personal", Icons.Default.Person),
+    HOUSEHOLD("সংসার ও বাড়ি", "Household", Icons.Default.Home),
+    LOANS("ধার-দেনা", "Loans", Icons.Default.Handshake),
+    BUDGET_REPORTS("বাজেট ও রিপোর্ট", "Budget & Reports", Icons.Default.Analytics);
+
+    fun getLabel(isEnglish: Boolean): String = if (isEnglish) labelEn else labelBn
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -218,12 +223,26 @@ fun PersonalScreen(
         color = MaterialTheme.colorScheme.background
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Top Bar
-            MawaTopBar(
-                title = "ব্যক্তিগত ও সংসার",
-                subtitle = "দৈনন্দিন খরচ, আয়, সঞ্চয় ও গৃহস্থালি খাতা",
-                onMenuClick = onOpenDrawer
-            )
+            // Compact Header without redundant Bengali title/subtitle
+            if (onOpenDrawer != null) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    color = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 1.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(onClick = onOpenDrawer) {
+                            Icon(imageVector = Icons.Default.Menu, contentDescription = "মেনু")
+                        }
+                    }
+                }
+            }
 
             // Unified 3-Tab Segment: [ 👤 ব্যক্তিগত ] [ 🏡 সংসার ও বাড়ি ] [ 📊 বাজেট ও রিপোর্ট ]
             TabRow(
@@ -247,7 +266,7 @@ fun PersonalScreen(
                                 )
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text(
-                                    text = tab.label,
+                                    text = tab.getLabel(LocalAppLanguage.current.isEnglish),
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                     fontSize = 13.sp
                                 )

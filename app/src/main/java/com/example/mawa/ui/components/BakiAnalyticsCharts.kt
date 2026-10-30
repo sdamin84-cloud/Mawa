@@ -7,11 +7,15 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.atan2
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -73,6 +77,7 @@ import java.util.Locale
 
 /**
  * 1. Baki Aging Distribution Visual Donut Chart (০-১৫ দিন, ১৬-৩০ দিন, ৩০+ দিন)
+ * Interactive: Slices and legends are clickable to filter and highlight!
  */
 @Composable
 fun BakiAgingDonutChart(
@@ -80,7 +85,9 @@ fun BakiAgingDonutChart(
     due16to30: Double,
     due30plus: Double,
     totalDue: Double,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    selectedSliceIndex: Int? = null,
+    onSliceSelected: ((index: Int, label: String) -> Unit)? = null
 ) {
     if (totalDue <= 0) return
 
@@ -89,6 +96,9 @@ fun BakiAgingDonutChart(
         AgingSlice("১৬-৩০ দিন", due16to30, FinancialWarning),
         AgingSlice("৩০+ দিন (পুরানো)", due30plus, FinancialNegative)
     )
+
+    var localSelectedIndex by remember { mutableStateOf<Int?>(null) }
+    val activeIndex = selectedSliceIndex ?: localSelectedIndex
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -125,34 +135,81 @@ fun BakiAgingDonutChart(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "পুরানো বনাম নতুন বাকি আদায়ের অবস্থা",
+                            text = "রঙে বা তালিকায় চাপ দিয়ে ফিল্টার করুন",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Medium
                         )
+                    }
+                }
+                if (activeIndex != null) {
+                    TextButton(
+                        onClick = {
+                            localSelectedIndex = null
+                            onSliceSelected?.invoke(-1, "ALL")
+                        }
+                    ) {
+                        Text("রিসেট", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                // Donut
+                // Interactive Donut Canvas
                 Box(
-                    modifier = Modifier.size(126.dp),
+                    modifier = Modifier.size(132.dp),
                     contentAlignment = Alignment.Center
                 ) {
-                    Canvas(modifier = Modifier.size(126.dp)) {
-                        val strokeWidth = 22.dp.toPx()
+                    Canvas(
+                        modifier = Modifier
+                            .size(132.dp)
+                            .pointerInput(slices, totalDue) {
+                                detectTapGestures { offset ->
+                                    val center = Offset(size.width / 2f, size.height / 2f)
+                                    val dx = offset.x - center.x
+                                    val dy = offset.y - center.y
+                                    val dist = kotlin.math.sqrt(dx * dx + dy * dy)
+                                    val r = kotlin.math.min(size.width, size.height) / 2f
+                                    if (dist in (r * 0.3f)..(r * 1.15f)) {
+                                        var angle = Math.toDegrees(atan2(dy.toDouble(), dx.toDouble())).toFloat() + 90f
+                                        if (angle < 0) angle += 360f
+                                        if (angle >= 360f) angle -= 360f
+
+                                        var currentAngle = 0f
+                                        var clickedIndex: Int? = null
+                                        for (i in slices.indices) {
+                                            val sweep = ((slices[i].amount / totalDue) * 360f).toFloat()
+                                            if (angle in currentAngle..(currentAngle + sweep)) {
+                                                clickedIndex = i
+                                                break
+                                            }
+                                            currentAngle += sweep
+                                        }
+                                        if (clickedIndex != null) {
+                                            val newIndex = if (activeIndex == clickedIndex) null else clickedIndex
+                                            localSelectedIndex = newIndex
+                                            onSliceSelected?.invoke(if (newIndex == null) -1 else clickedIndex, if (newIndex == null) "ALL" else slices[clickedIndex].label)
+                                        }
+                                    }
+                                }
+                            }
+                    ) {
+                        val baseStroke = 22.dp.toPx()
                         var startAngle = -90f
 
-                        slices.forEach { slice ->
+                        slices.forEachIndexed { index, slice ->
                             val sweep = ((slice.amount / totalDue) * 360f).toFloat()
+                            val isSelected = activeIndex == index
+                            val strokeWidth = if (isSelected) baseStroke + 6.dp.toPx() else baseStroke
+
                             drawArc(
-                                color = slice.color,
+                                color = if (activeIndex == null || isSelected) slice.color else slice.color.copy(alpha = 0.45f),
                                 startAngle = startAngle,
                                 sweepAngle = sweep,
                                 useCenter = false,
@@ -162,33 +219,81 @@ fun BakiAgingDonutChart(
                         }
                     }
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "মোট বাকি",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = BengaliUtils.formatTaka(totalDue),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = FinancialNegative
-                        )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    ) {
+                        val activeSlice = activeIndex?.let { slices.getOrNull(it) }
+                        if (activeSlice != null) {
+                            val pct = if (totalDue > 0) ((activeSlice.amount / totalDue) * 100).toInt() else 0
+                            Text(
+                                text = activeSlice.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = activeSlice.color,
+                                maxLines = 1,
+                                textAlign = TextAlign.Center
+                            )
+                            Text(
+                                text = BengaliUtils.formatTaka(activeSlice.amount),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = activeSlice.color,
+                                maxLines = 1
+                            )
+                            Text(
+                                text = "${BengaliUtils.toBanglaDigits(pct.toLong())}% বাকি",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        } else {
+                            Text(
+                                text = "মোট বাকি",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = BengaliUtils.formatTaka(totalDue),
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = FinancialNegative
+                            )
+                            Text(
+                                text = "ক্লিক করুন",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 8.5.sp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
 
-                // Legend
+                // Interactive Legend
                 Column(
                     modifier = Modifier.padding(start = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    slices.forEach { slice ->
+                    slices.forEachIndexed { index, slice ->
+                        val isSelected = activeIndex == index
                         val pct = if (totalDue > 0) ((slice.amount / totalDue) * 100).toInt() else 0
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val newIndex = if (activeIndex == index) null else index
+                                    localSelectedIndex = newIndex
+                                    onSliceSelected?.invoke(if (newIndex == null) -1 else index, if (newIndex == null) "ALL" else slice.label)
+                                }
+                                .background(if (isSelected) slice.color.copy(alpha = 0.14f) else Color.Transparent)
+                                .padding(horizontal = 6.dp, vertical = 3.dp)
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .size(10.dp)
+                                    .size(if (isSelected) 12.dp else 10.dp)
                                     .clip(CircleShape)
                                     .background(slice.color)
                             )
@@ -197,7 +302,8 @@ fun BakiAgingDonutChart(
                                 Text(
                                     text = "${slice.label} (${BengaliUtils.toBanglaDigits(pct.toLong())}%)",
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
+                                    color = if (isSelected) slice.color else MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = BengaliUtils.formatTaka(slice.amount),

@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -46,6 +47,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.Handshake
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.People
@@ -61,6 +63,8 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Warning
+import com.example.mawa.util.LocalAppLanguage
+import com.example.mawa.util.tr
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -139,6 +143,8 @@ enum class BakiFilter(val banglaLabel: String) {
     DUE_ONLY("বাকি আছে"),
     VIP("VIP গ্রাহক"),
     REGULAR("নিয়মিত"),
+    AGING_0_TO_15("০-১৫ দিন"),
+    AGING_16_TO_30("১৬-৩০ দিন"),
     AGING_30_DAYS("৩০+ দিন পুরানো"),
     OVERDUE_DATE("তারিখ পার হয়েছে"),
     OVER_LIMIT("সীমা অতিক্রম"),
@@ -228,6 +234,7 @@ fun BakiScreen(
     var promiseDateCustomerTarget by remember { mutableStateOf<CustomerEntity?>(null) }
     var settlementCustomerTarget by remember { mutableStateOf<CustomerWithBalance?>(null) }
     var editCustomerTarget by remember { mutableStateOf<CustomerEntity?>(null) }
+    var showAnalyticsSection by remember { mutableStateOf(false) }
 
     // If a customer is opened, show their detailed Customer Ledger screen
     if (selectedCustomerForLedger != null) {
@@ -320,6 +327,15 @@ fun BakiScreen(
                 BakiFilter.VIP -> cust.categoryTag == "VIP"
                 BakiFilter.REGULAR -> cust.categoryTag == "REGULAR"
                 BakiFilter.TODAY -> item.hasTransactionToday
+                BakiFilter.AGING_0_TO_15 -> {
+                    val lastTs = item.lastTransaction?.timestamp ?: cust.createdAt
+                    item.currentBalance > 0 && (now - lastTs) < fifteenDaysMillis
+                }
+                BakiFilter.AGING_16_TO_30 -> {
+                    val lastTs = item.lastTransaction?.timestamp ?: cust.createdAt
+                    val age = now - lastTs
+                    item.currentBalance > 0 && age in fifteenDaysMillis until thirtyDaysMillis
+                }
                 BakiFilter.AGING_30_DAYS -> {
                     val lastTs = item.lastTransaction?.timestamp ?: cust.createdAt
                     item.currentBalance > 0 && (now - lastTs) >= thirtyDaysMillis
@@ -353,15 +369,51 @@ fun BakiScreen(
             }.sumOf { it.amount }
         }
 
-        // Top Header
+        // TopBar matching app design
         MawaTopBar(
-            title = "বাকির খাতা",
-            subtitle = if (selectedBakiSubTab == BakiSubTab.CUSTOMER) {
-                "মোট বকেয়া: ${BengaliUtils.formatTaka(totalOutstanding)} (${BengaliUtils.toBanglaDigits(totalDueCustomersCount.toLong())} জন)"
-            } else {
-                "মোট মহাজন দেনা: ${BengaliUtils.formatTaka(totalPendingSupplier)}"
+            title = tr("বাকির খাতা", "Due Ledger"),
+            subtitle = tr(shopName, shopName),
+            navigationIcon = {
+                IconButton(onClick = { onOpenDrawer?.invoke() }) {
+                    Icon(
+                        imageVector = Icons.Default.Menu,
+                        contentDescription = "মেনু",
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             },
-            onMenuClick = onOpenDrawer
+            actions = {
+                IconButton(
+                    onClick = { showAllBakiReportDialog = true },
+                    modifier = Modifier.testTag("btn_baki_all_report")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Assessment,
+                        contentDescription = "রিপোর্ট",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                IconButton(
+                    onClick = { showBulkReminderDialog = true },
+                    modifier = Modifier.testTag("btn_bulk_reminder")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.NotificationsActive,
+                        contentDescription = "সার্বিক তাগাদা",
+                        tint = Color(0xFFC2410C)
+                    )
+                }
+                IconButton(
+                    onClick = { showAddCustomerDialog = true },
+                    modifier = Modifier.testTag("btn_add_customer_top")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.PersonAdd,
+                        contentDescription = "নতুন কাস্টমার",
+                        tint = MawaPrimary
+                    )
+                }
+            }
         )
 
         // Sub-Tab Switcher: গ্রাহক বাকি (পাওনা) | সাপ্লায়ার বাকি (মহাজন দেনা)
@@ -528,615 +580,373 @@ fun BakiScreen(
             }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-            // 0. BAKI HERO BANNER
+            // 1. DUAL FINANCIAL SUMMARY CARDS
             item {
-                Card(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 14.dp, end = 14.dp, top = 8.dp, bottom = 4.dp)
-                        .testTag("baki_hero_banner_card"),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                        .padding(horizontal = 14.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    Box(
+                    // Left: মোট বকেয়া পাওনা
+                    Card(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .height(125.dp)
+                            .weight(1.1f)
+                            .testTag("baki_summary_total_card"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
-                        Image(
-                            painter = painterResource(id = R.drawable.img_baki_banner),
-                            contentDescription = "বাকির খাতা ব্যানার",
-                            modifier = Modifier.fillMaxSize(),
-                            contentScale = ContentScale.Crop
-                        )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Black.copy(alpha = 0.30f),
-                                            Color.Black.copy(alpha = 0.85f)
-                                        )
-                                    )
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = tr("মোট বকেয়া পাওনা", "Total Due"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = BengaliUtils.formatTaka(totalOutstanding),
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Black,
+                                color = if (totalOutstanding > 0) FinancialNegative else MaterialTheme.colorScheme.onSurface,
+                                fontSize = 20.sp
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.People,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(13.dp)
                                 )
-                        )
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 14.dp, vertical = 12.dp),
-                            verticalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = Color(0xFFF59E0B).copy(alpha = 0.95f)
-                                ) {
-                                    Text(
-                                        text = "📒 ডিজিটাল বাকি খাতা",
-                                        color = Color.White,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                        fontSize = 11.sp
-                                    )
-                                }
-
-                                Surface(
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = Color.Black.copy(alpha = 0.5f)
-                                ) {
-                                    Text(
-                                        text = "${BengaliUtils.toBanglaDigits(totalDueCustomersCount.toLong())} জন বাকিদার",
-                                        color = Color(0xFFFDE68A),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-
-                            Column {
+                                Spacer(modifier = Modifier.width(3.dp))
                                 Text(
-                                    text = "কাস্টমার হিসাব ও বাকি ব্যবস্থাপনা",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "মোট বকেয়া: ${BengaliUtils.formatTaka(totalOutstanding)} · সময়মতো তাগাদা বার্তা পাঠান",
+                                    text = "${BengaliUtils.formatNumber(totalDueCustomersCount.toLong())} ${tr("জন গ্রাহকের বাকি", "customers due")}",
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.92f),
                                     fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                         }
                     }
-                }
-            }
-            // 1. INTELLIGENCE DASHBOARD & SUMMARY CARDS
-            item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface
-                ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
-                        // Main Balance Card
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(containerColor = FinancialNegative.copy(alpha = 0.08f)),
-                            border = BorderStroke(1.dp, FinancialNegative.copy(alpha = 0.25f)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Column(modifier = Modifier.padding(14.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column {
-                                        Text(
-                                            text = "দোকানের সর্বমোট বাকি",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = BengaliUtils.formatTaka(totalOutstanding),
-                                            style = MaterialTheme.typography.headlineMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = FinancialNegative
-                                        )
-                                    }
 
-                                    Surface(
-                                        shape = RoundedCornerShape(10.dp),
-                                        color = FinancialNegative.copy(alpha = 0.15f),
-                                        modifier = Modifier.padding(4.dp)
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            Text(
-                                                text = "বাকিদার",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = FinancialNegative
-                                            )
-                                            Text(
-                                                text = "${BengaliUtils.toBanglaDigits(totalDueCustomersCount.toLong())} জন",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = FinancialNegative
-                                            )
-                                        }
-                                    }
-                                }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-                                HorizontalDivider(color = FinancialNegative.copy(alpha = 0.15f))
-                                Spacer(modifier = Modifier.height(8.dp))
-
-                                // Today's Activity Bar (Today Given vs Collected)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = FinancialNegative, modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "আজকের বাকি: ${BengaliUtils.formatTaka(todayBakiGiven)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = FinancialPositive, modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(
-                                            text = "আজকের আদায়: ${BengaliUtils.formatTaka(todayJomaCollected)}",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = FinancialPositive,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // 2. AGING ANALYSIS MINI CARDS (০-১৫ দিন, ১৬-৩০ দিন, ৩০+ দিন)
-                        Text(
-                            text = "বাকি বয়স বিশ্লেষণ (Due Aging):",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            // 0-15 Days
-                            Card(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { selectedFilter = BakiFilter.DUE_ONLY },
-                                colors = CardDefaults.cardColors(containerColor = FinancialPositive.copy(alpha = 0.08f)),
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, FinancialPositive.copy(alpha = 0.2f))
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("০–১৫ দিন (নতুন)", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, color = FinancialPositive)
-                                    Text(BengaliUtils.formatTaka(due0to15), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = FinancialPositive)
-                                }
-                            }
-
-                            // 16-30 Days
-                            Card(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { selectedFilter = BakiFilter.DUE_ONLY },
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF59E0B).copy(alpha = 0.08f)),
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, Color(0xFFF59E0B).copy(alpha = 0.2f))
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("১৬–৩০ দিন", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, color = Color(0xFFD97706))
-                                    Text(BengaliUtils.formatTaka(due16to30), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = Color(0xFFD97706))
-                                }
-                            }
-
-                            // 30+ Days
-                            Card(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clickable { selectedFilter = BakiFilter.AGING_30_DAYS },
-                                colors = CardDefaults.cardColors(containerColor = FinancialNegative.copy(alpha = 0.08f)),
-                                shape = RoundedCornerShape(10.dp),
-                                border = BorderStroke(1.dp, FinancialNegative.copy(alpha = 0.25f))
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text("৩০+ দিন (পুরানো)", style = MaterialTheme.typography.labelSmall, fontSize = 10.sp, color = FinancialNegative)
-                                    Text(BengaliUtils.formatTaka(due30plus), style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = FinancialNegative)
-                                }
-                            }
-                        }
-
-                        // Overdue / Credit Limit Breaches Notice
-                        if (overdueCount > 0 || overLimitCount > 0) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(Color(0xFFFEF2F2))
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(Icons.Default.Warning, contentDescription = null, tint = FinancialNegative, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "${if (overdueCount > 0) "${BengaliUtils.toBanglaDigits(overdueCount.toLong())} জনের তারিখ পার " else ""}${if (overLimitCount > 0) "· ${BengaliUtils.toBanglaDigits(overLimitCount.toLong())} জনের সীমা অতিক্রম" else ""}",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = FinancialNegative,
-                                        fontSize = 11.sp
-                                    )
-                                }
-
+                    // Right: আজকের হিসাব
+                    Card(
+                        modifier = Modifier
+                            .weight(0.9f)
+                            .testTag("baki_summary_today_card"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = tr("আজকের হিসাব", "Today's Activity"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.5.sp
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowUpward,
+                                    contentDescription = null,
+                                    tint = FinancialNegative,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
                                 Text(
-                                    text = "দেখুন",
-                                    style = MaterialTheme.typography.labelSmall,
+                                    text = "${tr("বাকি", "Due")}: ${BengaliUtils.formatTaka(todayBakiGiven)}",
+                                    style = MaterialTheme.typography.bodySmall,
                                     fontWeight = FontWeight.Bold,
-                                    color = MawaPrimary,
-                                    modifier = Modifier.clickable {
-                                        selectedFilter = if (overdueCount > 0) BakiFilter.OVERDUE_DATE else BakiFilter.OVER_LIMIT
-                                    }
+                                    fontSize = 11.5.sp,
+                                    color = FinancialNegative
                                 )
                             }
-                        }
-
-                        Spacer(modifier = Modifier.height(12.dp))
-
-                        // 3. MASTER ACTION BUTTONS (Clean, proportionate 2-row layout with fixed heights)
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            // Primary Action Row: + নতুন কাস্টমার & তাগাদা বার্তা হাব
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                // Add New Customer
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(42.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable { showAddCustomerDialog = true }
-                                        .testTag("baki_add_customer_btn"),
-                                    color = MawaPrimary,
-                                    shape = RoundedCornerShape(10.dp),
-                                    shadowElevation = 1.dp
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 8.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.PersonAdd, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("+ নতুন কাস্টমার", fontWeight = FontWeight.Bold, color = Color.White, fontSize = 12.sp, maxLines = 1)
-                                    }
-                                }
-
-                                // Bulk Reminder Hub
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(42.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable { showBulkReminderDialog = true }
-                                        .testTag("btn_bulk_reminder_hub"),
-                                    color = FinancialPositive.copy(alpha = 0.12f),
-                                    border = BorderStroke(1.dp, FinancialPositive.copy(alpha = 0.35f)),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 8.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = FinancialPositive, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("তাগাদা বার্তা হাব", fontWeight = FontWeight.Bold, color = FinancialPositive, fontSize = 12.sp, maxLines = 1)
-                                    }
-                                }
-                            }
-
-                            // Utility Row: প্রিন্ট / PDF | বাকি রিপোর্ট | CSV ফাইল
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                // Print Master Baki PDF
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(38.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable {
-                                            val html = ReceiptPrintManager.generateAllCustomersBakiSummaryHtml(
-                                                shopName = shopName,
-                                                shopOwner = shopOwner,
-                                                shopPhone = shopPhone,
-                                                customers = customersWithBalance,
-                                                totalOutstanding = totalOutstanding,
-                                                dateGenerated = BengaliUtils.formatTransactionTime(System.currentTimeMillis())
-                                            )
-                                            ReceiptPrintManager.printHtmlDocument(context, html, "Baki_Khata_Register")
-                                        }
-                                        .testTag("btn_print_baki_master"),
-                                    color = MawaPrimary.copy(alpha = 0.08f),
-                                    border = BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.3f)),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 4.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.Print, contentDescription = null, tint = MawaPrimary, modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("প্রিন্ট / PDF", fontWeight = FontWeight.Bold, color = MawaPrimary, fontSize = 11.sp, maxLines = 1)
-                                    }
-                                }
-
-                                // Full Statement Report Dialog
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(38.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable { showAllBakiReportDialog = true }
-                                        .testTag("btn_baki_full_report"),
-                                    color = FinancialNegative.copy(alpha = 0.08f),
-                                    border = BorderStroke(1.dp, FinancialNegative.copy(alpha = 0.3f)),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 4.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.Assessment, contentDescription = null, tint = FinancialNegative, modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("বাকি রিপোর্ট", fontWeight = FontWeight.Bold, color = FinancialNegative, fontSize = 11.sp, maxLines = 1)
-                                    }
-                                }
-
-                                // Export CSV
-                                Surface(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .height(38.dp)
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .clickable {
-                                            val csv = ReportExportUtils.generateCustomerBakiSummaryCsv(customersWithBalance)
-                                            ReportExportUtils.shareText(context, csv, "বাকির খাতা তালিকা - $shopName")
-                                        }
-                                        .testTag("btn_export_baki_csv"),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(horizontal = 4.dp),
-                                        horizontalArrangement = Arrangement.Center,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.Download, contentDescription = "CSV", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("CSV ফাইল", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp, maxLines = 1)
-                                    }
-                                }
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDownward,
+                                    contentDescription = null,
+                                    tint = FinancialPositive,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = "${tr("আদায়", "Paid")}: ${BengaliUtils.formatTaka(todayJomaCollected)}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.5.sp,
+                                    color = FinancialPositive
+                                )
                             }
                         }
                     }
                 }
             }
 
-            // 2. VISUAL GRAPHICAL ANALYSIS CHARTS (AGING DONUT, CREDIT VS COLLECTION, RISK DISTRIBUTION)
+            // 2. QUICK ACTION BUTTONS ROW
+            item {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Button 1: + নতুন কাস্টমার
+                    Button(
+                        onClick = { showAddCustomerDialog = true },
+                        modifier = Modifier
+                            .weight(1.2f)
+                            .height(40.dp)
+                            .testTag("btn_add_customer"),
+                        colors = ButtonDefaults.buttonColors(containerColor = MawaPrimary),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Default.PersonAdd, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(tr("নতুন কাস্টমার", "+ New Customer"), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Button 2: 📢 সার্বিক তাগাদা
+                    OutlinedButton(
+                        onClick = { showBulkReminderDialog = true },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(40.dp)
+                            .testTag("btn_bulk_reminder_action"),
+                        border = BorderStroke(1.dp, Color(0xFFFED7AA)),
+                        colors = ButtonDefaults.outlinedButtonColors(containerColor = Color(0xFFFFF7ED)),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = Color(0xFFC2410C), modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(tr("তাগাদা পাঠান", "Bulk Remind"), fontSize = 11.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFFC2410C))
+                    }
+
+                    // Button 3: 📊 খাতা রিপোর্ট
+                    OutlinedButton(
+                        onClick = { showAllBakiReportDialog = true },
+                        modifier = Modifier
+                            .weight(0.9f)
+                            .height(40.dp)
+                            .testTag("btn_all_baki_report"),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Assessment, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(tr("রিপোর্ট", "Report"), fontSize = 11.5.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+
+            // 3. SEARCH BAR
+            item {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 6.dp)
+                        .testTag("baki_search_input"),
+                    placeholder = {
+                        Text(
+                            text = tr("নাম, মোবাইল বা ঠিকানা দিয়ে খুঁজুন...", "Search by name, phone or address..."),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontSize = 12.5.sp
+                        )
+                    },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, contentDescription = "Search", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                    },
+                    trailingIcon = {
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { searchQuery = "" }) {
+                                Icon(Icons.Default.Close, contentDescription = "Clear", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(12.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = MaterialTheme.colorScheme.surface,
+                        unfocusedContainerColor = MaterialTheme.colorScheme.surface,
+                        focusedBorderColor = MawaPrimary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
+                    )
+                )
+            }
+
+            // Quick Filter Chips Row & Tools Bar
             item {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 14.dp, vertical = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .padding(horizontal = 14.dp, vertical = 2.dp)
                 ) {
-                    BakiAgingDonutChart(
-                        due0to15 = due0to15,
-                        due16to30 = due16to30,
-                        due30plus = due30plus,
-                        totalDue = totalOutstanding
-                    )
-
-                    BakiCreditVsCollectionChart(
-                        todayBakiGiven = todayBakiGiven,
-                        todayJomaCollected = todayJomaCollected,
-                        totalOutstanding = totalOutstanding
-                    )
-
-                    BakiRiskDistributionCard(
-                        customers = customersWithBalance
-                    )
-                }
-            }
-
-            // 4. SEARCH BAR & SORTING / FILTERS ROW
-            item {
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    color = MaterialTheme.colorScheme.surface
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 8.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            OutlinedTextField(
-                                value = searchQuery,
-                                onValueChange = { searchQuery = it },
-                                placeholder = { Text("নাম, ফোন বা ঠিকানা দিয়ে খুঁজুন...") },
-                                leadingIcon = {
-                                    Icon(imageVector = Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .testTag("baki_search_field"),
-                                singleLine = true,
-                                shape = RoundedCornerShape(10.dp),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedBorderColor = MawaPrimary,
-                                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                                )
-                            )
-
-                            Spacer(modifier = Modifier.width(8.dp))
-
-                            // Sort dropdown trigger
-                            Box {
-                                Surface(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable { showSortMenu = true }
-                                        .testTag("btn_baki_sort_trigger"),
-                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 12.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.Sort, contentDescription = "বাছাই", modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(selectedSort.banglaLabel, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold)
-                                        Icon(Icons.Default.ArrowDropDown, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    }
-                                }
-
-                                DropdownMenu(
-                                    expanded = showSortMenu,
-                                    onDismissRequest = { showSortMenu = false }
-                                ) {
-                                    BakiSort.values().forEach { sort ->
-                                        DropdownMenuItem(
-                                            text = { Text(sort.banglaLabel, fontWeight = if (selectedSort == sort) FontWeight.Bold else FontWeight.Normal) },
-                                            onClick = {
-                                                selectedSort = sort
-                                                showSortMenu = false
-                                            }
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        // Scrollable Filter Chips
                         LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.weight(1f),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             items(BakiFilter.values()) { filter ->
                                 val isSelected = selectedFilter == filter
                                 Surface(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .clip(RoundedCornerShape(16.dp))
                                         .clickable { selectedFilter = filter }
                                         .testTag("filter_baki_${filter.name.lowercase()}"),
-                                    color = if (isSelected) MawaPrimary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                    border = BorderStroke(1.dp, if (isSelected) MawaPrimary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-                                    shape = RoundedCornerShape(8.dp)
+                                    color = if (isSelected) MawaPrimary else Color(0xFFF1F5F9),
+                                    border = BorderStroke(1.dp, if (isSelected) MawaPrimary else Color(0xFFE2E8F0)),
+                                    shape = RoundedCornerShape(16.dp)
                                 ) {
                                     Text(
                                         text = filter.banglaLabel,
                                         style = MaterialTheme.typography.labelSmall,
                                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                        color = if (isSelected) Color.White else Color(0xFF475569),
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
                                         fontSize = 11.sp
                                     )
                                 }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+
+                        // Toggle for Print / Analytics / CSV
+                        IconButton(
+                            onClick = { showAnalyticsSection = !showAnalyticsSection },
+                            modifier = Modifier.size(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Assessment,
+                                contentDescription = "এনালিটিক্স ও রিপোর্ট",
+                                tint = if (showAnalyticsSection) MawaPrimary else Color(0xFF64748B),
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                    }
+
+                    // Expandable Analytics & Export Section
+                    if (showAnalyticsSection) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                // PDF / Print, CSV buttons
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                val html = ReceiptPrintManager.generateAllCustomersBakiSummaryHtml(
+                                                    shopName = shopName,
+                                                    shopOwner = shopOwner,
+                                                    shopPhone = shopPhone,
+                                                    customers = customersWithBalance,
+                                                    totalOutstanding = totalOutstanding,
+                                                    dateGenerated = BengaliUtils.formatTransactionTime(System.currentTimeMillis())
+                                                )
+                                                ReceiptPrintManager.printHtmlDocument(context, html, "Baki_Khata_Register")
+                                            },
+                                        color = MawaPrimary.copy(alpha = 0.08f),
+                                        border = BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.3f)),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxSize(),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.Print, contentDescription = null, tint = MawaPrimary, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("প্রিন্ট / PDF", fontWeight = FontWeight.Bold, color = MawaPrimary, fontSize = 11.sp)
+                                        }
+                                    }
+
+                                    Surface(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(36.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                val csv = ReportExportUtils.generateCustomerBakiSummaryCsv(customersWithBalance)
+                                                ReportExportUtils.shareText(context, csv, "বাকির খাতা তালিকা - $shopName")
+                                            },
+                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxSize(),
+                                            horizontalArrangement = Arrangement.Center,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.Download, contentDescription = "CSV", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("CSV ফাইল", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 11.sp)
+                                        }
+                                    }
+                                }
+
+                                // Interactive Charts
+                                val currentAgingSlice = when (selectedFilter) {
+                                    BakiFilter.AGING_0_TO_15 -> 0
+                                    BakiFilter.AGING_16_TO_30 -> 1
+                                    BakiFilter.AGING_30_DAYS -> 2
+                                    else -> null
+                                }
+                                BakiAgingDonutChart(
+                                    due0to15 = due0to15,
+                                    due16to30 = due16to30,
+                                    due30plus = due30plus,
+                                    totalDue = totalOutstanding,
+                                    selectedSliceIndex = currentAgingSlice,
+                                    onSliceSelected = { index, _ ->
+                                        selectedFilter = when (index) {
+                                            0 -> if (selectedFilter == BakiFilter.AGING_0_TO_15) BakiFilter.ALL else BakiFilter.AGING_0_TO_15
+                                            1 -> if (selectedFilter == BakiFilter.AGING_16_TO_30) BakiFilter.ALL else BakiFilter.AGING_16_TO_30
+                                            2 -> if (selectedFilter == BakiFilter.AGING_30_DAYS) BakiFilter.ALL else BakiFilter.AGING_30_DAYS
+                                            else -> BakiFilter.ALL
+                                        }
+                                    }
+                                )
                             }
                         }
                     }
                 }
             }
 
-            // Customer List Header Count
-            item {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "কাস্টমার তালিকা (${BengaliUtils.toBanglaDigits(filteredList.size.toLong())} জন)",
-                        style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        text = "বর্তমান বাকি",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            // 5. CUSTOMER LIST ITEMS
+            // 5. CUSTOMER LIST ITEMS (PREVIOUS PRACTICAL DESIGN WITH DIRECT JOMA & BAKI BUTTONS)
             if (filteredList.isEmpty()) {
                 item {
                     MawaEmptyState(
                         icon = Icons.Default.People,
-                        title = "কোনো কাস্টমার পাওয়া যায়নি",
-                        subtitle = "নতুন কাস্টমার যোগ করতে নিচের বাটনে চাপুন",
-                        actionLabel = "নতুন কাস্টমার যোগ করুন",
+                        title = tr("কোনো কাস্টমার পাওয়া যায়নি", "No customers found"),
+                        subtitle = tr("নতুন কাস্টমার যোগ করতে নিচের বাটনে চাপুন", "Tap button below to add a new customer"),
+                        actionLabel = tr("নতুন কাস্টমার যোগ করুন", "Add New Customer"),
                         onActionClick = { showAddCustomerDialog = true }
                     )
                 }
@@ -1145,26 +955,17 @@ fun BakiScreen(
                     val cust = item.customer
                     val isOverLimit = cust.creditLimit > 0 && item.currentBalance > cust.creditLimit
                     val isOverdueDate = cust.promisedPaymentDate in 1 until now && item.currentBalance > 0
-                    val thirtyDaysMillis = 30L * 24 * 60 * 60 * 1000
                     val lastTxTs = item.lastTransaction?.timestamp ?: cust.createdAt
                     val isAging30Days = (now - lastTxTs) >= thirtyDaysMillis && item.currentBalance > 0
-                    val isNewCustomer = (now - cust.createdAt) < (7L * 24 * 60 * 60 * 1000)
 
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 5.dp)
+                            .padding(horizontal = 14.dp, vertical = 5.dp)
                             .testTag("customer_card_${cust.id}"),
                         shape = RoundedCornerShape(14.dp),
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                        border = BorderStroke(
-                            width = 1.dp,
-                            color = when {
-                                isOverdueDate -> FinancialNegative.copy(alpha = 0.4f)
-                                isOverLimit -> Color(0xFFF97316).copy(alpha = 0.4f)
-                                else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                            }
-                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
                         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
                         Column(
@@ -1172,7 +973,7 @@ fun BakiScreen(
                                 .fillMaxWidth()
                                 .padding(12.dp)
                         ) {
-                            // Top Row: Avatar, Info, and Balances
+                            // Top Row: Avatar, Details, and Balance
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -1185,290 +986,262 @@ fun BakiScreen(
                                     modifier = Modifier.weight(1f),
                                     verticalAlignment = Alignment.Top
                                 ) {
-                                    // Avatar
-                                    Box(
-                                        modifier = Modifier
-                                            .size(44.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(
-                                                if (item.currentBalance > 0) FinancialNegative.copy(alpha = 0.12f)
-                                                else FinancialPositive.copy(alpha = 0.12f)
-                                            ),
-                                        contentAlignment = Alignment.Center
+                                    // Circular Initial Avatar
+                                    Surface(
+                                        modifier = Modifier.size(42.dp),
+                                        shape = CircleShape,
+                                        color = if (isAging30Days) Color(0xFFFFE4E6) else MawaPrimary.copy(alpha = 0.12f),
+                                        border = BorderStroke(1.dp, if (isAging30Days) Color(0xFFFDA4AF) else MawaPrimary.copy(alpha = 0.3f))
                                     ) {
-                                        Text(
-                                            text = cust.name.take(1).uppercase(),
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (item.currentBalance > 0) FinancialNegative else FinancialPositive
-                                        )
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = cust.name.trim().take(1).uppercase(),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 17.sp,
+                                                color = if (isAging30Days) Color(0xFFE11D48) else MawaPrimary
+                                            )
+                                        }
                                     }
 
                                     Spacer(modifier = Modifier.width(10.dp))
 
-                                    Column {
-                                        // Customer Name
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = cust.name,
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            fontSize = 16.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
 
-                                        Spacer(modifier = Modifier.height(3.dp))
+                                        Spacer(modifier = Modifier.height(2.dp))
+
+                                        // Phone & Direct Call button
+                                        if (cust.phone.isNotBlank()) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = cust.phone,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    fontSize = 12.sp
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Icon(
+                                                    imageVector = Icons.Default.Call,
+                                                    contentDescription = "কল",
+                                                    tint = MawaPrimary,
+                                                    modifier = Modifier
+                                                        .size(14.dp)
+                                                        .clickable {
+                                                            try {
+                                                                val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${cust.phone.trim()}"))
+                                                                context.startActivity(intent)
+                                                            } catch (_: Exception) {}
+                                                        }
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(4.dp))
 
                                         // Badges Row
                                         Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             if (cust.categoryTag == "VIP") {
                                                 CustomerBadge(
                                                     label = "VIP",
-                                                    icon = Icons.Default.Star,
                                                     containerColor = Color(0xFFFEF3C7),
-                                                    contentColor = Color(0xFFB45309)
+                                                    contentColor = Color(0xFFD97706),
+                                                    icon = Icons.Default.Star
                                                 )
                                             }
-                                            if (cust.categoryTag == "REGULAR") {
+                                            if (isAging30Days) {
                                                 CustomerBadge(
-                                                    label = "নিয়মিত",
-                                                    icon = Icons.Default.CheckCircle,
-                                                    containerColor = Color(0xFFECFDF5),
-                                                    contentColor = Color(0xFF047857)
+                                                    label = tr("৩০+ দিন বকেয়া", "30+ Days Due"),
+                                                    containerColor = Color(0xFFFFE4E6),
+                                                    contentColor = Color(0xFFE11D48),
+                                                    icon = Icons.Default.Warning
                                                 )
-                                            }
-                                            if (cust.categoryTag == "WHOLESALE") {
+                                            } else if (isOverdueDate) {
                                                 CustomerBadge(
-                                                    label = "পাইকারি",
-                                                    containerColor = Color(0xFFEEF2FF),
-                                                    contentColor = Color(0xFF4338CA)
-                                                )
-                                            }
-                                            if (isOverdueDate) {
-                                                CustomerBadge(
-                                                    label = "ওয়াদা পার",
-                                                    icon = Icons.Default.Schedule,
-                                                    containerColor = Color(0xFFFEE2E2),
-                                                    contentColor = Color(0xFF991B1B)
-                                                )
-                                            }
-                                            if (isOverLimit) {
-                                                CustomerBadge(
-                                                    label = "সীমা পার",
-                                                    icon = Icons.Default.Warning,
+                                                    label = tr("ওয়াদা পার", "Overdue"),
                                                     containerColor = Color(0xFFFFEDD5),
-                                                    contentColor = Color(0xFFC2410C)
+                                                    contentColor = Color(0xFFC2410C),
+                                                    icon = Icons.Default.Schedule
                                                 )
-                                            }
-                                            if (!isOverdueDate && item.currentBalance > 0 && isAging30Days) {
+                                            } else if (isOverLimit) {
                                                 CustomerBadge(
-                                                    label = "৩০+ দিন",
-                                                    icon = Icons.Default.Warning,
-                                                    containerColor = Color(0xFFFFF1F2),
-                                                    contentColor = Color(0xFFE11D48)
-                                                )
-                                            }
-                                            if (item.currentBalance <= 0) {
-                                                CustomerBadge(
-                                                    label = "পরিশোধিত",
-                                                    icon = Icons.Default.CheckCircle,
-                                                    containerColor = Color(0xFFF0FDF4),
-                                                    contentColor = Color(0xFF15803D)
-                                                )
-                                            }
-                                            if (isNewCustomer && cust.categoryTag != "VIP") {
-                                                CustomerBadge(
-                                                    label = "নতুন",
-                                                    containerColor = Color(0xFFE0F2FE),
-                                                    contentColor = Color(0xFF0369A1)
-                                                )
-                                            }
-                                        }
-
-                                        // Phone & Address
-                                        if (cust.phone.isNotBlank() || cust.address.isNotBlank()) {
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            Text(
-                                                text = "${if (cust.phone.isNotBlank()) cust.phone else ""}${if (cust.phone.isNotBlank() && cust.address.isNotBlank()) " • " else ""}${cust.address}",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                fontSize = 11.sp
-                                            )
-                                        }
-
-                                        // Promised Date
-                                        if (cust.promisedPaymentDate > 0 && item.currentBalance > 0) {
-                                            Spacer(modifier = Modifier.height(2.dp))
-                                            Text(
-                                                text = if (isOverdueDate) "⚠️ দেওয়ার তারিখ পার: ${BengaliUtils.formatTransactionDateOnly(cust.promisedPaymentDate)}"
-                                                else "🗓️ দেওয়ার তারিখ: ${BengaliUtils.formatTransactionDateOnly(cust.promisedPaymentDate)}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = if (isOverdueDate) FinancialNegative else MawaPrimary
-                                            )
-                                        }
-
-                                        // Credit Limit Progress
-                                        if (cust.creditLimit > 0) {
-                                            Spacer(modifier = Modifier.height(3.dp))
-                                            val progress = (item.currentBalance / cust.creditLimit).toFloat().coerceIn(0f, 1f)
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                LinearProgressIndicator(
-                                                    progress = { progress },
-                                                    modifier = Modifier
-                                                        .width(64.dp)
-                                                        .height(4.dp)
-                                                        .clip(RoundedCornerShape(2.dp)),
-                                                    color = if (isOverLimit) FinancialNegative else MawaPrimary,
-                                                    trackColor = MaterialTheme.colorScheme.surfaceVariant
-                                                )
-                                                Spacer(modifier = Modifier.width(5.dp))
-                                                Text(
-                                                    text = if (isOverLimit) "সীমা পার!" else "সীমা: ${BengaliUtils.formatTaka(cust.creditLimit)}",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontSize = 9.sp,
-                                                    color = if (isOverLimit) FinancialNegative else MaterialTheme.colorScheme.onSurfaceVariant
+                                                    label = tr("লিমিট পার", "Limit Exceeded"),
+                                                    containerColor = Color(0xFFFEE2E2),
+                                                    contentColor = Color(0xFFDC2626)
                                                 )
                                             }
                                         }
                                     }
                                 }
 
-                                // Right: Balance & Time
+                                // Right: Outstanding Balance & Last transaction time
                                 Column(horizontalAlignment = Alignment.End) {
-                                    Text(
-                                        text = BengaliUtils.formatTaka(item.currentBalance),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (item.currentBalance > 0) FinancialNegative else FinancialPositive
-                                    )
-                                    if (item.lastTransaction != null) {
-                                        Spacer(modifier = Modifier.height(2.dp))
+                                    if (item.currentBalance > 0) {
                                         Text(
-                                            text = BengaliUtils.formatTransactionTime(item.lastTransaction.timestamp),
+                                            text = BengaliUtils.formatTaka(item.currentBalance),
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = FinancialNegative,
+                                            fontSize = 17.sp
+                                        )
+                                        Text(
+                                            text = tr("বকেয়া", "Due"),
                                             style = MaterialTheme.typography.bodySmall,
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = FinancialNegative,
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                    } else {
+                                        Text(
+                                            text = "৳০",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = FinancialPositive,
+                                            fontSize = 17.sp
+                                        )
+                                        Text(
+                                            text = tr("পরিশোধিত", "Paid"),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = FinancialPositive,
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold
                                         )
                                     }
+
+                                    Spacer(modifier = Modifier.height(4.dp))
+
+                                    Text(
+                                        text = BengaliUtils.formatTransactionDateOnly(lastTxTs),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontSize = 10.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                                    )
                                 }
                             }
 
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                             Spacer(modifier = Modifier.height(8.dp))
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f))
-                            Spacer(modifier = Modifier.height(6.dp))
 
-                            // Bottom Quick Action Bar
+                            // Bottom Action Row: [+ বাকি দিন] [↓ জমা নিন] [তাগাদা] [⋮ মেনু]
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                // 1. [+ বাকি দিন]
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { quickBakiCustomerTarget = item }
+                                        .testTag("btn_quick_baki_${cust.id}"),
+                                    color = FinancialNegative.copy(alpha = 0.08f),
+                                    border = BorderStroke(1.dp, FinancialNegative.copy(alpha = 0.35f)),
+                                    shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    // Call
-                                    if (cust.phone.isNotBlank()) {
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                            modifier = Modifier
-                                                .height(30.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .clickable {
-                                                    try {
-                                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${cust.phone.trim()}"))
-                                                        context.startActivity(intent)
-                                                    } catch (_: Exception) {}
-                                                }
-                                                .testTag("btn_call_${cust.id}")
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxHeight().padding(horizontal = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(Icons.Default.Call, contentDescription = "কল", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(13.dp))
-                                                Spacer(modifier = Modifier.width(3.dp))
-                                                Text("কল", style = MaterialTheme.typography.labelSmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                                            }
-                                        }
-                                    }
-
-                                    // Reminder (if has due)
-                                    if (item.currentBalance > 0) {
-                                        Surface(
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = FinancialPositive.copy(alpha = 0.12f),
-                                            modifier = Modifier
-                                                .height(30.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .clickable { reminderCustomerTarget = item }
-                                                .testTag("btn_quick_reminder_${cust.id}")
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.fillMaxHeight().padding(horizontal = 8.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Icon(Icons.Default.Send, contentDescription = "তাগাদা", tint = FinancialPositive, modifier = Modifier.size(13.dp))
-                                                Spacer(modifier = Modifier.width(3.dp))
-                                                Text("তাগাদা", style = MaterialTheme.typography.labelSmall, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = FinancialPositive, maxLines = 1)
-                                            }
-                                        }
-                                    }
-
-                                    // Customer Report
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MawaPrimary.copy(alpha = 0.12f),
-                                        modifier = Modifier
-                                            .height(30.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable { reportCustomerTarget = item }
-                                            .testTag("btn_report_${cust.id}")
+                                    Row(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxHeight().padding(horizontal = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Default.Assessment, contentDescription = "রিপোর্ট", tint = MawaPrimary, modifier = Modifier.size(13.dp))
-                                            Spacer(modifier = Modifier.width(3.dp))
-                                            Text("রিপোর্ট", style = MaterialTheme.typography.labelSmall, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = MawaPrimary, maxLines = 1)
-                                        }
-                                    }
-
-                                    // Ledger
-                                    Surface(
-                                        shape = RoundedCornerShape(8.dp),
-                                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
-                                        modifier = Modifier
-                                            .height(30.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .clickable { selectedCustomerForLedger = item }
-                                            .testTag("btn_ledger_${cust.id}")
-                                    ) {
-                                        Row(
-                                            modifier = Modifier.fillMaxHeight().padding(horizontal = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Icon(Icons.Default.Receipt, contentDescription = "খতিয়ান", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(13.dp))
-                                            Spacer(modifier = Modifier.width(3.dp))
-                                            Text("খতিয়ান", style = MaterialTheme.typography.labelSmall, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-                                        }
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowUpward,
+                                            contentDescription = null,
+                                            tint = FinancialNegative,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = tr("+ বাকি দিন", "+ Give Due"),
+                                            color = FinancialNegative,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
                                     }
                                 }
 
-                                // More Options Menu (3 dots)
+                                // 2. [↓ জমা নিন]
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { quickJomaCustomerTarget = item }
+                                        .testTag("btn_quick_joma_${cust.id}"),
+                                    color = FinancialPositive.copy(alpha = 0.09f),
+                                    border = BorderStroke(1.dp, FinancialPositive.copy(alpha = 0.4f)),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxSize(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.ArrowDownward,
+                                            contentDescription = null,
+                                            tint = FinancialPositive,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = tr("↓ জমা নিন", "Collect Due"),
+                                            color = FinancialPositive,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    }
+                                }
+
+                                // 3. [তাগাদা]
+                                Surface(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { reminderCustomerTarget = item }
+                                        .testTag("btn_quick_reminder_${cust.id}"),
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(
+                                            imageVector = Icons.Default.Send,
+                                            contentDescription = "তাগাদা",
+                                            tint = Color(0xFFC2410C),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+
+                                // 4. [⋮] 3-dot Dropdown Menu
                                 Box {
                                     var menuExpanded by remember { mutableStateOf(false) }
                                     IconButton(
                                         onClick = { menuExpanded = true },
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(36.dp)
                                     ) {
-                                        Icon(Icons.Default.MoreVert, contentDescription = "আরও অপশন", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(17.dp))
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "আরও অপশন",
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(20.dp)
+                                        )
                                     }
 
                                     DropdownMenu(
@@ -1476,23 +1249,28 @@ fun BakiScreen(
                                         onDismissRequest = { menuExpanded = false }
                                     ) {
                                         DropdownMenuItem(
-                                            text = { Text("বাকি দিন (+)") },
-                                            leadingIcon = { Icon(Icons.Default.ArrowUpward, contentDescription = null, tint = FinancialNegative) },
+                                            text = { Text(tr("খতিয়ান রিপোর্ট / স্টেটমেন্ট", "Statement Report")) },
+                                            leadingIcon = { Icon(Icons.Default.Assessment, contentDescription = null, tint = MawaPrimary) },
                                             onClick = {
                                                 menuExpanded = false
-                                                quickBakiCustomerTarget = item
+                                                reportCustomerTarget = item
                                             }
                                         )
+                                        if (cust.phone.isNotBlank()) {
+                                            DropdownMenuItem(
+                                                text = { Text(tr("কল করুন (${cust.phone})", "Call (${cust.phone})")) },
+                                                leadingIcon = { Icon(Icons.Default.Call, contentDescription = null, tint = MawaPrimary) },
+                                                onClick = {
+                                                    menuExpanded = false
+                                                    try {
+                                                        val intent = Intent(Intent.ACTION_DIAL, Uri.parse("tel:${cust.phone.trim()}"))
+                                                        context.startActivity(intent)
+                                                    } catch (_: Exception) {}
+                                                }
+                                            )
+                                        }
                                         DropdownMenuItem(
-                                            text = { Text("জমা নিন (-)") },
-                                            leadingIcon = { Icon(Icons.Default.ArrowDownward, contentDescription = null, tint = FinancialPositive) },
-                                            onClick = {
-                                                menuExpanded = false
-                                                quickJomaCustomerTarget = item
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text("ওয়াদা তারিখ দিন") },
+                                            text = { Text(tr("ওয়াদা তারিখ দিন", "Set Promise Date")) },
                                             leadingIcon = { Icon(Icons.Default.Event, contentDescription = null, tint = MawaPrimary) },
                                             onClick = {
                                                 menuExpanded = false
@@ -1501,7 +1279,7 @@ fun BakiScreen(
                                         )
                                         if (item.currentBalance > 0) {
                                             DropdownMenuItem(
-                                                text = { Text("হিসাব রফা/ছাড়") },
+                                                text = { Text(tr("হিসাব রফা/ছাড়", "Settlement Discount")) },
                                                 leadingIcon = { Icon(Icons.Default.Handshake, contentDescription = null, tint = Color(0xFFD97706)) },
                                                 onClick = {
                                                     menuExpanded = false
@@ -1510,7 +1288,7 @@ fun BakiScreen(
                                             )
                                         }
                                         DropdownMenuItem(
-                                            text = { Text("মেমো ছবি শেয়ার") },
+                                            text = { Text(tr("মেমো ছবি শেয়ার", "Share Memo Image")) },
                                             leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
                                             onClick = {
                                                 menuExpanded = false
@@ -1529,7 +1307,7 @@ fun BakiScreen(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("তথ্য সম্পাদনা") },
+                                            text = { Text(tr("তথ্য সম্পাদনা", "Edit Info")) },
                                             leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
                                             onClick = {
                                                 menuExpanded = false
@@ -1537,7 +1315,7 @@ fun BakiScreen(
                                             }
                                         )
                                         DropdownMenuItem(
-                                            text = { Text("কাস্টমার ডিলিট", color = FinancialNegative) },
+                                            text = { Text(tr("কাস্টমার ডিলিট", "Delete Customer"), color = FinancialNegative) },
                                             leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = FinancialNegative) },
                                             onClick = {
                                                 menuExpanded = false

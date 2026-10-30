@@ -12,6 +12,7 @@ class MawaApplication : Application() {
                 FirebaseApp.initializeApp(this)
                 Log.d("MawaApplication", "FirebaseApp initialized successfully")
             }
+            com.example.mawa.util.LanguageManager.init(this)
         } catch (e: Throwable) {
             Log.e("MawaApplication", "FirebaseApp initialization failed gracefully", e)
         }

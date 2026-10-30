@@ -87,6 +87,10 @@ import com.example.mawa.util.BengaliUtils
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
+import androidx.compose.runtime.CompositionLocalProvider
+import com.example.mawa.util.LanguageManager
+import com.example.mawa.util.LocalAppLanguage
+
 enum class AppSubScreen {
     NONE,
     SALES,
@@ -103,6 +107,7 @@ enum class AppSubScreen {
 fun MawaApp(
     viewModel: MawaViewModel = viewModel()
 ) {
+    val appLanguage by LanguageManager.currentLanguage.collectAsStateWithLifecycle()
     val appMode by viewModel.currentAppMode.collectAsStateWithLifecycle()
     val isModeConfigured by viewModel.isModeConfigured.collectAsStateWithLifecycle()
 
@@ -149,7 +154,8 @@ fun MawaApp(
         }
     }
 
-    ModalNavigationDrawer(
+    CompositionLocalProvider(LocalAppLanguage provides appLanguage) {
+        ModalNavigationDrawer(
         drawerState = drawerState,
         gesturesEnabled = currentSubScreen == AppSubScreen.NONE,
         drawerContent = {
@@ -317,6 +323,7 @@ fun MawaApp(
                                         showExpenseDrawer = true
                                     },
                                     onOpenOrderKhata = { currentSubScreen = AppSubScreen.ORDER_KHATA },
+                                    onOpenFordi = { currentTab = MawaTab.FORDI },
                                     onOpenReports = { currentTab = MawaTab.REPORTS },
                                     onOpenProducts = { currentSubScreen = AppSubScreen.PRODUCTS },
                                     onOpenProfile = { showSettingsDialog = true },
@@ -335,11 +342,13 @@ fun MawaApp(
                                 )
                             }
                             MawaTab.FORDI -> {
-                                OrderKhataScreen(
+                                FordiScreen(
                                     viewModel = viewModel,
-                                    onBack = { currentTab = MawaTab.HOME },
                                     onOpenDrawer = {
                                         coroutineScope.launch { drawerState.open() }
+                                    },
+                                    onOpenProducts = {
+                                        currentSubScreen = AppSubScreen.PRODUCTS
                                     }
                                 )
                             }
@@ -596,4 +605,5 @@ fun MawaApp(
             }
         )
     }
+}
 }
