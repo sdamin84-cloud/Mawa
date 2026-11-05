@@ -27,6 +27,10 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -66,8 +70,13 @@ fun MawaAmountInput(
     quickAmounts: List<Int> = listOf(50, 100, 500, 1000, 2000, 5000),
     testTag: String = "amount_input",
     onSmartInput: ((name: String, amount: String) -> Unit)? = null,
-    onVoiceInput: ((VoiceParsedResult) -> Unit)? = null
+    onVoiceInput: ((VoiceParsedResult) -> Unit)? = null,
+    keyboardType: KeyboardType = KeyboardType.Number
 ) {
+    var activeKeyboardType by androidx.compose.runtime.remember(keyboardType) {
+        androidx.compose.runtime.mutableStateOf(keyboardType)
+    }
+
     Column(modifier = modifier.fillMaxWidth()) {
         OutlinedTextField(
             value = amount,
@@ -78,14 +87,16 @@ fun MawaAmountInput(
                         onSmartInput(parsed.name, parsed.amountString)
                         return@OutlinedTextField
                     }
-                    // Allow typing numbers, text, letters, spaces freely when smart input is enabled
-                    onAmountChange(newVal)
-                } else {
+                }
+                if (activeKeyboardType == KeyboardType.Number) {
                     val converted = BengaliUtils.toEnglishDigits(newVal)
-                    // Allow only digits and optional decimal point for purely numeric amount input
                     if (converted.isEmpty() || converted.matches(Regex("^\\d*\\.?\\d*$"))) {
                         onAmountChange(converted)
+                    } else if (onSmartInput != null) {
+                        onAmountChange(newVal)
                     }
+                } else {
+                    onAmountChange(newVal)
                 }
             },
             modifier = Modifier
@@ -123,6 +134,29 @@ fun MawaAmountInput(
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                     modifier = Modifier.padding(end = 4.dp)
                 ) {
+                    if (onSmartInput != null) {
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .clickable {
+                                    activeKeyboardType = if (activeKeyboardType == KeyboardType.Number) {
+                                        KeyboardType.Text
+                                    } else {
+                                        KeyboardType.Number
+                                    }
+                                },
+                            color = if (activeKeyboardType == KeyboardType.Number) MawaPrimary.copy(alpha = 0.15f) else MaterialTheme.colorScheme.surfaceVariant,
+                            shape = RoundedCornerShape(6.dp)
+                        ) {
+                            Text(
+                                text = if (activeKeyboardType == KeyboardType.Number) "123" else "কখগ",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (activeKeyboardType == KeyboardType.Number) MawaPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
                     if (amount.isNotEmpty()) {
                         IconButton(
                             onClick = { onAmountChange("") },
@@ -153,7 +187,7 @@ fun MawaAmountInput(
             ),
             singleLine = true,
             keyboardOptions = KeyboardOptions(
-                keyboardType = if (onSmartInput != null) KeyboardType.Text else KeyboardType.Number,
+                keyboardType = activeKeyboardType,
                 imeAction = imeAction
             ),
             keyboardActions = keyboardActions ?: KeyboardActions(

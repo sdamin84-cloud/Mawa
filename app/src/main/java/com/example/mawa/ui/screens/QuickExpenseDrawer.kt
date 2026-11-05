@@ -81,6 +81,8 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.QrCodeScanner
@@ -152,7 +154,17 @@ fun QuickExpenseDrawer(
 
     val context = LocalContext.current
     val focusManager = LocalFocusManager.current
+    val amountFocusRequester = remember { FocusRequester() }
     val descriptionFocusRequester = remember { FocusRequester() }
+    val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+
+    // Auto-focus "কি নিলাম" (description) field when drawer opens
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(120)
+        try {
+            descriptionFocusRequester.requestFocus()
+        } catch (_: Exception) {}
+    }
 
     val activeSmartParsed = remember(amount, description) {
         com.example.mawa.util.SmartExpenseInputParser.parse(amount)
@@ -245,6 +257,21 @@ fun QuickExpenseDrawer(
             isManualSelection = false
             val dateSuffix = if (!isToday) " (${SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(selectedTimestamp))})" else ""
             successNotice = "$savedTargetName ৳${BengaliUtils.toBanglaDigits(savedAmount)}$dateSuffix সংরক্ষিত হয়েছে"
+
+            // Re-focus on "কি নিলাম" (description) field so user can enter the next expense right away
+            coroutineScope.launch {
+                kotlinx.coroutines.delay(80)
+                try {
+                    descriptionFocusRequester.requestFocus()
+                } catch (_: Exception) {}
+            }
+        } else {
+            // If amount was not yet entered, focus amount field
+            coroutineScope.launch {
+                try {
+                    amountFocusRequester.requestFocus()
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -359,16 +386,16 @@ fun QuickExpenseDrawer(
                 }
             }
 
-            // 0. Smart Predictive Suggestions Bar (পূর্বের ডাটা দেখে নিয়মিত পণ্য/কোম্পানির ১-ক্লিক ফিল)
+            // 0. Smart Predictive Suggestions Bar (পূর্বের ডাটা দেখে নিয়মিত পণ্য/কোম্পানির বড় ও স্পষ্ট কার্ড)
             if (drawerPredictions.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(10.dp))
                 Surface(
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
-                    border = BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.25f)),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.35f)),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Column(modifier = Modifier.padding(10.dp)) {
+                    Column(modifier = Modifier.padding(12.dp)) {
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -377,24 +404,24 @@ fun QuickExpenseDrawer(
                                 imageVector = Icons.Default.AutoAwesome,
                                 contentDescription = null,
                                 tint = MawaPrimary,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(18.dp)
                             )
                             Text(
-                                text = "আজকের নিয়মিত পণ্য/কোম্পানি (১-ক্লিক ইনপুট):",
-                                style = MaterialTheme.typography.labelSmall,
+                                text = "পূর্বের ডাটা থেকে নিয়মিত পণ্য ও কোম্পানি (১-ক্লিকে ইনপুট):",
+                                style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         LazyRow(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(drawerPredictions, key = { it.id }) { item ->
                                 Surface(
                                     modifier = Modifier
-                                        .clip(RoundedCornerShape(8.dp))
+                                        .clip(RoundedCornerShape(10.dp))
                                         .clickable {
                                             description = item.name
                                             if (item.predictedAmount > 0) {
@@ -402,29 +429,42 @@ fun QuickExpenseDrawer(
                                             }
                                             expenseTarget = if (item.isPurchaseType) QuickExpenseTarget.PURCHASE else QuickExpenseTarget.SHOP
                                             isManualSelection = true
+                                            coroutineScope.launch {
+                                                kotlinx.coroutines.delay(60)
+                                                try {
+                                                    amountFocusRequester.requestFocus()
+                                                } catch (_: Exception) {}
+                                            }
                                         },
                                     color = MaterialTheme.colorScheme.surface,
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(1.dp, MawaPrimary.copy(alpha = 0.35f))
+                                    shape = RoundedCornerShape(10.dp),
+                                    border = BorderStroke(1.2.dp, MawaPrimary.copy(alpha = 0.45f)),
+                                    shadowElevation = 1.dp
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         Text(
                                             text = item.name,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.SemiBold,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.onSurface
                                         )
                                         if (item.predictedAmount > 0) {
-                                            Text(
-                                                text = "৳${BengaliUtils.toBanglaDigits(item.predictedAmount.toInt())}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MawaPrimary
-                                            )
+                                            Surface(
+                                                color = MawaPrimary.copy(alpha = 0.12f),
+                                                shape = RoundedCornerShape(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "৳${BengaliUtils.toBanglaDigits(item.predictedAmount.toInt())}",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    color = MawaPrimary,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -436,42 +476,180 @@ fun QuickExpenseDrawer(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 1. Amount input (টাকা বা একসাথে নাম ও মূল্য লিখুন, যেমন: মাছ ৩৫০)
-            MawaAmountInput(
-                amount = amount,
-                onAmountChange = {
-                    amount = it
+            // 1. "কি নিলাম বা কী জন্য?" (Description Field First)
+            val matchedExpenseProducts = remember(description, activeProducts) {
+                if (description.isBlank()) {
+                    if (expenseTarget == QuickExpenseTarget.PURCHASE) activeProducts.take(6) else emptyList()
+                } else {
+                    activeProducts.filter {
+                        it.name.contains(description, ignoreCase = true) ||
+                        it.banglaName.contains(description, ignoreCase = true) ||
+                        it.barcode.contains(description, ignoreCase = true)
+                    }.take(6)
+                }
+            }
+
+            OutlinedTextField(
+                value = description,
+                onValueChange = { input ->
                     successNotice = null
-                },
-                onSmartInput = { smartName, smartAmount ->
-                    description = smartName
-                    amount = smartAmount
-                    successNotice = null
-                    if (!isManualSelection && smartName.isNotBlank()) {
-                        when (ExpenseClassifier.autoClassifyType(smartName)) {
-                            ExpenseClassifier.TYPE_PURCHASE -> expenseTarget = QuickExpenseTarget.PURCHASE
-                            ExpenseClassifier.TYPE_HOME -> expenseTarget = QuickExpenseTarget.HOME
-                            ExpenseClassifier.TYPE_OPERATING_EXPENSE -> expenseTarget = QuickExpenseTarget.SHOP
-                            else -> {}
+                    val parsed = com.example.mawa.util.SmartExpenseInputParser.parse(input)
+                    if (parsed != null) {
+                        description = parsed.name
+                        amount = parsed.amountString
+                        if (!isManualSelection && parsed.name.isNotBlank()) {
+                            when (ExpenseClassifier.autoClassifyType(parsed.name)) {
+                                ExpenseClassifier.TYPE_PURCHASE -> expenseTarget = QuickExpenseTarget.PURCHASE
+                                ExpenseClassifier.TYPE_HOME -> expenseTarget = QuickExpenseTarget.HOME
+                                ExpenseClassifier.TYPE_OPERATING_EXPENSE -> expenseTarget = QuickExpenseTarget.SHOP
+                                else -> {}
+                            }
+                        }
+                    } else {
+                        description = input
+                        // Smart Auto-Classification
+                        if (!isManualSelection && input.isNotBlank()) {
+                            when (ExpenseClassifier.autoClassifyType(input)) {
+                                ExpenseClassifier.TYPE_PURCHASE -> expenseTarget = QuickExpenseTarget.PURCHASE
+                                ExpenseClassifier.TYPE_HOME -> expenseTarget = QuickExpenseTarget.HOME
+                                ExpenseClassifier.TYPE_OPERATING_EXPENSE -> expenseTarget = QuickExpenseTarget.SHOP
+                                else -> {}
+                            }
                         }
                     }
                 },
-                label = "কত টাকা? (বা যেমন: মাছ ৩৫০)",
-                imeAction = if (description.isNotBlank()) ImeAction.Done else ImeAction.Next,
-                onNext = {
-                    if (description.isNotBlank()) {
-                        performSaveExpense()
-                    } else {
-                        descriptionFocusRequester.requestFocus()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(descriptionFocusRequester)
+                    .onKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyUp && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
+                            if (effectiveAmount > 0) {
+                                performSaveExpense()
+                            } else {
+                                coroutineScope.launch {
+                                    try {
+                                        amountFocusRequester.requestFocus()
+                                    } catch (_: Exception) {}
+                                }
+                            }
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    .testTag("expense_description_input"),
+                label = { Text("কি নিলাম বা কী জন্য? (পণ্যের নাম বা বিবরণ) *") },
+                placeholder = {
+                    Text("যেমন: মাছ, আলু-পেঁয়াজ, চা-নাস্তা বা চাল ১২০০")
+                },
+                trailingIcon = {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier.padding(end = 4.dp)
+                    ) {
+                        VoiceInputButton(
+                            onVoiceResult = handleVoiceResult,
+                            isPillStyle = false,
+                            modifier = Modifier.size(36.dp),
+                            testTag = "desc_field_voice_mic_btn"
+                        )
+                        IconButton(
+                            onClick = { showBarcodeScanner = true },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.QrCodeScanner,
+                                contentDescription = "বারকোড স্ক্যান",
+                                tint = MawaPrimary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 },
-                onDone = {
-                    performSaveExpense()
-                },
-                quickAmounts = listOf(20, 50, 100, 200, 500, 1000),
-                testTag = "expense_amount_input",
-                onVoiceInput = handleVoiceResult
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = {
+                        if (effectiveAmount > 0) {
+                            performSaveExpense()
+                        } else {
+                            coroutineScope.launch {
+                                try {
+                                    amountFocusRequester.requestFocus()
+                                } catch (_: Exception) {}
+                            }
+                        }
+                    }
+                ),
+                shape = RoundedCornerShape(10.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MawaPrimary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                )
             )
+
+            // Suggestion chips for matched products (larger cards with bold fonts and clear pricing)
+            if (matchedExpenseProducts.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(matchedExpenseProducts, key = { it.id }) { p ->
+                        Surface(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    description = p.name
+                                    expenseTarget = QuickExpenseTarget.PURCHASE
+                                    isManualSelection = true
+                                    if (amount.isBlank() && p.defaultPurchasePrice > 0) {
+                                        amount = p.defaultPurchasePrice.toInt().toString()
+                                    }
+                                    coroutineScope.launch {
+                                        kotlinx.coroutines.delay(60)
+                                        try {
+                                            amountFocusRequester.requestFocus()
+                                        } catch (_: Exception) {}
+                                    }
+                                },
+                            color = FinancialPositiveContainer.copy(alpha = 0.7f),
+                            border = BorderStroke(1.dp, FinancialPositive.copy(alpha = 0.4f)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = p.name,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = FinancialPositive
+                                )
+                                if (p.defaultPurchasePrice > 0) {
+                                    Surface(
+                                        color = FinancialPositive.copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(4.dp)
+                                    ) {
+                                        Text(
+                                            text = "৳${p.defaultPurchasePrice.toInt()}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = FinancialPositive,
+                                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             Spacer(modifier = Modifier.height(14.dp))
 
@@ -620,151 +798,42 @@ fun QuickExpenseDrawer(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 3. Description Note with Smart Keyword Classifier
-            val matchedExpenseProducts = remember(description, activeProducts) {
-                if (description.isBlank()) {
-                    if (expenseTarget == QuickExpenseTarget.PURCHASE) activeProducts.take(5) else emptyList()
-                } else {
-                    activeProducts.filter {
-                        it.name.contains(description, ignoreCase = true) ||
-                        it.banglaName.contains(description, ignoreCase = true) ||
-                        it.barcode.contains(description, ignoreCase = true)
-                    }.take(5)
-                }
-            }
-
-            OutlinedTextField(
-                value = description,
-                onValueChange = { input ->
+            // 3. Amount input ("কত টাকা?" Field Second)
+            MawaAmountInput(
+                amount = amount,
+                onAmountChange = {
+                    amount = it
                     successNotice = null
-                    val parsed = com.example.mawa.util.SmartExpenseInputParser.parse(input)
-                    if (parsed != null) {
-                        description = parsed.name
-                        amount = parsed.amountString
-                        if (!isManualSelection && parsed.name.isNotBlank()) {
-                            when (ExpenseClassifier.autoClassifyType(parsed.name)) {
-                                ExpenseClassifier.TYPE_PURCHASE -> expenseTarget = QuickExpenseTarget.PURCHASE
-                                ExpenseClassifier.TYPE_HOME -> expenseTarget = QuickExpenseTarget.HOME
-                                ExpenseClassifier.TYPE_OPERATING_EXPENSE -> expenseTarget = QuickExpenseTarget.SHOP
-                                else -> {}
-                            }
-                        }
-                    } else {
-                        description = input
-                        // Smart Auto-Classification
-                        if (!isManualSelection && input.isNotBlank()) {
-                            when (ExpenseClassifier.autoClassifyType(input)) {
-                                ExpenseClassifier.TYPE_PURCHASE -> expenseTarget = QuickExpenseTarget.PURCHASE
-                                ExpenseClassifier.TYPE_HOME -> expenseTarget = QuickExpenseTarget.HOME
-                                ExpenseClassifier.TYPE_OPERATING_EXPENSE -> expenseTarget = QuickExpenseTarget.SHOP
-                                else -> {}
-                            }
+                },
+                onSmartInput = { smartName, smartAmount ->
+                    if (description.isBlank()) {
+                        description = smartName
+                    }
+                    amount = smartAmount
+                    successNotice = null
+                    if (!isManualSelection && smartName.isNotBlank()) {
+                        when (ExpenseClassifier.autoClassifyType(smartName)) {
+                            ExpenseClassifier.TYPE_PURCHASE -> expenseTarget = QuickExpenseTarget.PURCHASE
+                            ExpenseClassifier.TYPE_HOME -> expenseTarget = QuickExpenseTarget.HOME
+                            ExpenseClassifier.TYPE_OPERATING_EXPENSE -> expenseTarget = QuickExpenseTarget.SHOP
+                            else -> {}
                         }
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .focusRequester(descriptionFocusRequester)
-                    .onKeyEvent { event ->
-                        if (event.type == KeyEventType.KeyUp && (event.key == Key.Enter || event.key == Key.NumPadEnter)) {
-                            performSaveExpense()
-                            focusManager.clearFocus()
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                    .testTag("expense_description_input"),
-                label = { Text("কী জন্য? (পণ্যের নাম বা যেমন: মাছ ৩৫০)") },
-                placeholder = {
-                    Text("যেমন: মাছ ৩৫০, চাল ১২০০ বা চা ২০")
+                label = "কত টাকা? (টাকার অংক লিখুন) *",
+                focusRequester = amountFocusRequester,
+                keyboardType = androidx.compose.ui.text.input.KeyboardType.Number,
+                imeAction = ImeAction.Done,
+                onNext = {
+                    performSaveExpense()
                 },
-                trailingIcon = {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp),
-                        modifier = Modifier.padding(end = 4.dp)
-                    ) {
-                        VoiceInputButton(
-                            onVoiceResult = handleVoiceResult,
-                            isPillStyle = false,
-                            modifier = Modifier.size(36.dp),
-                            testTag = "desc_field_voice_mic_btn"
-                        )
-                        IconButton(
-                            onClick = { showBarcodeScanner = true },
-                            modifier = Modifier.size(36.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.QrCodeScanner,
-                                contentDescription = "বারকোড স্ক্যান",
-                                tint = MawaPrimary,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
+                onDone = {
+                    performSaveExpense()
                 },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = {
-                        performSaveExpense()
-                        focusManager.clearFocus()
-                    }
-                ),
-                shape = RoundedCornerShape(10.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = MawaPrimary,
-                    unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                )
+                quickAmounts = listOf(20, 50, 100, 200, 500, 1000),
+                testTag = "expense_amount_input",
+                onVoiceInput = handleVoiceResult
             )
-
-            if (matchedExpenseProducts.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                LazyRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    items(matchedExpenseProducts, key = { it.id }) { p ->
-                        Surface(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(6.dp))
-                                .clickable {
-                                    description = p.name
-                                    expenseTarget = QuickExpenseTarget.PURCHASE
-                                    isManualSelection = true
-                                    if (amount.isBlank() && p.defaultPurchasePrice > 0) {
-                                        amount = p.defaultPurchasePrice.toInt().toString()
-                                    }
-                                },
-                            color = FinancialPositiveContainer.copy(alpha = 0.6f),
-                            shape = RoundedCornerShape(6.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = p.name,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = FinancialPositive
-                                )
-                                if (p.defaultPurchasePrice > 0) {
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "৳${p.defaultPurchasePrice.toInt()}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
 
             Spacer(modifier = Modifier.height(12.dp))
 
@@ -939,7 +1008,6 @@ fun QuickExpenseDrawer(
             Button(
                 onClick = {
                     performSaveExpense()
-                    focusManager.clearFocus()
                 },
                 enabled = effectiveAmount > 0,
                 modifier = Modifier

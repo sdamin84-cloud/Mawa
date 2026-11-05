@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -78,13 +79,35 @@ fun PersonalCashFlowComparisonChart(
     modifier: Modifier = Modifier
 ) {
     val items = listOf(
-        CashFlowBarItem("ব্যক্তিগত আয়", totalIncome, FinancialPositive),
-        CashFlowBarItem("ব্যক্তিগত খরচ", totalExpense, FinancialNegative),
-        CashFlowBarItem("সংসার খরচ", totalHousehold, FinancialWarning),
-        CashFlowBarItem("সঞ্চয় জমা", totalSavings, Color(0xFF0284C7))
+        CashFlowBarItem(
+            label = "ব্যক্তিগত আয়",
+            amount = totalIncome,
+            color = FinancialPositive,
+            advice = "💡 এই সময়ে মোট ব্যক্তিগত আয়। এর একটি অংশ নিয়মিত সঞ্চয় ফান্ডে জমা রাখা উত্তম।"
+        ),
+        CashFlowBarItem(
+            label = "ব্যক্তিগত খরচ",
+            amount = totalExpense,
+            color = FinancialNegative,
+            advice = "💡 ব্যক্তিগত হাতখরচ, নাস্তা ও দৈনন্দিন খাতের ব্যয়।"
+        ),
+        CashFlowBarItem(
+            label = "সংসার খরচ",
+            amount = totalHousehold,
+            color = FinancialWarning,
+            advice = "💡 সংসার ও পারিবারিক বাজার খরচ (দোকান থেকে নেওয়া টাকা/পণ্যসহ)।"
+        ),
+        CashFlowBarItem(
+            label = "সঞ্চয় জমা",
+            amount = totalSavings,
+            color = Color(0xFF0284C7),
+            advice = "💡 জরুরি ফান্ড ও ভবিষ্যতের জন্য জমাকৃত সঞ্চয়।"
+        )
     )
 
     val maxVal = items.maxOfOrNull { it.amount }?.coerceAtLeast(1.0) ?: 1.0
+    val totalCashFlow = items.sumOf { it.amount }.coerceAtLeast(1.0)
+    var selectedBarIndex by remember { mutableStateOf<Int?>(null) }
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -116,12 +139,12 @@ fun PersonalCashFlowComparisonChart(
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "আর্থিক প্রবাহ তুলনামূলক চার্ট",
+                            text = "আর্থিক প্রবাহ তুলনামূলক বার চার্ট",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "আয়, ব্যয়, সংসার ও সঞ্চয়ের ব্যালেন্স",
+                            text = "যেকোনো বারে টাচ করে বিস্তারিত ও শতকরা অংশ দেখুন",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -131,33 +154,49 @@ fun PersonalCashFlowComparisonChart(
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // Canvas Bar Chart
+            // Touchable Bar Chart
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(140.dp)
-                    .padding(horizontal = 8.dp),
+                    .height(145.dp)
+                    .padding(horizontal = 4.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.Bottom
             ) {
-                items.forEach { item ->
+                items.forEachIndexed { index, item ->
+                    val isSelected = selectedBarIndex == index
                     val ratio = (item.amount / maxVal).toFloat().coerceIn(0.04f, 1f)
                     val animatedHeight by animateFloatAsState(
                         targetValue = ratio,
-                        animationSpec = tween(durationMillis = 650),
-                        label = "bar_ratio"
+                        animationSpec = tween(durationMillis = 600),
+                        label = "cashflow_bar_ratio"
                     )
 
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Bottom,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable {
+                                selectedBarIndex = if (isSelected) null else index
+                            }
+                            .background(
+                                if (isSelected) item.color.copy(alpha = 0.12f)
+                                else Color.Transparent
+                            )
+                            .border(
+                                width = if (isSelected) 1.5.dp else 0.dp,
+                                color = if (isSelected) item.color else Color.Transparent,
+                                shape = RoundedCornerShape(10.dp)
+                            )
+                            .padding(vertical = 4.dp)
                     ) {
                         Text(
                             text = BengaliUtils.formatTaka(item.amount),
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
                             color = item.color,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -165,12 +204,15 @@ fun PersonalCashFlowComparisonChart(
                         Spacer(modifier = Modifier.height(6.dp))
                         Box(
                             modifier = Modifier
-                                .width(32.dp)
-                                .height((100 * animatedHeight).dp)
+                                .width(if (isSelected) 36.dp else 30.dp)
+                                .height((95 * animatedHeight).dp)
                                 .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
                                 .background(
                                     Brush.verticalGradient(
-                                        colors = listOf(item.color, item.color.copy(alpha = 0.7f))
+                                        colors = listOf(
+                                            item.color,
+                                            item.color.copy(alpha = if (isSelected) 0.9f else 0.65f)
+                                        )
                                     )
                                 )
                         )
@@ -179,11 +221,59 @@ fun PersonalCashFlowComparisonChart(
                             text = item.label,
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) item.color else MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+
+            // Interactive Feedback Card for Selected Bar
+            if (selectedBarIndex != null && selectedBarIndex in items.indices) {
+                val sel = items[selectedBarIndex!!]
+                val pct = ((sel.amount / totalCashFlow) * 100).toInt()
+
+                Spacer(modifier = Modifier.height(14.dp))
+                Surface(
+                    color = sel.color.copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, sel.color.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${sel.label}: ${BengaliUtils.formatTaka(sel.amount)}",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = sel.color
+                            )
+                            Surface(
+                                shape = RoundedCornerShape(6.dp),
+                                color = sel.color.copy(alpha = 0.18f)
+                            ) {
+                                Text(
+                                    text = "${BengaliUtils.toBanglaDigits(pct.toLong())}% মোট প্রবাহ",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = sel.color,
+                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = sel.advice,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 11.5.sp
                         )
                     }
                 }
@@ -195,7 +285,8 @@ fun PersonalCashFlowComparisonChart(
 private data class CashFlowBarItem(
     val label: String,
     val amount: Double,
-    val color: Color
+    val color: Color,
+    val advice: String = ""
 )
 
 /**
@@ -585,6 +676,8 @@ fun DailyExpenseTrendBarChart(
 ) {
     if (dailyExpenses.isEmpty()) return
     val maxVal = dailyExpenses.maxOfOrNull { it.second }?.coerceAtLeast(1.0) ?: 1.0
+    val totalPeriodExpense = dailyExpenses.sumOf { it.second }.coerceAtLeast(1.0)
+    var selectedDayIndex by remember { mutableStateOf<Int?>(null) }
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -593,21 +686,34 @@ fun DailyExpenseTrendBarChart(
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "বারে টাচ করুন",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 11.sp
+                )
+            }
             Spacer(modifier = Modifier.height(14.dp))
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(110.dp),
+                    .height(125.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.Bottom
             ) {
-                dailyExpenses.forEach { (label, amount) ->
+                dailyExpenses.forEachIndexed { index, (label, amount) ->
+                    val isSelected = selectedDayIndex == index
                     val ratio = (amount / maxVal).toFloat().coerceIn(0.04f, 1f)
                     val animatedHeight by animateFloatAsState(
                         targetValue = ratio,
@@ -618,14 +724,29 @@ fun DailyExpenseTrendBarChart(
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Bottom,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                selectedDayIndex = if (isSelected) null else index
+                            }
+                            .background(
+                                if (isSelected) FinancialWarning.copy(alpha = 0.12f)
+                                else Color.Transparent
+                            )
+                            .border(
+                                width = if (isSelected) 1.5.dp else 0.dp,
+                                color = if (isSelected) FinancialWarning else Color.Transparent,
+                                shape = RoundedCornerShape(8.dp)
+                            )
+                            .padding(vertical = 4.dp)
                     ) {
                         if (amount > 0) {
                             Text(
                                 text = "৳${BengaliUtils.toBanglaDigits(amount.toInt().toLong())}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Bold,
                                 color = FinancialWarning,
                                 maxLines = 1
                             )
@@ -633,12 +754,15 @@ fun DailyExpenseTrendBarChart(
                         Spacer(modifier = Modifier.height(4.dp))
                         Box(
                             modifier = Modifier
-                                .width(22.dp)
-                                .height((70 * animatedHeight).dp)
+                                .width(if (isSelected) 26.dp else 20.dp)
+                                .height((75 * animatedHeight).dp)
                                 .clip(RoundedCornerShape(topStart = 6.dp, topEnd = 6.dp))
                                 .background(
                                     Brush.verticalGradient(
-                                        colors = listOf(FinancialWarning, FinancialWarning.copy(alpha = 0.6f))
+                                        colors = listOf(
+                                            FinancialWarning,
+                                            FinancialWarning.copy(alpha = if (isSelected) 0.95f else 0.60f)
+                                        )
                                     )
                                 )
                         )
@@ -647,8 +771,44 @@ fun DailyExpenseTrendBarChart(
                             text = label,
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 10.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isSelected) FinancialWarning else MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+            }
+
+            // Selected Day Summary Banner
+            if (selectedDayIndex != null && selectedDayIndex in dailyExpenses.indices) {
+                val (selLabel, selAmount) = dailyExpenses[selectedDayIndex!!]
+                val pct = ((selAmount / totalPeriodExpense) * 100).toInt()
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    color = FinancialWarning.copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, FinancialWarning.copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "$selLabel: ${BengaliUtils.formatTaka(selAmount)} (${BengaliUtils.toBanglaDigits(pct.toLong())}% ব্যয়ের অংশ)",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = FinancialWarning
+                        )
+                        TextButton(
+                            onClick = { selectedDayIndex = null },
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text("মুছুন", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

@@ -1113,6 +1113,158 @@
       body { padding-bottom: 74px; }
       .bottom-cta h2 { font-size: 26px; }
     }
+  
+    /* Interactive Keyword Search Overview Widget */
+    .search-overview-section {
+      background: linear-gradient(180deg, #F0FDF4 0%, #FFFFFF 100%);
+      padding: 70px 0 50px;
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+    .search-box-container {
+      max-width: 850px;
+      margin: 0 auto;
+      text-align: center;
+    }
+    .search-input-wrapper {
+      position: relative;
+      margin: 24px auto 20px;
+      max-width: 680px;
+    }
+    .search-input-wrapper input {
+      width: 100%;
+      padding: 16px 24px 16px 54px;
+      font-size: 17px;
+      font-family: inherit;
+      border: 2px solid var(--primary-light);
+      border-radius: 50px;
+      outline: none;
+      box-shadow: 0 8px 24px rgba(0, 109, 119, 0.08);
+      transition: all 0.3s ease;
+    }
+    .search-input-wrapper input:focus {
+      border-color: var(--primary);
+      box-shadow: 0 10px 30px rgba(0, 109, 119, 0.16);
+    }
+    .search-icon-svg {
+      position: absolute;
+      left: 20px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--primary);
+    }
+    .quick-chips-wrap {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      justify-content: center;
+      margin-bottom: 36px;
+    }
+    .quick-chip {
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 8px 18px;
+      border-radius: 50px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .quick-chip:hover, .quick-chip.active {
+      background: var(--primary);
+      color: #FFFFFF;
+      border-color: var(--primary);
+      transform: translateY(-2px);
+    }
+    .overview-results-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 24px;
+      text-align: left;
+    }
+    .overview-item-card {
+      background: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 26px;
+      box-shadow: var(--shadow-sm);
+      transition: all 0.3s ease;
+      display: flex;
+      flex-direction: column;
+    }
+    .overview-item-card:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--shadow-md);
+      border-color: var(--primary-light);
+    }
+    .overview-item-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .overview-item-title {
+      font-size: 19px;
+      font-weight: 700;
+      color: var(--primary-dark);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .overview-badge {
+      font-size: 12px;
+      padding: 4px 10px;
+      border-radius: 50px;
+      font-weight: 700;
+      background: var(--accent-warm);
+      color: #8D3A24;
+    }
+    .overview-item-desc {
+      font-size: 15px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+      flex-grow: 1;
+      line-height: 1.6;
+    }
+    .overview-how-to {
+      background: #F8FAFB;
+      border-left: 3px solid var(--primary);
+      padding: 12px 16px;
+      border-radius: 0 10px 10px 0;
+      font-size: 13.5px;
+      color: #2D3748;
+      margin-bottom: 16px;
+    }
+    .overview-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .overview-read-link {
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--primary);
+      text-decoration: none;
+    }
+    .overview-read-link:hover {
+      text-decoration: underline;
+    }
+    .overview-apk-btn {
+      background: var(--primary);
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 8px 16px;
+      border-radius: 50px;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
   </style>
 </head>
 <body>
@@ -1130,9 +1282,11 @@
         </a>
 
         <ul class="nav-menu">
-          <li><a href="#features" class="nav-link">ফিচারসমূহ</a></li>
-          <li><a href="#screenshots" class="nav-link">অ্যাপ স্ক্রিনশট</a></li>
-          <li><a href="#install-guide" class="nav-link">ইন্সটল গাইড</a></li>
+          <li><a href="#search-overview" class="nav-link" style="color:var(--primary); font-weight:700;">🔍 হিসাব খুঁজুন</a></li>
+          <li><a href="features/dokaner-hisab.html" class="nav-link">দোকানের হিসাব</a></li>
+          <li><a href="features/baki-khata.html" class="nav-link">বাকির খাতা</a></li>
+          <li><a href="features/voice-expense.html" class="nav-link">ভয়েস খরচ</a></li>
+          <li><a href="blog/index.html" class="nav-link">ব্লগ ও গাইড</a></li>
           <li><a href="#faq" class="nav-link">প্রশ্নোত্তর</a></li>
         </ul>
 
@@ -1240,6 +1394,139 @@
                 <span>যেকোনো স্ক্রিনে ১ ট্যাপে</span>
               </div>
             </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  
+  <!-- Interactive Keyword Search & Instant Overview Section -->
+  <section class="search-overview-section" id="search-overview">
+    <div class="container">
+      <div class="search-box-container">
+        <span class="section-tag">হিসাব সার্চ ও সমাধান</span>
+        <h2 class="section-title">দোকানের যেকোনো হিসাব সমস্যা সার্চ করুন</h2>
+        <p class="section-subtitle">বাকির খাতা, দৈনিক ক্যাশবুক, লাভ-ক্ষতি বা দোকানের মালামালের হিসাব—যেকোনো কিওয়ার্ডে ক্লিক করলেই পাবেন বিস্তারিত সমাধান ও তাৎক্ষণিক গাইড।</p>
+        
+        <div class="search-input-wrapper">
+          <svg class="search-icon-svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input type="text" id="keywordSearchInput" placeholder="লিখুন: যেমন দোকানের হিসাব, বাকির খাতা, ক্যাশবুক, লাভ ক্ষতি..." oninput="filterOverviews(this.value)">
+        </div>
+
+        <!-- Quick Keyword Chips -->
+        <div class="quick-chips-wrap">
+          <button class="quick-chip active" onclick="selectChip('all', this)">সব সমাধান</button>
+          <button class="quick-chip" onclick="selectChip('দোকানের হিসাব', this)">দোকানের হিসাব</button>
+          <button class="quick-chip" onclick="selectChip('বাকির খাতা', this)">বাকির খাতা ও তাগাদা</button>
+          <button class="quick-chip" onclick="selectChip('ক্যাশবুক', this)">দৈনিক ক্যাশবুক</button>
+          <button class="quick-chip" onclick="selectChip('মুখে বলে খরচ', this)">মুখে বলে খরচ</button>
+          <button class="quick-chip" onclick="selectChip('লাভ ক্ষতি', this)">লাভ-ক্ষতি ও বিক্রয়</button>
+          <button class="quick-chip" onclick="selectChip('স্টক হিসাব', this)">মুদি দোকান স্টক</button>
+          <button class="quick-chip" onclick="selectChip('ব্যাকআপ', this)">ক্লাউড ব্যাকআপ</button>
+        </div>
+      </div>
+
+      <!-- Overview Results Grid (Searchable & SEO-Indexed) -->
+      <div class="overview-results-grid" id="overviewGrid">
+        
+        <!-- Card 1: দোকানের হিসাব -->
+        <div class="overview-item-card" data-keywords="দোকানের হিসাব দোকানের হিসাব খাতা ক্যাশবুক বেচাকেনা হিসাব মেলানো">
+          <div class="overview-item-header">
+            <div class="overview-item-title"><span>📒</span> দোকানের সার্বিক হিসাব খাতা</div>
+            <span class="overview-badge">সবচেয়ে জনপ্রিয়</span>
+          </div>
+          <p class="overview-item-desc">দোকানের দৈনন্দিন নগদ ও বাকি বিক্রি, খুচরা খরচ, পাইকারি মহাজনের চালান এবং দিনশেষে ক্যাশ ড্রয়ার নিখুঁতভাবে মেলানোর পূর্ণাঙ্গ ডিজিটাল সমাধান।</p>
+          <div class="overview-how-to">
+            <strong>💡 কীভাবে করবেন:</strong> সকালে প্রারম্ভিক ক্যাশ দিন -> বেচাকেনা ও খরচ রেকর্ড করুন -> রাতে সমাপনী ক্যাশ স্বয়ংক্রিয়ভাবে মিলিয়ে নিন।
+          </div>
+          <div class="overview-actions">
+            <a href="features/dokaner-hisab.html" class="overview-read-link">বিস্তারিত ফিচার দেখুন →</a>
+            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">ফ্রি APK ডাউনলোড</a>
+          </div>
+        </div>
+
+        <!-- Card 2: বাকির খাতা -->
+        <div class="overview-item-card" data-keywords="বাকির খাতা বাকি আদায় কাস্টমার খতিয়ান তাগাদা এসএমএস বকেয়া">
+          <div class="overview-item-header">
+            <div class="overview-item-title"><span>👥</span> স্মার্ট বাকির খাতা ও তাগাদা এসএমএস</div>
+            <span class="overview-badge">০-১৫-৩০ দিন চার্ট</span>
+          </div>
+          <p class="overview-item-desc">গ্রাহকের নাম দিয়ে নিমেষেই খতিয়ান বের করুন। কতদিনের পুরনো বাকি তা কালার চার্টে দেখুন এবং মিষ্টি কথায় ১-ক্লিকে ফ্রি তাগাদা এসএমএস পাঠান।</p>
+          <div class="overview-how-to">
+            <strong>💡 কীভাবে করবেন:</strong> কাস্টমার প্রোফাইল খুলুন -> বাকি বা জমা এন্ট্রি দিন -> 'তাগাদা পাঠান' চেপে সরাসরি বাংলা এসএমএস বা হোয়াটসঅ্যাপ মেসেজ পাঠান।
+          </div>
+          <div class="overview-actions">
+            <a href="features/baki-khata.html" class="overview-read-link">বাকির খাতা ফিচার →</a>
+            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">ফ্রি APK ডাউনলোড</a>
+          </div>
+        </div>
+
+        <!-- Card 3: দৈনিক ক্যাশবুক -->
+        <div class="overview-item-card" data-keywords="ক্যাশবুক দৈনিক ক্যাশবুক ক্যাশ ড্রয়ার মেলানো সমাপনী ক্যাশ ক্যাশ ঘাটতি">
+          <div class="overview-item-header">
+            <div class="overview-item-title"><span>💵</span> দৈনিক ক্যাশবুক ও ড্রয়ার মেলানো</div>
+            <span class="overview-badge">১ পয়সাও গরমিল নেই</span>
+          </div>
+          <p class="overview-item-desc">ক্যাশ ড্রয়ারে ১ পয়সাও যেন ঘাটতি না থাকে সেজন্য রয়েছে অটোমেটেড ক্যাশবুক ব্যালেন্সিং। বিক্রি ও খরচ যোগ-বিয়োগ হয়ে ড্রয়ারের মোট টাকা স্ক্রিনে ফুটে ওঠে।</p>
+          <div class="overview-how-to">
+            <strong>💡 কীভাবে করবেন:</strong> দৈনিক ক্যাশবুক ওপেন করুন -> ড্রয়ারের মোট টাকার সাথে স্ক্রিনের সমাপনী ব্যালেন্স মিলিয়ে নিন।
+          </div>
+          <div class="overview-actions">
+            <a href="blog/daily-cashbook-closing-guide.html" class="overview-read-link">ক্যাশবুক গাইড পড়ুন →</a>
+            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">ফ্রি APK ডাউনলোড</a>
+          </div>
+        </div>
+
+        <!-- Card 4: মুখে বলে খরচ -->
+        <div class="overview-item-card" data-keywords="মুখে বলে খরচ ভয়েস ক্যাশবুক বাংলা ভয়েস ইনপুট টাইপিং ছাড়া খরচ">
+          <div class="overview-item-header">
+            <div class="overview-item-title"><span>🎙️</span> বাংলায় মুখে বলে খরচ এন্ট্রি</div>
+            <span class="overview-badge">টাইপ ছাড়া</span>
+          </div>
+          <p class="overview-item-desc">দোকানে কাজের ভিড়ে লিখতে পারেন না? বাংলায় মুখে বলুন 'চা নাস্তা ৫০ টাকা'—অ্যাপ নিজে থেকেই তারিখ ও ক্যাটাগরি অনুযায়ী খরচের হিসাবে যোগ করে নেবে।</p>
+          <div class="overview-how-to">
+            <strong>💡 কীভাবে করবেন:</strong> খরচের ঘরে মাইক আইকনে চাপ দিন -> বাংলায় মুখে বলুন -> স্বয়ংক্রিয়ভাবে সেভ হয়ে যাবে।
+          </div>
+          <div class="overview-actions">
+            <a href="features/voice-expense.html" class="overview-read-link">ভয়েস ফিচার দেখুন →</a>
+            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">ফ্রি APK ডাউনলোড</a>
+          </div>
+        </div>
+
+        <!-- Card 5: লাভ ক্ষতি ও বিক্রয় -->
+        <div class="overview-item-card" data-keywords="লাভ ক্ষতি লাভ বের করার উপায় দৈনিক বিক্রয় নিট প্রফিট মার্জিন">
+          <div class="overview-item-header">
+            <div class="overview-item-title"><span>📈</span> লাভ-ক্ষতি ও দৈনিক বিক্রয় রিপোর্ট</div>
+            <span class="overview-badge">নিট মুনাফা</span>
+          </div>
+          <p class="overview-item-desc">পণ্য কেনার দাম ও বেচার দামের পার্থক্য থেকে গ্রস লাভ এবং দোকানের খরচ বাদ দিয়ে নিট লাভ কত টিকে থাকল তা চার্ট ও গ্রাফে এক পলকে দেখে নিন।</p>
+          <div class="overview-how-to">
+            <strong>💡 কীভাবে করবেন:</strong> রিপোর্ট ট্যাবে ক্লিক করুন -> দৈনিক, সাপ্তাহিক বা মাসিক ফিল্টার দিয়ে আসল নিট লাভ দেখুন।
+          </div>
+          <div class="overview-actions">
+            <a href="features/profit-loss-report.html" class="overview-read-link">রিপোর্ট ফিচার দেখুন →</a>
+            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">ফ্রি APK ডাউনলোড</a>
+          </div>
+        </div>
+
+        <!-- Card 6: মুদি দোকান স্টক -->
+        <div class="overview-item-card" data-keywords="মুদি দোকান স্টক হিসাব ইনভেন্টরি পণ্যের তালিকা পাইকারি ক্রয়">
+          <div class="overview-item-header">
+            <div class="overview-item-title"><span>🛒</span> মুদি দোকানের স্টক ও মালামালের হিসাব</div>
+            <span class="overview-badge">মুদি স্পেশাল</span>
+          </div>
+          <p class="overview-item-desc">কোন মালামাল ফুরিয়ে যাচ্ছে, কোন পণ্যে বেশি লাভ এবং মেয়াদোত্তীর্ণ পণ্য নষ্ট হওয়া কীভাবে রোধ করবেন তা পরিচালনা করার স্মার্ট টেকনিক।</p>
+          <div class="overview-how-to">
+            <strong>💡 কীভাবে করবেন:</strong> স্টক ও ইনভেন্টরি গাইড অনুসরণ করে ফাস্ট-মুভিং পণ্যগুলো আগে রিঅর্ডার করুন।
+          </div>
+          <div class="overview-actions">
+            <a href="blog/mudi-dokan-stock-hisab.html" class="overview-read-link">মুদি স্টক গাইড পড়ুন →</a>
+            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">ফ্রি APK ডাউনলোড</a>
           </div>
         </div>
 
@@ -1466,21 +1753,24 @@
         </div>
 
         <div class="footer-col">
-          <h5>গুরুত্বপূর্ণ লিংক</h5>
+          <h5>ফিচারসমূহ</h5>
           <ul>
-            <li><a href="#features">ফিচারসমূহ</a></li>
-            <li><a href="#screenshots">স্ক্রিনশট গ্যালারি</a></li>
-            <li><a href="#install-guide">ইন্সটল করার নিয়ম</a></li>
+            <li><a href="features/dokaner-hisab.html">দোকানের হিসাব খাতা</a></li>
+            <li><a href="features/baki-khata.html">বাকির খাতা ও তাগাদা</a></li>
+            <li><a href="features/voice-expense.html">ভয়েস খরচ এন্ট্রি</a></li>
+            <li><a href="features/profit-loss-report.html">লাভ-ক্ষতি ও বিক্রয় রিপোর্ট</a></li>
             <li><a href="#faq">প্রশ্নোত্তর</a></li>
           </ul>
         </div>
 
         <div class="footer-col">
-          <h5>নিরাপত্তা ও শর্তাবলী</h5>
+          <h5>ব্লগ ও ব্যবসা গাইড</h5>
           <ul>
-            <li><a href="#">গোপনীয়তা নীতি (Privacy)</a></li>
-            <li><a href="#">শর্তাবলী (Terms)</a></li>
-            <li><a href="mawa-digital-khata.apk" download="Mawa-Digital-Khata-v2.4.apk">সরাসরি APK ডাউনলোড</a></li>
+            <li><a href="blog/dokaner-hisab-rakhar-shohoj-upay.html">দোকানের হিসাবের সহজ উপায়</a></li>
+            <li><a href="blog/baki-takeda-sms-tips.html">বাকি আদায়ের ৫টি কৌশল</a></li>
+            <li><a href="blog/daily-cashbook-closing-guide.html">ক্যাশবুক মিলানোর নিয়ম</a></li>
+            <li><a href="blog/mudi-dokan-stock-hisab.html">মুদি দোকান স্টক হিসাব</a></li>
+            <li><a href="mawa-digital-khata.apk" download="Mawa-Digital-Khata-v2.4.apk">সরাসরি APK ডাউনলোড (৩৬ MB)</a></li>
           </ul>
         </div>
       </div>

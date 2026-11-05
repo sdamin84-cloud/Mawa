@@ -22,7 +22,9 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountBalance
 import androidx.compose.material.icons.filled.Add
@@ -135,8 +137,8 @@ import java.util.Date
 import java.util.Locale
 
 enum class PersonalSubTab(val labelBn: String, val labelEn: String, val icon: ImageVector) {
-    PERSONAL("ব্যক্তিগত খাতা", "Personal", Icons.Default.Person),
-    HOUSEHOLD("সংসার ও বাড়ি", "Household", Icons.Default.Home),
+    PERSONAL("ব্যক্তিগত", "Personal", Icons.Default.Person),
+    HOUSEHOLD("সংসার", "Household", Icons.Default.Home),
     LOANS("ধার-দেনা", "Loans", Icons.Default.Handshake),
     BUDGET_REPORTS("বাজেট ও রিপোর্ট", "Budget & Reports", Icons.Default.Analytics);
 
@@ -223,7 +225,7 @@ fun PersonalScreen(
         color = MaterialTheme.colorScheme.background
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Compact Header without redundant Bengali title/subtitle
+            // Clean Minimalist Top Bar
             if (onOpenDrawer != null) {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
@@ -233,12 +235,25 @@ fun PersonalScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         IconButton(onClick = onOpenDrawer) {
                             Icon(imageVector = Icons.Default.Menu, contentDescription = "মেনু")
+                        }
+                        Text(
+                            text = "ব্যক্তিগত খাতা",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        IconButton(onClick = { showReportDialog = true }) {
+                            Icon(
+                                imageVector = Icons.Default.Print,
+                                contentDescription = "রিপোর্ট",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -565,7 +580,7 @@ fun PersonalScreen(
                         label = { Text("টাকার পরিমাণ (৳) *") },
                         placeholder = { Text("0") },
                         prefix = { Text("৳ ", fontWeight = FontWeight.Bold) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Next),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -577,6 +592,16 @@ fun PersonalScreen(
                         onValueChange = { expenseDesc = it },
                         label = { Text("কী জন্য খরচ *") },
                         singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(
+                            onDone = {
+                                val amt = expenseAmount.toDoubleOrNull() ?: 0.0
+                                if (amt > 0) {
+                                    viewModel.recordExpense(amount = amt, description = expenseDesc, isHome = true)
+                                    showHouseholdAddExpenseDialog = false
+                                }
+                            }
+                        ),
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -708,7 +733,7 @@ private fun PersonalLedgerView(
             }
         }
 
-        // Hero Card
+        // Clean Unified Hero Card with Integrated Actions
         item {
             PersonalMonthlyHeroCard(
                 summary = summary,
@@ -717,26 +742,6 @@ private fun PersonalLedgerView(
                 onQuickAdd = onQuickAdd,
                 onOpenReport = onOpenReportDialog
             )
-        }
-
-        // Fast Entry Action Bar
-        item {
-            PersonalFastEntryBanner(
-                onAddExpense = { onQuickAdd(PersonalTransactionType.EXPENSE) },
-                onAddIncome = { onQuickAdd(PersonalTransactionType.INCOME) },
-                onAddSavings = { onQuickAdd(PersonalTransactionType.SAVINGS) },
-                onOpenReport = onOpenReportDialog
-            )
-        }
-
-        // Category-wise Spending
-        if (summary.categoryBreakdown.isNotEmpty()) {
-            item {
-                PersonalCategorySpendingSection(
-                    categoryList = summary.categoryBreakdown,
-                    totalExpense = summary.totalExpense
-                )
-            }
         }
 
         // Search and Filter Bar
@@ -1445,133 +1450,193 @@ private fun PersonalMonthlyHeroCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(24.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(22.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f))
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(18.dp)
         ) {
-            // Main Top Title: "এই মাসের খরচ" + Report Button
+            // Header Row: Label & Time Filter Pills
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .clip(CircleShape)
+                            .background(if (summary.netBalance >= 0) FinancialPositive else FinancialNegative)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = "${timeFilter.banglaLabel} খরচ",
-                        style = MaterialTheme.typography.bodyMedium,
+                        text = "অবশিষ্ট ক্যাশ ব্যালেন্স",
+                        style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = BengaliUtils.formatTaka(summary.totalExpense),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
                 }
 
-                Surface(
-                    color = if (summary.netBalance >= 0) FinancialPositive.copy(alpha = 0.12f) else FinancialNegative.copy(alpha = 0.12f),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = if (summary.netBalance >= 0) Icons.Default.TrendingUp else Icons.Default.ArrowDownward,
-                            contentDescription = null,
-                            tint = if (summary.netBalance >= 0) FinancialPositive else FinancialNegative,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "অবশিষ্ট: ${BengaliUtils.formatTaka(summary.netBalance)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = if (summary.netBalance >= 0) FinancialPositive else FinancialNegative
-                        )
+                // Sleek Time Filter Row
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TimeFilter.values().forEach { filter ->
+                        val isSelected = timeFilter == filter
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onTimeFilterSelected(filter) }
+                        ) {
+                            Text(
+                                text = when (filter) {
+                                    TimeFilter.TODAY -> "আজ"
+                                    TimeFilter.THIS_WEEK -> "সপ্তাহ"
+                                    TimeFilter.THIS_MONTH -> "মাস"
+                                    TimeFilter.ALL_TIME -> "সব"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 11.sp,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-            // Time Filter Row
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxWidth()
+            // Big Bold Clean Net Balance
+            Text(
+                text = BengaliUtils.formatTaka(summary.netBalance),
+                style = MaterialTheme.typography.headlineLarge,
+                fontWeight = FontWeight.ExtraBold,
+                color = if (summary.netBalance >= 0) MaterialTheme.colorScheme.onSurface else FinancialNegative,
+                letterSpacing = (-0.5).sp
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Clean 3-Metric Strip: মোট আয় • মোট খরচ • সঞ্চয়
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                items(TimeFilter.values()) { filter ->
-                    val isSelected = timeFilter == filter
-                    FilterChip(
-                        selected = isSelected,
-                        onClick = { onTimeFilterSelected(filter) },
-                        label = {
-                            Text(
-                                text = filter.banglaLabel,
-                                fontSize = 12.sp,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                            )
-                        },
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.primary,
-                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
-                        )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(FinancialPositive))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "আয়: ${BengaliUtils.formatTaka(summary.totalIncome)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = FinancialPositive
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(FinancialNegative))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "খরচ: ${BengaliUtils.formatTaka(summary.totalExpense)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = FinancialNegative
+                    )
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(Color(0xFF0284C7)))
+                    Spacer(Modifier.width(4.dp))
+                    Text(
+                        text = "সঞ্চয়: ${BengaliUtils.formatTaka(summary.totalSavings)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color(0xFF0284C7)
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
-            HorizontalDivider(thickness = 0.5.dp, color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-            Spacer(modifier = Modifier.height(14.dp))
 
-            // 3-Metric Row: মোট আয় | মোট খরচ | সঞ্চয়
+            // 3 Modern Action Buttons: [ ＋ খরচ ] [ ＋ আয় ] [ ＋ সঞ্চয় ]
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                MetricColumn(
-                    title = "মোট আয়",
-                    amount = summary.totalIncome,
-                    color = FinancialPositive,
-                    modifier = Modifier.weight(1f)
-                )
-
-                Box(
+                Surface(
                     modifier = Modifier
-                        .width(1.dp)
-                        .height(36.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                )
+                        .weight(1f)
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onQuickAdd(PersonalTransactionType.EXPENSE) },
+                    color = FinancialNegative.copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, FinancialNegative.copy(alpha = 0.25f))
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.ArrowDownward, null, tint = FinancialNegative, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("খরচ", fontWeight = FontWeight.Bold, color = FinancialNegative, fontSize = 13.sp)
+                    }
+                }
 
-                MetricColumn(
-                    title = "মোট খরচ",
-                    amount = summary.totalExpense,
-                    color = FinancialNegative,
-                    modifier = Modifier.weight(1f)
-                )
-
-                Box(
+                Surface(
                     modifier = Modifier
-                        .width(1.dp)
-                        .height(36.dp)
-                        .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                )
+                        .weight(1f)
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onQuickAdd(PersonalTransactionType.INCOME) },
+                    color = FinancialPositive.copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, FinancialPositive.copy(alpha = 0.25f))
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.ArrowUpward, null, tint = FinancialPositive, modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("আয়", fontWeight = FontWeight.Bold, color = FinancialPositive, fontSize = 13.sp)
+                    }
+                }
 
-                MetricColumn(
-                    title = "সঞ্চয়",
-                    amount = summary.totalSavings,
-                    color = FinancialWarning,
-                    modifier = Modifier.weight(1f)
-                )
+                Surface(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .clickable { onQuickAdd(PersonalTransactionType.SAVINGS) },
+                    color = Color(0xFF0284C7).copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.25f))
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Savings, null, tint = Color(0xFF0284C7), modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(4.dp))
+                        Text("সঞ্চয়", fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), fontSize = 13.sp)
+                    }
+                }
             }
         }
     }
@@ -1745,8 +1810,8 @@ private fun PersonalFastEntryBanner(
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 6.dp),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Column(
             modifier = Modifier
@@ -1759,8 +1824,8 @@ private fun PersonalFastEntryBanner(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "＋ দ্রুত হিসাব যোগ করুন",
-                    style = MaterialTheme.typography.labelLarge,
+                    text = "⚡ দ্রুত এন্ট্রি যোগ করুন",
+                    style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -1801,7 +1866,7 @@ private fun PersonalFastEntryBanner(
                 QuickTypeButton(
                     label = "সঞ্চয়",
                     icon = Icons.Default.Savings,
-                    color = FinancialWarning,
+                    color = Color(0xFF0284C7),
                     onClick = onAddSavings,
                     modifier = Modifier.weight(1f),
                     testTag = "btn_add_savings"

@@ -338,6 +338,7 @@ fun BakiCreditVsCollectionChart(
     val recoveryRate = if (totalTurnover > 0) {
         ((todayJomaCollected / totalTurnover) * 100).toInt()
     } else 0
+    var selectedBarType by remember { mutableStateOf<String?>(null) }
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -358,7 +359,7 @@ fun BakiCreditVsCollectionChart(
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "আজকের বাকি বৃদ্ধি ও নগদ আদায় অনুপাত",
+                        text = "বারে টাচ করে অনুপাত ও বিশ্লেষণ দেখুন",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -383,49 +384,125 @@ fun BakiCreditVsCollectionChart(
             // Bars
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 // Baki Given
+                val isBakiSelected = selectedBarType == "BAKI"
                 val bakiRatio = (todayBakiGiven / maxVal).toFloat().coerceIn(0f, 1f)
                 val animatedBaki by animateFloatAsState(targetValue = bakiRatio, animationSpec = tween(600), label = "baki_bar")
-                Column {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { selectedBarType = if (isBakiSelected) null else "BAKI" }
+                        .background(if (isBakiSelected) FinancialNegative.copy(alpha = 0.08f) else Color.Transparent)
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("আজকের নতুন বাকি", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(BengaliUtils.formatTaka(todayBakiGiven), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = FinancialNegative)
+                        Text(
+                            "আজকের নতুন বাকি",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isBakiSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isBakiSelected) FinancialNegative else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            BengaliUtils.formatTaka(todayBakiGiven),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = FinancialNegative
+                        )
                     }
-                    Spacer(modifier = Modifier.height(3.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     LinearProgressIndicator(
                         progress = { animatedBaki },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)),
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(5.dp)),
                         color = FinancialNegative,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
                 }
 
                 // Joma Collected
+                val isJomaSelected = selectedBarType == "JOMA"
                 val jomaRatio = (todayJomaCollected / maxVal).toFloat().coerceIn(0f, 1f)
                 val animatedJoma by animateFloatAsState(targetValue = jomaRatio, animationSpec = tween(600), label = "joma_bar")
-                Column {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { selectedBarType = if (isJomaSelected) null else "JOMA" }
+                        .background(if (isJomaSelected) FinancialPositive.copy(alpha = 0.08f) else Color.Transparent)
+                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("আজকের নগদ বাকি আদায়", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(BengaliUtils.formatTaka(todayJomaCollected), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = FinancialPositive)
+                        Text(
+                            "আজকের নগদ বাকি আদায়",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isJomaSelected) FontWeight.Bold else FontWeight.Normal,
+                            color = if (isJomaSelected) FinancialPositive else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Text(
+                            BengaliUtils.formatTaka(todayJomaCollected),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = FinancialPositive
+                        )
                     }
-                    Spacer(modifier = Modifier.height(3.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     LinearProgressIndicator(
                         progress = { animatedJoma },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(4.dp)),
+                            .height(10.dp)
+                            .clip(RoundedCornerShape(5.dp)),
                         color = FinancialPositive,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant
                     )
+                }
+            }
+
+            // Interactive Feedback for Clicked Bar
+            if (selectedBarType != null) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Surface(
+                    color = (if (selectedBarType == "BAKI") FinancialNegative else FinancialPositive).copy(alpha = 0.10f),
+                    shape = RoundedCornerShape(10.dp),
+                    border = BorderStroke(1.dp, (if (selectedBarType == "BAKI") FinancialNegative else FinancialPositive).copy(alpha = 0.35f)),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (selectedBarType == "BAKI") "⚠️ নতুন বাকি: ${BengaliUtils.formatTaka(todayBakiGiven)}" else "✅ নগদ আদায়: ${BengaliUtils.formatTaka(todayJomaCollected)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selectedBarType == "BAKI") FinancialNegative else FinancialPositive
+                            )
+                            Text(
+                                text = if (selectedBarType == "BAKI") "মোট বাকির তুলনায় আদায় বাড়ানোর চেষ্টা করুন।" else "বাকি থেকে নিয়মিত নগদ আদায় দোকানের ক্যাশ প্রবাহ সুস্থ রাখে।",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = 10.5.sp
+                            )
+                        }
+                        TextButton(
+                            onClick = { selectedBarType = null },
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Text("মুছুন", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             }
         }

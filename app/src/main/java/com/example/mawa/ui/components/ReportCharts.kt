@@ -9,7 +9,9 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -216,6 +218,7 @@ fun InteractiveTrendChart(
     var selectedPointIndex by remember(dailyPoints) {
         mutableStateOf(if (dailyPoints.isNotEmpty()) dailyPoints.size - 1 else -1)
     }
+    var isBarChartMode by remember { mutableStateOf(true) }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -233,7 +236,10 @@ fun InteractiveTrendChart(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Icon(
                         imageVector = Icons.Default.ShowChart,
                         contentDescription = null,
@@ -243,17 +249,55 @@ fun InteractiveTrendChart(
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "দৈনিক হিসাবের আপ-ডাউন রেখা",
+                            text = if (isBarChartMode) "দৈনিক হিসাবের বার চার্ট" else "দৈনিক হিসাবের আপ-ডাউন রেখা",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "পয়েন্টে চাপ দিলে ওই দিনের বিস্তারিত দেখা যাবে",
+                            text = "যেকোনো স্তম্ভে টাচ করলে ওই দিনের বিস্তারিত দেখা যাবে",
                             style = MaterialTheme.typography.bodySmall,
                             fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                    }
+                }
+
+                // Bar vs Line Toggle
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                ) {
+                    Row(modifier = Modifier.padding(2.dp)) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (isBarChartMode) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                .clickable { isBarChartMode = true }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "📊 বার",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isBarChartMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (!isBarChartMode) MaterialTheme.colorScheme.primary else Color.Transparent)
+                                .clickable { isBarChartMode = false }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "📈 রেখা",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = if (!isBarChartMode) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }
@@ -356,172 +400,307 @@ fun InteractiveTrendChart(
                     colors = listOf(lineColor.copy(alpha = 0.35f), lineColor.copy(alpha = 0.02f))
                 )
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(190.dp)
-                ) {
-                    Canvas(
+                if (isBarChartMode) {
+                    // Clickable Touchable Vertical Bar Chart Mode
+                    val barMaxVal = if (isCombined) {
+                        dailyPoints.flatMap { listOf(it.totalSales, it.purchases, it.expenses, it.profit) }.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
+                    } else {
+                        dailyPoints.map { pt ->
+                            when (selectedMetric) {
+                                TrendMetric.COMBINED -> pt.totalSales
+                                TrendMetric.SALES -> pt.totalSales
+                                TrendMetric.PURCHASES -> pt.purchases
+                                TrendMetric.EXPENSES -> pt.expenses
+                                TrendMetric.PROFIT -> pt.profit
+                            }
+                        }.maxOrNull()?.coerceAtLeast(1.0) ?: 1.0
+                    }
+
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(dailyPoints) {
-                                detectTapGestures { offset ->
-                                    val pointWidth = size.width / (dailyPoints.size.coerceAtLeast(1))
-                                    val index = (offset.x / pointWidth).toInt().coerceIn(0, dailyPoints.size - 1)
-                                    selectedPointIndex = index
-                                }
-                            }
+                            .fillMaxWidth()
+                            .height(205.dp)
                     ) {
-                        val canvasWidth = size.width
-                        val canvasHeight = size.height
-                        val paddingBottom = 28.dp.toPx()
-                        val paddingTop = 16.dp.toPx()
-                        val availableHeight = canvasHeight - paddingBottom - paddingTop
-
-                        // Draw Grid Horizontal Lines
-                        val gridLines = 3
-                        for (i in 0..gridLines) {
-                            val y = paddingTop + availableHeight * (i.toFloat() / gridLines)
-                            drawLine(
-                                color = Color.Gray.copy(alpha = 0.15f),
-                                start = Offset(0f, y),
-                                end = Offset(canvasWidth, y),
-                                strokeWidth = 1.dp.toPx(),
-                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
-                            )
-                        }
-
-                        val n = dailyPoints.size
-                        val stepX = if (n > 1) canvasWidth / (n - 1) else canvasWidth / 2
-
-                        fun calculateY(v: Double): Float {
-                            val normalized = ((v - minVal) / range).toFloat()
-                            return paddingTop + availableHeight * (1f - normalized)
-                        }
-
-                        fun drawSeriesCurve(
-                            seriesValues: List<Double>,
-                            color: Color,
-                            strokeW: Float,
-                            drawFill: Boolean = false
-                        ): List<Offset> {
-                            val pts = seriesValues.mapIndexed { idx, v ->
-                                val x = if (n > 1) idx * stepX else canvasWidth / 2
-                                Offset(x, calculateY(v))
-                            }
-                            if (pts.isEmpty()) return pts
-
-                            val linePath = Path().apply {
-                                moveTo(pts[0].x, pts[0].y)
-                                for (i in 1 until pts.size) {
-                                    val p0 = pts[i - 1]
-                                    val p1 = pts[i]
-                                    val controlX = (p0.x + p1.x) / 2
-                                    cubicTo(controlX, p0.y, controlX, p1.y, p1.x, p1.y)
-                                }
-                            }
-
-                            if (drawFill) {
-                                val fillPath = Path().apply {
-                                    addPath(linePath)
-                                    lineTo(pts.last().x, canvasHeight - paddingBottom)
-                                    lineTo(pts.first().x, canvasHeight - paddingBottom)
-                                    close()
-                                }
-                                drawPath(fillPath, brush = Brush.verticalGradient(
-                                    listOf(color.copy(alpha = 0.28f), color.copy(alpha = 0.01f))
-                                ))
-                            }
-
-                            drawPath(
-                                path = linePath,
-                                color = color,
-                                style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
-                            )
-                            return pts
-                        }
-
-                        if (isCombined) {
-                            // Draw 4 curves
-                            val salesPts = drawSeriesCurve(dailyPoints.map { it.totalSales }, Color(0xFF10B981), 2.5.dp.toPx(), drawFill = true)
-                            val purchasePts = drawSeriesCurve(dailyPoints.map { it.purchases }, Color(0xFF3B82F6), 2.5.dp.toPx())
-                            val expensePts = drawSeriesCurve(dailyPoints.map { it.expenses }, Color(0xFFEF4444), 2.0.dp.toPx())
-                            val profitPts = drawSeriesCurve(dailyPoints.map { it.profit }, Color(0xFF8B5CF6), 2.0.dp.toPx())
-
-                            // Selected index vertical line
-                            if (selectedPointIndex in dailyPoints.indices) {
-                                val curX = if (n > 1) selectedPointIndex * stepX else canvasWidth / 2
-                                drawLine(
-                                    color = Color(0xFF0D9488).copy(alpha = 0.6f),
-                                    start = Offset(curX, paddingTop),
-                                    end = Offset(curX, canvasHeight - paddingBottom),
-                                    strokeWidth = 1.5.dp.toPx(),
-                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
-                                )
-
-                                listOf(
-                                    salesPts to Color(0xFF10B981),
-                                    purchasePts to Color(0xFF3B82F6),
-                                    expensePts to Color(0xFFEF4444),
-                                    profitPts to Color(0xFF8B5CF6)
-                                ).forEach { (ptsList, col) ->
-                                    if (selectedPointIndex in ptsList.indices) {
-                                        val pt = ptsList[selectedPointIndex]
-                                        drawCircle(color = Color.White, radius = 5.dp.toPx(), center = pt)
-                                        drawCircle(color = col, radius = 3.5.dp.toPx(), center = pt)
-                                    }
-                                }
-                            }
-                        } else {
-                            val values = dailyPoints.map { pt ->
-                                when (selectedMetric) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            items(dailyPoints.size) { index ->
+                                val pt = dailyPoints[index]
+                                val isSelected = index == selectedPointIndex
+                                val mainVal = when (selectedMetric) {
+                                    TrendMetric.COMBINED -> pt.totalSales
                                     TrendMetric.SALES -> pt.totalSales
                                     TrendMetric.PURCHASES -> pt.purchases
                                     TrendMetric.EXPENSES -> pt.expenses
                                     TrendMetric.PROFIT -> pt.profit
-                                    else -> pt.totalSales
                                 }
-                            }
-                            val pts = drawSeriesCurve(values, lineColor, 3.dp.toPx(), drawFill = true)
+                                val ratio = (mainVal / barMaxVal).toFloat().coerceIn(0.04f, 1f)
+                                val animatedRatio by animateFloatAsState(
+                                    targetValue = ratio,
+                                    animationSpec = tween(450),
+                                    label = "report_bar_ratio"
+                                )
 
-                            pts.forEachIndexed { idx, pt ->
-                                val isSelected = idx == selectedPointIndex
-                                if (isSelected) {
-                                    drawLine(
-                                        color = lineColor.copy(alpha = 0.5f),
-                                        start = Offset(pt.x, paddingTop),
-                                        end = Offset(pt.x, canvasHeight - paddingBottom),
-                                        strokeWidth = 1.5.dp.toPx(),
-                                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Bottom,
+                                    modifier = Modifier
+                                        .widthIn(min = 52.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable { selectedPointIndex = index }
+                                        .background(
+                                            if (isSelected) selectedMetric.color.copy(alpha = 0.14f)
+                                            else Color.Transparent
+                                        )
+                                        .border(
+                                            width = if (isSelected) 1.5.dp else 0.dp,
+                                            color = if (isSelected) selectedMetric.color else Color.Transparent,
+                                            shape = RoundedCornerShape(10.dp)
+                                        )
+                                        .padding(horizontal = 4.dp, vertical = 6.dp)
+                                ) {
+                                    if (mainVal > 0) {
+                                        Text(
+                                            text = "৳${BengaliUtils.toBanglaDigits(mainVal.toInt().toLong())}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 9.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isSelected) selectedMetric.color else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                    }
+
+                                    if (isCombined) {
+                                        // 4 distinct vertical bars for Combined view
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(2.dp),
+                                            verticalAlignment = Alignment.Bottom,
+                                            modifier = Modifier.height(115.dp)
+                                        ) {
+                                            listOf(
+                                                pt.totalSales to Color(0xFF10B981),
+                                                pt.purchases to Color(0xFF3B82F6),
+                                                pt.expenses to Color(0xFFEF4444),
+                                                pt.profit to Color(0xFF8B5CF6)
+                                            ).forEach { (v, col) ->
+                                                val miniRatio = (v / barMaxVal).toFloat().coerceIn(0.04f, 1f)
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(7.dp)
+                                                        .height((110 * miniRatio).dp)
+                                                        .clip(RoundedCornerShape(topStart = 3.dp, topEnd = 3.dp))
+                                                        .background(col)
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        // Single metric vertical bar
+                                        Box(
+                                            modifier = Modifier
+                                                .width(if (isSelected) 28.dp else 22.dp)
+                                                .height((115 * animatedRatio).dp)
+                                                .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
+                                                .background(
+                                                    Brush.verticalGradient(
+                                                        colors = listOf(
+                                                            selectedMetric.color,
+                                                            selectedMetric.color.copy(alpha = if (isSelected) 0.88f else 0.60f)
+                                                        )
+                                                    )
+                                                )
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.height(6.dp))
+
+                                    Text(
+                                        text = pt.dateLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) selectedMetric.color else MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1
                                     )
-                                    drawCircle(color = lineColor.copy(alpha = 0.3f), radius = 12.dp.toPx(), center = pt)
-                                    drawCircle(color = lineColor, radius = 6.dp.toPx(), center = pt)
-                                    drawCircle(color = Color.White, radius = 3.dp.toPx(), center = pt)
-                                } else {
-                                    drawCircle(color = Color.White, radius = 4.5.dp.toPx(), center = pt)
-                                    drawCircle(color = lineColor, radius = 3.dp.toPx(), center = pt)
+                                    Text(
+                                        text = pt.dayLabel,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 8.5.sp,
+                                        color = MaterialTheme.colorScheme.outline,
+                                        maxLines = 1
+                                    )
                                 }
                             }
                         }
                     }
-                }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(190.dp)
+                    ) {
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .pointerInput(dailyPoints) {
+                                    detectTapGestures { offset ->
+                                        val pointWidth = size.width / (dailyPoints.size.coerceAtLeast(1))
+                                        val index = (offset.x / pointWidth).toInt().coerceIn(0, dailyPoints.size - 1)
+                                        selectedPointIndex = index
+                                    }
+                                }
+                        ) {
+                            val canvasWidth = size.width
+                            val canvasHeight = size.height
+                            val paddingBottom = 28.dp.toPx()
+                            val paddingTop = 16.dp.toPx()
+                            val availableHeight = canvasHeight - paddingBottom - paddingTop
 
-                // X-Axis Date Labels Row
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    val labelStep = (dailyPoints.size / 5).coerceAtLeast(1)
-                    dailyPoints.forEachIndexed { index, pt ->
-                        if (index % labelStep == 0 || index == dailyPoints.size - 1) {
-                            Text(
-                                text = pt.dateLabel,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 9.5.sp,
-                                color = if (index == selectedPointIndex) selectedMetric.color else MaterialTheme.colorScheme.outline
-                            )
+                            // Draw Grid Horizontal Lines
+                            val gridLines = 3
+                            for (i in 0..gridLines) {
+                                val y = paddingTop + availableHeight * (i.toFloat() / gridLines)
+                                drawLine(
+                                    color = Color.Gray.copy(alpha = 0.15f),
+                                    start = Offset(0f, y),
+                                    end = Offset(canvasWidth, y),
+                                    strokeWidth = 1.dp.toPx(),
+                                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
+                                )
+                            }
+
+                            val n = dailyPoints.size
+                            val stepX = if (n > 1) canvasWidth / (n - 1) else canvasWidth / 2
+
+                            fun calculateY(v: Double): Float {
+                                val normalized = ((v - minVal) / range).toFloat()
+                                return paddingTop + availableHeight * (1f - normalized)
+                            }
+
+                            fun drawSeriesCurve(
+                                seriesValues: List<Double>,
+                                color: Color,
+                                strokeW: Float,
+                                drawFill: Boolean = false
+                            ): List<Offset> {
+                                val pts = seriesValues.mapIndexed { idx, v ->
+                                    val x = if (n > 1) idx * stepX else canvasWidth / 2
+                                    Offset(x, calculateY(v))
+                                }
+                                if (pts.isEmpty()) return pts
+
+                                val linePath = Path().apply {
+                                    moveTo(pts[0].x, pts[0].y)
+                                    for (i in 1 until pts.size) {
+                                        val p0 = pts[i - 1]
+                                        val p1 = pts[i]
+                                        val controlX = (p0.x + p1.x) / 2
+                                        cubicTo(controlX, p0.y, controlX, p1.y, p1.x, p1.y)
+                                    }
+                                }
+
+                                if (drawFill) {
+                                    val fillPath = Path().apply {
+                                        addPath(linePath)
+                                        lineTo(pts.last().x, canvasHeight - paddingBottom)
+                                        lineTo(pts.first().x, canvasHeight - paddingBottom)
+                                        close()
+                                    }
+                                    drawPath(fillPath, brush = Brush.verticalGradient(
+                                        listOf(color.copy(alpha = 0.28f), color.copy(alpha = 0.01f))
+                                    ))
+                                }
+
+                                drawPath(
+                                    path = linePath,
+                                    color = color,
+                                    style = Stroke(width = strokeW, cap = StrokeCap.Round, join = StrokeJoin.Round)
+                                )
+                                return pts
+                            }
+
+                            if (isCombined) {
+                                val salesPts = drawSeriesCurve(dailyPoints.map { it.totalSales }, Color(0xFF10B981), 2.5.dp.toPx(), drawFill = true)
+                                val purchasePts = drawSeriesCurve(dailyPoints.map { it.purchases }, Color(0xFF3B82F6), 2.5.dp.toPx())
+                                val expensePts = drawSeriesCurve(dailyPoints.map { it.expenses }, Color(0xFFEF4444), 2.0.dp.toPx())
+                                val profitPts = drawSeriesCurve(dailyPoints.map { it.profit }, Color(0xFF8B5CF6), 2.0.dp.toPx())
+
+                                if (selectedPointIndex in dailyPoints.indices) {
+                                    val curX = if (n > 1) selectedPointIndex * stepX else canvasWidth / 2
+                                    drawLine(
+                                        color = Color(0xFF0D9488).copy(alpha = 0.6f),
+                                        start = Offset(curX, paddingTop),
+                                        end = Offset(curX, canvasHeight - paddingBottom),
+                                        strokeWidth = 1.5.dp.toPx(),
+                                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+                                    )
+
+                                    listOf(
+                                        salesPts to Color(0xFF10B981),
+                                        purchasePts to Color(0xFF3B82F6),
+                                        expensePts to Color(0xFFEF4444),
+                                        profitPts to Color(0xFF8B5CF6)
+                                    ).forEach { (ptsList, col) ->
+                                        if (selectedPointIndex in ptsList.indices) {
+                                            val pt = ptsList[selectedPointIndex]
+                                            drawCircle(color = Color.White, radius = 5.dp.toPx(), center = pt)
+                                            drawCircle(color = col, radius = 3.5.dp.toPx(), center = pt)
+                                        }
+                                    }
+                                }
+                            } else {
+                                val values = dailyPoints.map { pt ->
+                                    when (selectedMetric) {
+                                        TrendMetric.SALES -> pt.totalSales
+                                        TrendMetric.PURCHASES -> pt.purchases
+                                        TrendMetric.EXPENSES -> pt.expenses
+                                        TrendMetric.PROFIT -> pt.profit
+                                        else -> pt.totalSales
+                                    }
+                                }
+                                val pts = drawSeriesCurve(values, lineColor, 3.dp.toPx(), drawFill = true)
+
+                                pts.forEachIndexed { idx, pt ->
+                                    val isSelected = idx == selectedPointIndex
+                                    if (isSelected) {
+                                        drawLine(
+                                            color = lineColor.copy(alpha = 0.5f),
+                                            start = Offset(pt.x, paddingTop),
+                                            end = Offset(pt.x, canvasHeight - paddingBottom),
+                                            strokeWidth = 1.5.dp.toPx(),
+                                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 6f), 0f)
+                                        )
+                                        drawCircle(color = lineColor.copy(alpha = 0.3f), radius = 12.dp.toPx(), center = pt)
+                                        drawCircle(color = lineColor, radius = 6.dp.toPx(), center = pt)
+                                        drawCircle(color = Color.White, radius = 3.dp.toPx(), center = pt)
+                                    } else {
+                                        drawCircle(color = Color.White, radius = 4.5.dp.toPx(), center = pt)
+                                        drawCircle(color = lineColor, radius = 3.dp.toPx(), center = pt)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // X-Axis Date Labels Row
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        val labelStep = (dailyPoints.size / 5).coerceAtLeast(1)
+                        dailyPoints.forEachIndexed { index, pt ->
+                            if (index % labelStep == 0 || index == dailyPoints.size - 1) {
+                                Text(
+                                    text = pt.dateLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.5.sp,
+                                    color = if (index == selectedPointIndex) selectedMetric.color else MaterialTheme.colorScheme.outline
+                                )
+                            }
                         }
                     }
                 }
