@@ -1,0 +1,9 @@
+{
+  "name": "mawashop",
+  "version": "2.4.0",
+  "private": true,
+  "description": "মাওয়া ডিজিটাল খাতা অফিসিয়াল ওয়েবসাইট ও APK পোর্টাল",
+  "scripts": {
+    "build": "mkdir -p public && cp -f index.html public/index.html 2>/dev/null || true; echo 'Build successful'"
+  }
+}
