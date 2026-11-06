@@ -174,4 +174,17 @@
   - মেটা ট্যাগ: `<meta name="google-site-verification" content="7tcvAMoErH96lTOwvqPOv4VgE9pHnC9ZUz_GKjHQgmo">`
   - ভেরিফিকেশন ফাইল: `google7tcvAMoErH96lTOwvqPOv4VgE9pHnC9ZUz_GKjHQgmo.html`
 
+## ১৩. সাইট ও অ্যান্ড্রয়েড অ্যাপসহ সম্পূর্ণ প্যাকেজ এক জিপ ফাইলে (`mawa-site-with-app.zip`)
+- **সম্পূর্ণ ডিপ্লয়মেন্ট জিপ প্যাকেজ তৈরি:** 
+  - ব্যবহারকারী যাতে এক ক্লিকে সম্পূর্ণ সাইট ও অ্যাপ ফাইল ডাউনলোড করে যেকোনো জায়গায় (Netlify Drop, Vercel, cPanel, Cloudflare Pages, GitHub Pages ইত্যাদি) সরাসরি ড্র্যাগ-অ্যান্ড-ড্রপ করে লাইভ করতে পারেন, সেজন্য `mawa-site-with-app.zip` (২৬ MB) তৈরি করা হয়েছে।
+  - **প্যাকেজের ভেতরের ফাইলসমূহ:**
+    1. `index.html` — অল-ইন-ওয়ান সম্পূর্ণ ওয়েবসাইট (সকল ফিচার, ৮টি ব্যবসায়িক গাইড ও কি-ওয়ার্ড সার্চ সহ)।
+    2. `mawa-digital-khata.apk` — আসল অ্যান্ড্রয়েড অ্যাপ ফাইল।
+    3. `assets/` — সকল স্ক্রিনশট ও গ্রাফিক্স।
+    4. `google7tcvAMoErH96lTOwvqPOv4VgE9pHnC9ZUz_GKjHQgmo.html` — গুগল সাইট ভেরিফিকেশন।
+    5. `sitemap.xml` ও `robots.txt` — সম্পূর্ণ এসইও ফাইল।
+    6. `netlify.toml`, `_headers`, ও `_redirects` — ইনস্ট্যান্ট ডিপ্লয়মেন্ট কনফিগারেশন।
+- **ওয়েবসাইটে সরাসরি ১-ক্লিক জিপ ডাউনলোড বাটন যুক্ত:**
+  - হোমপেজের প্রধান ব্যানারে এবং নিচের ডাউনলোড সেকশনে `📦 সম্পূর্ণ সাইট + APK ডাউনলোড (ZIP - ২৬ MB)` বাটন যুক্ত করা হয়েছে।
+
 

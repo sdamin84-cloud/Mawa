@@ -1,0 +1,16 @@
+{
+  "name": "মাওয়া ডিজিটাল খাতা",
+  "short_name": "মাওয়া খাতা",
+  "description": "ডিজিটাল খাতা ও স্মার্ট বাকির হিসাব অ্যাপ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFB",
+  "theme_color": "#006D77",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%23006D77'/><text x='50%' y='68%' font-size='56' font-family='sans-serif' font-weight='900' fill='%23FFFFFF' text-anchor='middle'>ম</text></svg>",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
