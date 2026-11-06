@@ -1,23 +1,41 @@
 # Robots.txt for Mawa Digital Khata (মাওয়া ডিজিটাল খাতা)
-# Optimized for Google Search Console & Googlebot indexing
+# Domain: https://mawashop.netlify.app/
+# Fully open and optimized for Googlebot, Google Search Console, Bing, and web crawlers
 
 User-agent: *
 Allow: /
+Allow: /sitemap.xml
+Allow: /robots.txt
 Allow: /assets/
-Allow: /features/
-Allow: /blog/
-Allow: /mawa-digital-khata.apk
-Disallow: /cdn-cgi/
-
-# Search Engine Specific
-User-agent: Googlebot
-Allow: /
 Allow: /features/
 Allow: /blog/
 Allow: /google*.html
+Allow: /mawa-digital-khata.apk
+Disallow: /cdn-cgi/
 
+# Googlebot specific directives
+User-agent: Googlebot
+Allow: /
+Allow: /sitemap.xml
+Allow: /features/
+Allow: /blog/
+Allow: /google*.html
+Allow: /mawa-digital-khata.apk
+
+# Googlebot Mobile
+User-agent: Googlebot-Mobile
+Allow: /
+Allow: /features/
+Allow: /blog/
+
+# Googlebot Images
 User-agent: Googlebot-Image
+Allow: /
 Allow: /assets/
 
-# Sitemap location
-Sitemap: https://ais-dev-2szb66pky3nhg4o27zmnhj-169169147327.asia-east1.run.app/sitemap.xml
+# Bingbot
+User-agent: Bingbot
+Allow: /
+
+# Canonical Sitemap URL for Google Search Console
+Sitemap: https://mawashop.netlify.app/sitemap.xml
