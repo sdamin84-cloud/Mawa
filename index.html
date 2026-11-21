@@ -56,7 +56,7 @@
         "applicationCategory": "BusinessApplication, FinanceApplication",
         "downloadUrl": "https://mawashop.netlify.app/mawa-digital-khata.apk",
         "softwareVersion": "2.4.0",
-        "fileSize": "38MB",
+        "fileSize": "7.3MB",
         "inLanguage": "bn",
         "author": {
           "@type": "Person",
@@ -94,7 +94,7 @@
             "name": "মাওয়া ডিজিটাল খাতা কীভাবে ডাউনলোড করব?",
             "acceptedAnswer": {
               "@type": "Answer",
-              "text": "আমাদের ওয়েবসাইটের 'সরাসরি APK ডাউনলোড' বাটনে চাপ দিন। ৩৮ MB সাইজের অফিসিয়াল APK ফাইলটি নামিয়ে ফোনে ইন্সটল করে নিন।"
+              "text": "আমাদের ওয়েবসাইটের 'সরাসরি APK ডাউনলোড' বাটনে চাপ দিন। ৭.৩ MB সাইজের অফিসিয়াল APK ফাইলটি নামিয়ে ফোনে ইন্সটল করে নিন।"
             }
           },
           {
@@ -215,7 +215,7 @@
     .nav-menu {
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 10px;
       list-style: none;
     }
     .nav-menu a {
@@ -225,6 +225,7 @@
       font-size: 14.5px;
       padding: 6px 10px;
       border-radius: 8px;
+      white-space: nowrap;
       transition: color 0.2s;
     }
     .nav-menu a:hover {
@@ -235,7 +236,7 @@
       background: linear-gradient(135deg, var(--coral), #E04826);
       color: #FFFFFF !important;
       font-weight: 700;
-      padding: 10px 22px;
+      padding: 10px 20px;
       border-radius: 50px;
       box-shadow: 0 4px 14px rgba(224, 72, 38, 0.35);
       display: inline-flex;
@@ -243,6 +244,8 @@
       gap: 8px;
       text-decoration: none;
       font-size: 14px;
+      white-space: nowrap;
+      cursor: pointer;
     }
     .btn-download-nav:hover {
       transform: translateY(-2px);
@@ -993,6 +996,7 @@
       font-size: 15px;
       font-weight: 600;
       box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+      pointer-events: none;
     }
     #downloadToast.show {
       visibility: visible;
@@ -1032,24 +1036,21 @@
 
       <ul class="nav-menu">
         <li><a href="#search-overview">হিসাব খুঁজুন</a></li>
-        <li><a href="/features/dokaner-hisab.html">দোকানের হিসাব</a></li>
+        <li><a href="/features/dokaner-hisab.html">ফিচারসমূহ</a></li>
         <li><a href="/features/baki-khata.html">বাকির খাতা</a></li>
-        <li><a href="/features/kisti-o-loan.html">কিস্তি ও ধার</a></li>
-        <li><a href="/features/stock-inventory.html">স্টক খাতা</a></li>
-        <li><a href="/features/voice-expense.html">ভয়েস খরচ</a></li>
         <li><a href="/blog/index.html">ব্লগ ও গাইড</a></li>
         <li><a href="/about.html">আমাদের সম্পর্কে</a></li>
         <li><a href="/contact.html">যোগাযোগ</a></li>
       </ul>
 
       <div>
-        <a href="mawa-digital-khata.apk" download="Mawa-Digital-Khata-v2.4.apk" class="btn-download-nav" onclick="triggerToast()">
+        <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="btn-download="mawa-digital-khata.apk"-nav" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
             <polyline points="7 10 12 15 17 10"></polyline>
             <line x1="12" y1="15" x2="12" y2="3"></line>
           </svg>
-          ফ্রি APK ডাউনলোড (৩৮ MB)
+          ফ্রি APK ডাউনলোড
         </a>
       </div>
     </div>
@@ -1070,15 +1071,15 @@
         </p>
 
         <div class="cta-group">
-          <a href="mawa-digital-khata.apk" download="Mawa-Digital-Khata-v2.4.apk" class="btn-main-download" onclick="triggerToast()">
+          <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="btn-main-download="mawa-digital-khata.apk"" style="cursor:pointer; position:relative; z-index:2;" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
-            ১ ক্লিকে APK ডাউনলোড (৩৮ MB)
+            ১ ক্লিকে APK ডাউনলোড (৭.৩ MB)
           </a>
-          <a href="mawa-site-with-app.zip" download="mawa-site-with-app.zip" class="btn-secondary" style="border-color:var(--primary); color:var(--primary); font-weight:800; background:rgba(0,109,119,0.06);">
+          <a href="mawa-site-with-app.zip" download="mawa-site-with-app.zip" class="btn-secondary" style="border-color:var(--primary); color:var(--primary); font-weight:800; background:rgba(0,109,119,0.06); cursor:pointer; position:relative; z-index:2;" onclick="startDownload(event, 'mawa-site-with-app.zip', 'mawa-site-with-app.zip')">
             সম্পূর্ণ সাইট + APK ডাউনলোড (ZIP)
           </a>
           <a href="#search-overview" class="btn-secondary">
@@ -1181,7 +1182,7 @@
           </div>
           <div class="overview-actions">
             <a href="#dokaner-hisab" class="overview-read-link">ফিচার বিস্তারিত দেখুন ↓</a>
-            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">APK ডাউনলোড</a>
+            <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="overview-apk-btn" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">APK ডাউনলোড</a>
           </div>
         </div>
 
@@ -1197,7 +1198,7 @@
           </div>
           <div class="overview-actions">
             <a href="#baki-khata" class="overview-read-link">বাকির খাতা দেখুন ↓</a>
-            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">APK ডাউনলোড</a>
+            <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="overview-apk-btn" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">APK ডাউনলোড</a>
           </div>
         </div>
 
@@ -1213,7 +1214,7 @@
           </div>
           <div class="overview-actions">
             <a href="#dokaner-hisab" class="overview-read-link">ক্যাশবুক বিস্তারিত ↓</a>
-            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">APK ডাউনলোড</a>
+            <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="overview-apk-btn" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">APK ডাউনলোড</a>
           </div>
         </div>
 
@@ -1229,7 +1230,7 @@
           </div>
           <div class="overview-actions">
             <a href="#kisti-loan" class="overview-read-link">কিস্তি ফিচার দেখুন ↓</a>
-            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">APK ডাউনলোড</a>
+            <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="overview-apk-btn" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">APK ডাউনলোড</a>
           </div>
         </div>
 
@@ -1245,7 +1246,7 @@
           </div>
           <div class="overview-actions">
             <a href="#voice-expense" class="overview-read-link">ভয়েস এন্ট্রি দেখুন ↓</a>
-            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">APK ডাউনলোড</a>
+            <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="overview-apk-btn" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">APK ডাউনলোড</a>
           </div>
         </div>
 
@@ -1261,7 +1262,7 @@
           </div>
           <div class="overview-actions">
             <a href="#profit-loss" class="overview-read-link">রিপোর্ট ফিচার দেখুন ↓</a>
-            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">APK ডাউনলোড</a>
+            <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="overview-apk-btn" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">APK ডাউনলোড</a>
           </div>
         </div>
 
@@ -1277,7 +1278,7 @@
           </div>
           <div class="overview-actions">
             <a href="#stock-inventory" class="overview-read-link">স্টক ফিচার দেখুন ↓</a>
-            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">APK ডাউনলোড</a>
+            <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="overview-apk-btn" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">APK ডাউনলোড</a>
           </div>
         </div>
 
@@ -1293,7 +1294,7 @@
           </div>
           <div class="overview-actions">
             <a href="#article-offline" class="overview-read-link">অফলাইন গাইড পড়ুন ↓</a>
-            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">APK ডাউনলোড</a>
+            <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="overview-apk-btn" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">APK ডাউনলোড</a>
           </div>
         </div>
 
@@ -1309,7 +1310,7 @@
           </div>
           <div class="overview-actions">
             <a href="#article-tally" class="overview-read-link">রূপান্তর নিয়ম পড়ুন ↓</a>
-            <a href="mawa-digital-khata.apk" class="overview-apk-btn" download onclick="triggerToast()">APK ডাউনলোড</a>
+            <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="overview-apk-btn" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">APK ডাউনলোড</a>
           </div>
         </div>
       </div>
@@ -1331,7 +1332,7 @@
           <li><span>✓</span> <strong>ক্যাশ ড্রয়ার মেলানো:</strong> বিক্রি ও খরচ বাদ দিয়ে ড্রয়ারের সাথে ক্যাশ স্বয়ংক্রিয়ভাবে মিলে যায়।</li>
           <li><span>✓</span> <strong>ক্যাশ ঘাটতি অ্যালার্ট:</strong> যদি ১ টাকাও কম থাকে তবে স্ক্রিনে সতর্কবার্তা দেয়।</li>
         </ul>
-        <a href="mawa-digital-khata.apk" class="btn-main-download" download onclick="triggerToast()"> এখনই অ্যাপটি ইনস্টল করুন</a>
+        <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="btn-main-download="mawa-digital-khata.apk"" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')"> এখনই অ্যাপটি ইনস্টল করুন</a>
       </div>
       <div class="module-card-box">
         <h4> ক্যাশ ড্রয়ার মেলানোর সহজ সমীকরণ</h4>
@@ -1369,7 +1370,7 @@
           <li><span>✓</span> <strong>১-ট্যাপে ফোন কল:</strong> কাস্টমারের নামের পাশেই কল বাটন।</li>
           <li><span>✓</span> <strong>ডিজিটাল মেমো ও স্টেটমেন্ট:</strong> হোয়াটসঅ্যাপে লেনদেনের মেমো শেয়ারের সুবিধা।</li>
         </ul>
-        <a href="mawa-digital-khata.apk" class="btn-main-download" download onclick="triggerToast()"> বাকির খাতা চালু করুন</a>
+        <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="btn-main-download="mawa-digital-khata.apk"" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')"> বাকির খাতা চালু করুন</a>
       </div>
     </div>
   </section>
@@ -1387,10 +1388,10 @@
           <li><span>✓</span> <strong>ওভারডিউ কিস্তির সতর্কতা:</strong> কোন কাস্টমার কিস্তির তারিখ পার করেছেন তা আলাদা তালিকায় স্পষ্ট থাকে।</li>
           <li><span>✓</span> <strong>মহাজন ও সাপ্লায়ারের দেনা:</strong> মালামাল ক্রয়ের ধারের পরিশোধ ট্র্যাকিং।</li>
         </ul>
-        <a href="mawa-digital-khata.apk" class="btn-main-download" download onclick="triggerToast()"> কিস্তির হিসাব শুরু করুন</a>
+        <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="btn-main-download="mawa-digital-khata.apk"" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')"> কিস্তির হিসাব শুরু করুন</a>
       </div>
       <div class="module-card-box">
-        <h4>📋 কিস্তি ট্র্যাকিং কেন অপরিহার্য?</h4>
+        <h4>কিস্তি ট্র্যাকিং কেন অপরিহার্য?</h4>
         <p style="font-size:14.5px; color:var(--text-muted); line-height:1.7;">
           কাগজে কিস্তি লিখলে কার কয়টি কিস্তি পরিশোধ হলো এবং কতটি অবশিষ্ট রইল তা বারবার যোগ-বিয়োগ করতে হয়। মাওয়া ডিজিটাল খাতায় কিস্তি জমা দেওয়ার সাথে সাথে অবশিষ্ট ব্যালেন্স লাইভ আপডেট হয়ে যায়।
         </p>
@@ -1419,7 +1420,7 @@
           <li><span>✓</span> <strong>ডিজিটাল ফর্দ চেকলিস্ট:</strong> কাগজের ফর্দ হারিয়ে যাওয়ার ভয় নেই।</li>
           <li><span>✓</span> <strong>মুনাফা মার্জিন বিশ্লেষণ:</strong> প্রতিটি পণ্যে শতকরা কত লাভ হচ্ছে তা এক নজরে দেখুন।</li>
         </ul>
-        <a href="mawa-digital-khata.apk" class="btn-main-download" download onclick="triggerToast()"> স্টক খাতা ইনস্টল করুন</a>
+        <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="btn-main-download="mawa-digital-khata.apk"" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')"> স্টক খাতা ইনস্টল করুন</a>
       </div>
     </div>
   </section>
@@ -1436,7 +1437,7 @@
           <li><span>✓</span> <strong>অটোমেটিক সংখ্যা ও নাম পৃথকীকরণ:</strong> টাকার পরিমাণ ও পণ্যের নাম নিজে থেকেই আলাদা ঘরে বসে যায়।</li>
           <li><span>✓</span> <strong>কীবোর্ডে এন্টার দিলে অটো সেভ:</strong> হার্ডওয়্যার বা সফট কীবোর্ডে Done চাপলে সাথে সাথে সেভ হয়ে নতুন এন্ট্রির জন্য প্রস্তুত হয়।</li>
         </ul>
-        <a href="mawa-digital-khata.apk" class="btn-main-download" download onclick="triggerToast()"> ভয়েস এন্ট্রি ব্যবহার করুন</a>
+        <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="btn-main-download="mawa-digital-khata.apk"" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')"> ভয়েস এন্ট্রি ব্যবহার করুন</a>
       </div>
       <div class="module-card-box" style="text-align:center;">
         <div style="font-size:54px; margin-bottom:12px;"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.91-3c-.49 0-.9.36-.98.85C16.52 14.2 14.47 16 12 16s-4.52-1.8-4.93-4.15c-.08-.49-.49-.85-.98-.85-.61 0-1.09.54-1 1.14.49 3 2.89 5.35 5.91 5.78V20c0 .55.45 1 1 1s1-.45 1-1v-2.08c3.02-.43 5.42-2.78 5.91-5.78.1-.6-.39-1.14-1-1.14z"/></svg></div>
@@ -1466,7 +1467,7 @@
           <li><span>✓</span> <strong>পিডিএফ (PDF) ও এক্সেল ডাউনলোড:</strong> ১ ক্লিকে পুরো মাসের হিসাব ডাউনলোড করে প্রিন্ট করুন।</li>
           <li><span>✓</span> <strong>ক্যাশ ফ্লো চার্ট:</strong> দোকানে নগদ টাকা প্রবেশের সাথে ব্যয়ের অনুপাত পর্যালোচনা।</li>
         </ul>
-        <a href="mawa-digital-khata.apk" class="btn-main-download" download onclick="triggerToast()"> লাভ-ক্ষতি রিপোর্ট দেখুন</a>
+        <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="btn-main-download="mawa-digital-khata.apk"" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')"> লাভ-ক্ষতি রিপোর্ট দেখুন</a>
       </div>
     </div>
   </section>
@@ -1769,14 +1770,14 @@
       <h2>আজই আপনার দোকানের হিসাবকে করুন ডিজিটাল</h2>
       <p>আর কোনো খাতা হারানো বা বাকি ভুলে যাওয়ার ভয় নেই। এখনই ডাউনলোড করুন মাওয়া ডিজিটাল খাতা।</p>
       <div style="display:flex; flex-wrap:wrap; gap:16px; justify-content:center; align-items:center;">
-        <a href="mawa-digital-khata.apk" download="Mawa-Digital-Khata-v2.4.apk" class="btn-white-cta" onclick="triggerToast()">
+        <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="btn-white-cta" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">
           <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
             <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4 9.11 4 6.6 5.64 5.35 8.04 2.34 8.36 0 10.91 0 14c0 3.31 2.69 6 6 6h13c2.76 0 5-2.24 5-5 0-2.64-2.05-4.78-4.65-4.96zM17 13l-5 5-5-5h3V9h4v4h3z"/>
           </svg>
-          ১ ক্লিকে APK ডাউনলোড (৩৮ MB)
+          ১ ক্লিকে APK ডাউনলোড (৭.৩ MB)
         </a>
-        <a href="mawa-site-with-app.zip" download="mawa-site-with-app.zip" class="btn-white-cta" style="background:#FF6B4A; color:#FFFFFF; border:2px solid #FFFFFF;">
-           সম্পূর্ণ সাইট + APK ডাউনলোড (ZIP)
+        <a href="mawa-site-with-app.zip" download="mawa-site-with-app.zip" class="btn-white-cta" style="background:#FF6B4A; color:#FFFFFF; border:2px solid #FFFFFF;" onclick="startDownload(event, 'mawa-site-with-app.zip', 'mawa-site-with-app.zip')">
+          সম্পূর্ণ সাইট + APK ডাউনলোড (ZIP)
         </a>
       </div>
     </div>
@@ -1839,23 +1840,38 @@
     <div class="mobile-sticky-inner">
       <div class="mobile-info">
         <h4>মাওয়া ডিজিটাল খাতা</h4>
-        <span>v2.4 • সাইজ: ৩৮ MB • ফ্রি</span>
+        <span>v2.4 • সাইজ: ৭.৩ MB • ফ্রি</span>
       </div>
-      <a href="mawa-digital-khata.apk" download="Mawa-Digital-Khata-v2.4.apk" class="btn-mobile-download" onclick="triggerToast()">
+      <a href="mawa-digital-khata.apk" download="mawa-digital-khata.apk" class="btn-mobile-download="mawa-digital-khata.apk"" onclick="startDownload(event, 'mawa-digital-khata.apk', 'mawa-digital-khata.apk')">
         ডাউনলোড APK
       </a>
     </div>
   </div>
 
   <!-- Download Toast Feedback -->
-  <div id="downloadToast"> মাওয়া ডিজিটাল খাতা APK ডাউনলোড শুরু হয়েছে...</div>
+  <div id="downloadToast">মাওয়া ডিজিটাল খাতা ডাউনলোড শুরু হয়েছে...</div>
 
   <!-- Interactive JavaScript -->
   <script>
-    function triggerToast() {
+    function triggerToast(msg) {
       const toast = document.getElementById("downloadToast");
+      if (msg) toast.textContent = msg;
       toast.className = "show";
-      setTimeout(function(){ toast.className = toast.className.replace("show", ""); }, 3000);
+      setTimeout(function(){ toast.className = toast.className.replace("show", ""); }, 3500);
+    }
+
+    function startDownload(event, fileUrl, fileName) {
+      triggerToast("ডাউনলোড শুরু হয়েছে: " + fileName);
+      // Let browser native <a download> proceed immediately without blocking popups;
+      // asynchronously verify server didn't return an HTML error page.
+      try {
+        fetch(fileUrl, { method: 'HEAD' }).then(function(res) {
+          const ct = (res.headers.get('content-type') || '').toLowerCase();
+          if (!res.ok || ct.includes('text/html')) {
+            triggerToast("ফাইলটি সার্ভারে আপডেট হচ্ছে, অনুগ্রহ করে কিছুক্ষণ পর চেষ্টা করুন।");
+          }
+        }).catch(function() {});
+      } catch (e) {}
     }
 
     function toggleFaq(el) {

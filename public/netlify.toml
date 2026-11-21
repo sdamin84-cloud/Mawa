@@ -2,16 +2,10 @@
   publish = "public"
   command = "echo 'Static build ready'"
 
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
-  force = false
-
 [[headers]]
   for = "/*"
   [headers.values]
-    X-Frame-Options = "DENY"
+    X-Frame-Options = "SAMEORIGIN"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
 
@@ -20,14 +14,21 @@
   [headers.values]
     Content-Type = "application/vnd.android.package-archive"
     Content-Disposition = "attachment; filename=\"mawa-digital-khata.apk\""
-    Cache-Control = "public, max-age=86400"
+    Cache-Control = "public, max-age=3600"
 
 [[headers]]
   for = "/mawa-digital-khata.apk"
   [headers.values]
     Content-Type = "application/vnd.android.package-archive"
     Content-Disposition = "attachment; filename=\"mawa-digital-khata.apk\""
-    Cache-Control = "public, max-age=86400"
+    Cache-Control = "public, max-age=3600"
+
+[[headers]]
+  for = "/*.zip"
+  [headers.values]
+    Content-Type = "application/zip"
+    Content-Disposition = "attachment; filename=\"mawa-site-with-app.zip\""
+    Cache-Control = "public, max-age=3600"
 
 [[headers]]
   for = "/sitemap.xml"
